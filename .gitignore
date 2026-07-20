@@ -1,0 +1,21 @@
+# --- Roblox / Rojo build artifacts ---
+# Plac NIE jest w repo (Studio-owned: mapa, RNG_MAP, assety, Units).
+*.rbxl
+*.rbxlx
+*.rbxl.lock
+*.rbxlx.lock
+*.rbxm
+*.rbxmx
+build/
+sourcemap.json
+
+# --- Narzedzia / IDE ---
+.rokit/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+
+# Paczki dostawcze / kopie zapasowe — lokalnie, poza repo
+*.zip
+_backup*/

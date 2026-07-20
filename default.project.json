@@ -1,0 +1,21 @@
+{
+  "name": "war-rng",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Framework": { "$path": "src/ReplicatedStorage/Framework" },
+      "Content":   { "$path": "src/ReplicatedStorage/Content" },
+      "Shared":    { "$path": "src/ReplicatedStorage/Shared" }
+    },
+    "ServerScriptService": {
+      "Services": { "$path": "src/ServerScriptService/Services" },
+      "init":     { "$path": "src/ServerScriptService/init" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Controllers": { "$path": "src/StarterPlayer/StarterPlayerScripts/Controllers" },
+        "init":        { "$path": "src/StarterPlayer/StarterPlayerScripts/init" }
+      }
+    }
+  }
+}
