@@ -13,6 +13,7 @@ local GameConfig = {
 	Skill = require(Config:WaitForChild("SkillConfig")),
 	Economy = require(Config:WaitForChild("EconomyConfig")),
 	Reveal = require(Config:WaitForChild("RevealConfig")),
+	StatBase = require(Config:WaitForChild("StatBaseConfig")), -- bazy plaskiej tabeli Stats (§3.2)
 }
 
 return GameConfig
