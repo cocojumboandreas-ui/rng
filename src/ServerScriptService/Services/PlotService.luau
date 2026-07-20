@@ -253,6 +253,12 @@ function PlotService.GetPlot(player: Player)
 	return id and _plots[id] or nil
 end
 
+-- Geometria plotu po id (harness bramki: syntetyczne ploty bez gracza).
+function PlotService.GetPlotById(plotId: number)
+	ensureBuilt()
+	return _plots[plotId]
+end
+
 function PlotService.GetPlayerByPlot(plotId: number)
 	local key = _playerByPlot[plotId]
 	-- w produkcji key to Player; w testach moze byc dowolny klucz

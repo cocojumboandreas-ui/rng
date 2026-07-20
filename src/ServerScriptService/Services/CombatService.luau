@@ -31,6 +31,21 @@ local _towerCd: { [any]: { [string]: number } } = {} -- player -> {placementId -
 local _deaths: { [any]: { number } } = {} -- player -> {enemyId,...} (flush per tick)
 local _nextEnemyId = 0
 local _acc = 0
+local _synthPlotId: { [any]: number } = {} -- syntetyczny klucz -> plotId (harness bramki; puste w grze)
+local _lastStepMs = 0 -- czas ostatniego kroku symulacji [ms] (instrumentacja bramki)
+local _syncBytes = 0 -- bajty EnemySync od ostatniego odczytu (KB/s bramki)
+
+-- Rozwiazanie geometrii plotu: realny gracz -> GetPlot; klucz syntetyczny -> GetPlotById.
+local function resolvePlot(key)
+	if not _plot then
+		return nil
+	end
+	local sp = _synthPlotId[key]
+	if sp and _plot.GetPlotById then
+		return _plot.GetPlotById(sp)
+	end
+	return _plot.GetPlot(key)
+end
 
 -- ── geometria ────────────────────────────────────────────────────────────────
 -- pozycja swiata na polilinii pathNodes dla t∈[0,1] (rowno po segmentach; 2 wezly = lerp)
@@ -75,7 +90,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	end
 	local hp = et.hp * waveHpMult(waveNumber)
 	local stagger = GameConfig.Sim.spawnStagger or 0.03
-	local plot = _plot and _plot.GetPlot(player)
+	local plot = resolvePlot(player)
 	local plotId = plot and plot.plotId or 0
 	_enemies[player] = _enemies[player] or {}
 	local enemies = _enemies[player]
@@ -139,7 +154,7 @@ end
 
 local function step(dt: number)
 	for player, enemies in pairs(_enemies) do
-		local plot = _plot and _plot.GetPlot(player)
+		local plot = resolvePlot(player)
 		if plot then
 			local dmgMult = (_stat and _stat.Get(player).dmgMult) or 1
 
@@ -211,6 +226,7 @@ local function step(dt: number)
 					off += 6
 				end
 				_enemySync:FireAllClients(plot.plotId, buf)
+				_syncBytes += buffer.len(buf)
 			end
 		end
 	end
@@ -243,7 +259,9 @@ function CombatService.Start()
 	RunService.Heartbeat:Connect(function(dt)
 		_acc += dt
 		while _acc >= dtStep do
+			local t0 = os.clock()
 			step(dtStep)
+			_lastStepMs = (os.clock() - t0) * 1000
 			_acc -= dtStep
 		end
 	end)
@@ -251,6 +269,29 @@ function CombatService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		CombatService.ClearPlot(player)
 	end)
+end
+
+-- ── Harness bramki (Task 8) — syntetyczne obciazenie + instrumentacja ──────────
+-- Syntetyczna fala na dowolnym plocie BEZ gracza (klucz-tabela -> plotId).
+function CombatService.SpawnSyntheticWave(plotId: number, count: number, waveNumber: number?)
+	local key = { synthPlot = plotId }
+	_synthPlotId[key] = plotId
+	CombatService.SpawnEnemies(key, waveNumber or 1, { enemyTypeId = "grunt", count = count, formation = { cols = 6 } })
+	return key
+end
+function CombatService.ClearSynthetic()
+	for key in pairs(_synthPlotId) do
+		CombatService.ClearPlot(key)
+		_synthPlotId[key] = nil
+	end
+end
+function CombatService.GetLastStepMs(): number
+	return _lastStepMs
+end
+function CombatService.GetSyncBytesAndReset(): number
+	local b = _syncBytes
+	_syncBytes = 0
+	return b
 end
 
 -- Hooki TYLKO do testow (deterministyczny krok, wstrzykniecie deps).
