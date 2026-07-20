@@ -13,6 +13,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local Workspace = game:GetService("Workspace")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Signal = require(Framework:WaitForChild("Signal"))
@@ -190,6 +191,56 @@ local function releasePlot(playerKey: any)
 	PlotService.PlotReleased:Fire(playerKey, id)
 end
 
+-- ── spawn gracza na SWOIM placu (nigdy na globalnym SpawnLocation / osi baz wroga Z=0) ──
+-- CFrame spawnu = srodek siatki plotu, tuz nad kaflami, patrzac w strone nadchodzacych wrogow
+-- (faceDirection). Stary PlotAssignment robil to sam; PlotService przejmuje.
+local function plotSpawnCFrame(plot): CFrame
+	local o = plot.gridOrigin
+	local cs = GameConfig.Grid.cellSize
+	local w, d = plot.gridSize.X, plot.gridSize.Y
+	local center = o.Position + Vector3.new(cs * w * 0.5, 0, cs * d * 0.5)
+	local spawnPos = Vector3.new(center.X, o.Position.Y + 5, center.Z) -- ~5 studow nad kaflami
+	return CFrame.lookAlong(spawnPos, plot.faceDirection)
+end
+
+local function positionCharacter(player: Player, char: Model)
+	local id = _plotByPlayer[player]
+	if id == nil then
+		id = assignPlot(player)
+	end
+	local plot = id and _plots[id]
+	if not plot then
+		warn(("[PlotService] positionCharacter: brak plotu dla %s"):format(player.Name))
+		return
+	end
+	if not char:FindFirstChild("HumanoidRootPart") then
+		char:WaitForChild("HumanoidRootPart", 5)
+	end
+	if char.PrimaryPart or char:FindFirstChild("HumanoidRootPart") then
+		char:PivotTo(plotSpawnCFrame(plot))
+	end
+end
+
+-- Roblox rzucalby graczy na globalny SpawnLocation (0,0,0 = os baz wroga Z=0). Neutralizujemy.
+local function neutralizeGlobalSpawns()
+	for _, inst in ipairs(Workspace:GetDescendants()) do
+		if inst:IsA("SpawnLocation") then
+			inst.Enabled = false
+			inst.Neutral = true
+		end
+	end
+end
+
+local function wirePlayer(player: Player)
+	assignPlot(player)
+	player.CharacterAdded:Connect(function(char)
+		positionCharacter(player, char)
+	end)
+	if player.Character then
+		positionCharacter(player, player.Character)
+	end
+end
+
 -- ── API (§3.3) ───────────────────────────────────────────────────────────────
 function PlotService.GetPlot(player: Player)
 	local id = _plotByPlayer[player]
@@ -209,10 +260,11 @@ end
 
 function PlotService.Start()
 	ensureBuilt()
-	Players.PlayerAdded:Connect(assignPlot)
+	neutralizeGlobalSpawns()
+	Players.PlayerAdded:Connect(wirePlayer)
 	Players.PlayerRemoving:Connect(releasePlot)
 	for _, player in ipairs(Players:GetPlayers()) do
-		assignPlot(player)
+		wirePlayer(player)
 	end
 end
 
@@ -220,6 +272,11 @@ end
 function PlotService._BuildAllForTest()
 	ensureBuilt()
 	return _plots
+end
+function PlotService._SpawnCFrameForTest(plotId: number): CFrame?
+	ensureBuilt()
+	local plot = _plots[plotId]
+	return plot and plotSpawnCFrame(plot) or nil
 end
 function PlotService._AssignForTest(key: any): number?
 	return assignPlot(key)
