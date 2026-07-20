@@ -14,6 +14,7 @@ local GameConfig = {
 	Economy = require(Config:WaitForChild("EconomyConfig")),
 	Reveal = require(Config:WaitForChild("RevealConfig")),
 	StatBase = require(Config:WaitForChild("StatBaseConfig")), -- bazy plaskiej tabeli Stats (§3.2)
+	Sim = require(Config:WaitForChild("SimConfig")), -- parametry symulacji (simHz, spawnStagger)
 }
 
 return GameConfig
