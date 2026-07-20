@@ -84,6 +84,8 @@ local function buildNodes()
 end
 
 -- ── remote handlers ──
+local U16 = 65536 -- id klucz = fullId % U16 (ta sama przestrzen co u16 w EnemySync)
+
 local function hasNodes(): boolean
 	return next(_nodesByPlot) ~= nil
 end
@@ -94,30 +96,41 @@ local function onEvents(payload)
 	end
 	local plotId = payload.plotId
 	for _, s in ipairs(payload.spawns or {}) do
-		if not _active[s.id] then
-			_active[s.id] = { part = acquire(), plotId = plotId, prevT = s.pathT, prevC = os.clock(), curT = s.pathT, curC = os.clock() }
+		local key = s.id % U16 -- klucz u16 spojny z EnemySync
+		local existing = _active[key]
+		if existing then
+			if existing.fullId ~= s.id then
+				-- kolizja u16 (nie powinna: alive/plot ~50, id monotoniczne, zycie sekundy)
+				warn(("[EnemyRender] kolizja u16 id=%d (fullId %d vs %d) — rozwaz u32/per-plot id"):format(key, existing.fullId, s.id))
+				release(existing.part)
+				_active[key] = nil
+			end -- inaczej: duplikat spawnu tego samego wroga -> ignoruj
+		end
+		if not _active[key] then
+			_active[key] = { part = acquire(), fullId = s.id, plotId = plotId, prevT = s.pathT, prevC = os.clock(), curT = s.pathT, curC = os.clock() }
 		end
 	end
 	for _, id in ipairs(payload.deaths or {}) do
-		local e = _active[id]
+		local key = id % U16
+		local e = _active[key]
 		if e then
 			release(e.part)
-			_active[id] = nil
+			_active[key] = nil
 		end
 	end
 end
 
--- EnemySync: (plotId, buffer) — 6B/wrog: u32 id, u8 pathT(0..255), u8 hpPct.
+-- EnemySync: (plotId, buffer) — 4B/wrog: u16 id(id%65536), u8 pathT(0..255), u8 hpPct.
 local function onSync(_plotId, buf)
 	if type(buf) ~= "buffer" then
 		return
 	end
 	local now = os.clock()
-	local n = buffer.len(buf) // 6
+	local n = buffer.len(buf) // 4
 	for i = 0, n - 1 do
-		local off = i * 6
-		local id = buffer.readu32(buf, off)
-		local pathT = buffer.readu8(buf, off + 4) / 255
+		local off = i * 4
+		local id = buffer.readu16(buf, off)
+		local pathT = buffer.readu8(buf, off + 2) / 255
 		local e = _active[id]
 		if e then
 			e.prevT, e.prevC = e.curT, e.curC
@@ -202,6 +215,9 @@ function EnemyRenderController.start()
 end
 
 -- Hooki TYLKO do testow (client eval).
+function EnemyRenderController._RenderOnceForTest()
+	renderStep()
+end
 function EnemyRenderController._StatsForTest()
 	local active, visible = 0, 0
 	for _, e in pairs(_active) do

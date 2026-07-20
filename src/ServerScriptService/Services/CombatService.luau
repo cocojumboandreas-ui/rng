@@ -209,21 +209,24 @@ local function step(dt: number)
 				end
 			end
 
-			-- 4) sync PER PLOT jako buffer: u32 id + u8 pathT(0..255) + u8 hpPct = 6B/wrog.
+			-- 4) sync PER PLOT jako buffer: u16 id(id%65536) + u8 pathT(0..255) + u8 hpPct = 4B/wrog.
 			-- Tabela z ~300 wrogami przekracza limit UnreliableRemoteEvent (~900B) i jest DROPowana;
-			-- per-plot buffer (50 wrogow = 300B) miesci sie. Bandwidth knob bramki: SIM_HZ / u16 id.
+			-- per-plot buffer (50 wrogow = 200B) miesci sie. u16 id (nie u32) -> ~11KB/s przy simHz=10.
+			-- BRAK KOLIZJI po obcieciu do u16: alive/plot ~50, id MONOTONICZNE, okno zycia wroga to
+			-- sekundy -> zadne dwa ZYWE wrogi nie roznia sie o dokladnie 65536 w id (klient i tak
+			-- weryfikuje po pelnym id przy spawnie i ostrzega przy kolizji).
 			local cnt = 0
 			for _ in pairs(enemies) do
 				cnt += 1
 			end
 			if _enemySync and cnt > 0 then
-				local buf = buffer.create(cnt * 6)
+				local buf = buffer.create(cnt * 4)
 				local off = 0
 				for _, e in pairs(enemies) do
-					buffer.writeu32(buf, off, e.id % 4294967296)
-					buffer.writeu8(buf, off + 4, math.floor(math.clamp(e.pathT, 0, 1) * 255 + 0.5))
-					buffer.writeu8(buf, off + 5, math.clamp(math.floor(e.hp / e.maxHp * 100 + 0.5), 0, 100))
-					off += 6
+					buffer.writeu16(buf, off, e.id % 65536)
+					buffer.writeu8(buf, off + 2, math.floor(math.clamp(e.pathT, 0, 1) * 255 + 0.5))
+					buffer.writeu8(buf, off + 3, math.clamp(math.floor(e.hp / e.maxHp * 100 + 0.5), 0, 100))
+					off += 4
 				end
 				_enemySync:FireAllClients(plot.plotId, buf)
 				_syncBytes += buffer.len(buf)
