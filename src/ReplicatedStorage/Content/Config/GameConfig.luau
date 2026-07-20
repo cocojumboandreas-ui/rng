@@ -1,9 +1,18 @@
 --!strict
--- GameConfig: centralny config gry (wymiary siatki, cellSize, footprinty, mapowanie modeli).
--- STUB — wartosci dojda z architektury po reconie placu.
--- Recon placu (na 2026-07-20): plot = siatka 9x12 kafli 6x6 (cellSize=6), 6x PlayerBase_N,
--- 3x Base_N wroga w osi Z=0. NIE wpisuje jeszcze wartosci — czekamy na architekture.
+-- Content/Config/GameConfig.luau — agregator configow (§4 architektury).
+-- Serwisy robia require(GameConfig) i czytaja GameConfig.Units / .Rarity / .Grid ...
+-- ZASADA: kazda liczba balansu siedzi w podmodulach; serwisy nie zawieraja liczb.
+local Config = script.Parent
 
-local GameConfig = {}
+local GameConfig = {
+	Units = require(Config:WaitForChild("UnitsConfig")),
+	Rarity = require(Config:WaitForChild("RarityConfig")),
+	Mutation = require(Config:WaitForChild("MutationConfig")),
+	Wave = require(Config:WaitForChild("WaveConfig")),
+	Grid = require(Config:WaitForChild("GridConfig")),
+	Skill = require(Config:WaitForChild("SkillConfig")),
+	Economy = require(Config:WaitForChild("EconomyConfig")),
+	Reveal = require(Config:WaitForChild("RevealConfig")),
+}
 
 return GameConfig
