@@ -1,6 +1,13 @@
---!strict
--- Client bootstrap. Kontrolery (RollReveal/Build/EnemyRender/WaveHud/...) dochodza
--- w pozniejszych zadaniach vertical slice'a (5/6/7). Na razie tylko marker.
+--!nonstrict
+-- Client bootstrap. Startuje kontrolery klienta. Kolejne (RollReveal/Build/WaveHud)
+-- dochodza w warstwie po bramce; teraz EnemyRenderController (§9).
+local Players = game:GetService("Players")
 
--- ROUND-TRIP MARKER (do usuniecia po weryfikacji slice'a):
+local playerScripts = Players.LocalPlayer:WaitForChild("PlayerScripts")
+local Controllers = playerScripts:WaitForChild("Controllers")
+
+local EnemyRenderController = require(Controllers:WaitForChild("EnemyRenderController"))
+EnemyRenderController.start()
+
+-- ROUND-TRIP MARKER (do usuniecia po zielonej bramce):
 print("[war-rng] client init OK")

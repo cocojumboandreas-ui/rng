@@ -114,6 +114,18 @@ function CombatService.GetAliveCount(player): number
 end
 
 function CombatService.ClearPlot(player)
+	-- rozeslij smierci pozostalych wrogow, zeby klient zwolnil ich party (np. po CoreDestroyed)
+	local enemies = _enemies[player]
+	if enemies and _enemyEvents then
+		local ids = {}
+		for id in pairs(enemies) do
+			ids[#ids + 1] = id
+		end
+		if #ids > 0 then
+			local plot = _plot and _plot.GetPlot(player)
+			_enemyEvents:FireAllClients({ plotId = plot and plot.plotId or 0, spawns = {}, deaths = ids })
+		end
+	end
 	_enemies[player] = nil
 	_towerCd[player] = nil
 	_deaths[player] = nil
@@ -126,7 +138,6 @@ local function queueDeath(player, id)
 end
 
 local function step(dt: number)
-	local sync = {}
 	for player, enemies in pairs(_enemies) do
 		local plot = _plot and _plot.GetPlot(player)
 		if plot then
@@ -183,22 +194,27 @@ local function step(dt: number)
 				end
 			end
 
-			-- 4) wiersze do sync
-			local rows = {}
-			for _, e in pairs(enemies) do
-				rows[#rows + 1] = {
-					id = e.id,
-					pathT = math.clamp(e.pathT, 0, 1),
-					hpPct = math.clamp(math.floor(e.hp / e.maxHp * 100 + 0.5), 0, 100),
-				}
+			-- 4) sync PER PLOT jako buffer: u32 id + u8 pathT(0..255) + u8 hpPct = 6B/wrog.
+			-- Tabela z ~300 wrogami przekracza limit UnreliableRemoteEvent (~900B) i jest DROPowana;
+			-- per-plot buffer (50 wrogow = 300B) miesci sie. Bandwidth knob bramki: SIM_HZ / u16 id.
+			local cnt = 0
+			for _ in pairs(enemies) do
+				cnt += 1
 			end
-			sync[plot.plotId] = rows
+			if _enemySync and cnt > 0 then
+				local buf = buffer.create(cnt * 6)
+				local off = 0
+				for _, e in pairs(enemies) do
+					buffer.writeu32(buf, off, e.id % 4294967296)
+					buffer.writeu8(buf, off + 4, math.floor(math.clamp(e.pathT, 0, 1) * 255 + 0.5))
+					buffer.writeu8(buf, off + 5, math.clamp(math.floor(e.hp / e.maxHp * 100 + 0.5), 0, 100))
+					off += 6
+				end
+				_enemySync:FireAllClients(plot.plotId, buf)
+			end
 		end
 	end
 
-	if _enemySync then
-		_enemySync:FireAllClients(sync)
-	end
 	-- flush smierci (reliable, per plot)
 	for player, deaths in pairs(_deaths) do
 		if #deaths > 0 then

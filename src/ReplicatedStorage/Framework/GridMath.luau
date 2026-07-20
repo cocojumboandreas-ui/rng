@@ -21,6 +21,27 @@ function GridMath.footprintCells(cellX: number, cellZ: number, fp: { w: number, 
 	return cells
 end
 
+-- Pozycja na polilinii (tablica Vector3) dla t∈[0,1], rowno po segmentach.
+-- Uzywane przez klienta (EnemyRenderController) do interpolacji pozycji wroga z pathT.
+-- Serwerowy CombatService ma rownowazna logike inline (na CFrame'ach pathNodes).
+function GridMath.polylinePos(nodes: { Vector3 }, t: number): Vector3
+	local n = #nodes
+	if n == 0 then
+		return Vector3.zero
+	end
+	if n == 1 then
+		return nodes[1]
+	end
+	local tt = math.clamp(t, 0, 1)
+	local scaled = tt * (n - 1)
+	local i = math.floor(scaled) + 1
+	if i >= n then
+		return nodes[n]
+	end
+	local frac = scaled - (i - 1)
+	return nodes[i]:Lerp(nodes[i + 1], frac)
+end
+
 -- Srodek footprintu w swiecie (bez orientacji — BuildService doklada faceDirection).
 function GridMath.cellToWorld(gridOrigin: CFrame, cellSize: number, cellX: number, cellZ: number, fp: { w: number, d: number }): CFrame
 	local cx = (cellX - 0.5 + (fp.w - 1) * 0.5) * cellSize

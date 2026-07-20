@@ -173,6 +173,9 @@ local function assignPlot(playerKey: any): number?
 		if _playerByPlot[id] == nil then
 			_plotByPlayer[playerKey] = id
 			_playerByPlot[id] = playerKey
+			if typeof(playerKey) == "Instance" then
+				playerKey:SetAttribute("PlotId", id) -- klient czyta swoj plot (LOD renderera)
+			end
 			PlotService.PlotAssigned:Fire(playerKey, _plots[id])
 			return id
 		end
@@ -188,6 +191,9 @@ local function releasePlot(playerKey: any)
 	end
 	_plotByPlayer[playerKey] = nil
 	_playerByPlot[id] = nil
+	if typeof(playerKey) == "Instance" then
+		playerKey:SetAttribute("PlotId", nil)
+	end
 	PlotService.PlotReleased:Fire(playerKey, id)
 end
 
