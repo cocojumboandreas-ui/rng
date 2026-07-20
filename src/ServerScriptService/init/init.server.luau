@@ -1,28 +1,41 @@
 --!strict
--- Server bootstrap. Rejestruje serwisy z ServerScriptService.Services i startuje Framework.
--- STUB szkieletu. Logika dojdzie z architektura.
+-- Server bootstrap: rejestruje serwisy -> initAll -> startAll.
+-- Kolejnosc rejestracji = kolejnosc Init/Start (sekcja 2 architektury).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local Framework = require(ReplicatedStorage:WaitForChild("Framework"))
+local Framework = ReplicatedStorage:WaitForChild("Framework")
+local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
+local Services = ServerScriptService:WaitForChild("Services")
 
--- ROUND-TRIP MARKER (do usuniecia po weryfikacji sync):
-print("[war-rng] server init OK — rojo/MCP sync round-trip")
+-- ROUND-TRIP MARKER (do usuniecia po weryfikacji slice'a):
+print("[war-rng] server init OK")
 
--- Auto-rejestracja serwisow (gdy powstana w Services/):
-local Services = ServerScriptService:FindFirstChild("Services")
-if Services then
-	for _, m in ipairs(Services:GetChildren()) do
-		if m:IsA("ModuleScript") then
-			local ok, svc = pcall(require, m)
-			if ok and type(svc) == "table" then
-				Framework.register(m.Name, svc)
-			else
-				warn("[war-rng] nie zaladowano serwisu: " .. m.Name)
-			end
-		end
-	end
+-- Sekcja 2: ProfileService -> StatProfileService -> PlotService -> EconomyService ->
+-- InventoryService -> IndexService -> RollService -> GridService -> BuildService ->
+-- CoreService -> CombatService -> WaveService -> SkillService -> PurchaseService.
+local ORDER = {
+	"ProfileService",
+	"StatProfileService",
+	"PlotService",
+	"EconomyService",
+	"InventoryService",
+	"IndexService",
+	"RollService",
+	"GridService",
+	"BuildService",
+	"CoreService",
+	"CombatService",
+	"WaveService",
+	"SkillService",
+	"PurchaseService",
+}
+
+for _, name in ipairs(ORDER) do
+	local module = Services:WaitForChild(name)
+	ServiceRegistry.register(name, require(module))
 end
 
-Framework.start()
+ServiceRegistry.initAll()
+ServiceRegistry.startAll()
