@@ -59,22 +59,24 @@ local function resolveModel(unitId)
 	return cfg.modelProvider and cfg.modelProvider(unitId) or nil
 end
 
--- mala koniczyna z mnoznikiem (doczepiona do itemu)
-local function cloverBadge(mult, parent, order)
-	local b = Instance.new("Frame")
-	b.Size = UDim2.fromOffset(46, 46); b.BackgroundTransparency = 1; b.LayoutOrder = order; b.Parent = parent
-	local c = Instance.new("TextLabel")
-	c.BackgroundTransparency = 1; c.Size = UDim2.fromScale(1, 1); c.Text = "🍀"; c.TextScaled = true
-	c.TextColor3 = MUT_COLOR[mult] or Color3.new(1, 1, 1); c.ZIndex = 3; c.Parent = b
+-- KARTA-KONICZYNA (osobna pozycja w rolce — mozna ja wylosowac jak item)
+local function makeCloverCard(mult)
+	local card = Instance.new("Frame")
+	card.Size = UDim2.fromOffset(CARD_W, CARD_H); card.BackgroundTransparency = 1
+	local clover = Instance.new("TextLabel")
+	clover.BackgroundTransparency = 1; clover.AnchorPoint = Vector2.new(0.5, 0.5); clover.Position = UDim2.fromScale(0.5, 0.5)
+	clover.Size = UDim2.fromScale(0.8, 1.15); clover.Text = "🍀"; clover.TextScaled = true
+	clover.TextColor3 = MUT_COLOR[mult] or Color3.new(1, 1, 1); clover.ZIndex = 2; clover.Parent = card
 	local t = Instance.new("TextLabel")
-	t.BackgroundTransparency = 1; t.AnchorPoint = Vector2.new(0.5, 0.5); t.Position = UDim2.fromScale(0.5, 0.55)
-	t.Size = UDim2.fromScale(0.9, 0.55); t.Font = Enum.Font.GothamBlack; t.Text = mult .. "x"; t.TextScaled = true
-	t.TextColor3 = Color3.new(1, 1, 1); t.ZIndex = 4; t.Parent = b
-	local st = Instance.new("UIStroke"); st.Thickness = 2; st.Color = Color3.new(0, 0, 0); st.Parent = t
+	t.BackgroundTransparency = 1; t.AnchorPoint = Vector2.new(0.5, 0.5); t.Position = UDim2.fromScale(0.5, 0.52)
+	t.Size = UDim2.fromScale(0.55, 0.5); t.Font = Enum.Font.GothamBlack; t.Text = mult .. "x"; t.TextScaled = true
+	t.TextColor3 = Color3.new(1, 1, 1); t.ZIndex = 3; t.Parent = card
+	local st = Instance.new("UIStroke"); st.Thickness = 3; st.Color = Color3.new(0, 0, 0); st.Parent = t
+	return card
 end
 
--- karta itemu z DOCZEPIONYMI koniczynami (mults = lista mnoznikow)
-local function makeItemCard(unitId, model, mults)
+-- KARTA-ITEM (bez doczepionych koniczyn)
+local function makeItemCard(unitId, model)
 	local card = Instance.new("Frame")
 	card.Size = UDim2.fromOffset(CARD_W, CARD_H); card.BackgroundTransparency = 1
 	local u = GameConfig.Units[unitId]
@@ -82,37 +84,26 @@ local function makeItemCard(unitId, model, mults)
 	local col = (rN and cfg.resolveTier) and cfg.resolveTier(rN).color or NEUTRAL
 
 	local glow = Instance.new("TextLabel")
-	glow.BackgroundTransparency = 1; glow.AnchorPoint = Vector2.new(0.5, 0.5); glow.Position = UDim2.fromScale(0.42, 0.5)
-	glow.Size = UDim2.fromScale(0.7, 1.3); glow.Font = Enum.Font.GothamBlack; glow.Text = "✦"; glow.TextScaled = true
+	glow.BackgroundTransparency = 1; glow.AnchorPoint = Vector2.new(0.5, 0.5); glow.Position = UDim2.fromScale(0.5, 0.5)
+	glow.Size = UDim2.fromScale(0.8, 1.3); glow.Font = Enum.Font.GothamBlack; glow.Text = "✦"; glow.TextScaled = true
 	glow.TextColor3 = col; glow.TextTransparency = 0.3; glow.ZIndex = 1; glow.Parent = card
 
 	if model then
 		local vpf = buildViewport(model, card)
-		vpf.AnchorPoint = Vector2.new(0.5, 0.5); vpf.Position = UDim2.fromScale(0.42, 0.5); vpf.Size = UDim2.fromScale(0.5, 0.9); vpf.ZIndex = 2
+		vpf.AnchorPoint = Vector2.new(0.5, 0.5); vpf.Position = UDim2.fromScale(0.5, 0.5); vpf.Size = UDim2.fromScale(0.55, 0.9); vpf.ZIndex = 2
 	end
 	if rN then
 		local odds = Instance.new("TextLabel")
-		odds.AnchorPoint = Vector2.new(0.5, 0); odds.Position = UDim2.fromScale(0.42, 0.02); odds.Size = UDim2.fromScale(0.5, 0.16)
+		odds.AnchorPoint = Vector2.new(0.5, 0); odds.Position = UDim2.fromScale(0.5, 0.02); odds.Size = UDim2.fromScale(0.6, 0.16)
 		odds.BackgroundTransparency = 1; odds.Font = Enum.Font.GothamBlack; odds.TextScaled = true
 		odds.Text = "1 in " .. rN; odds.TextColor3 = col; odds.ZIndex = 3; odds.Parent = card
 		local s = Instance.new("UIStroke"); s.Thickness = 2; s.Color = Color3.new(0, 0, 0); s.Parent = odds
 	end
 	local nm = Instance.new("TextLabel")
-	nm.AnchorPoint = Vector2.new(0.5, 1); nm.Position = UDim2.fromScale(0.42, 1); nm.Size = UDim2.fromScale(0.7, 0.15)
+	nm.AnchorPoint = Vector2.new(0.5, 1); nm.Position = UDim2.fromScale(0.5, 1); nm.Size = UDim2.fromScale(0.8, 0.15)
 	nm.BackgroundTransparency = 1; nm.Font = Enum.Font.GothamBold; nm.TextScaled = true
 	nm.Text = (u and u.displayName) or unitId; nm.TextColor3 = Color3.new(1, 1, 1); nm.ZIndex = 3; nm.Parent = card
 	local ns = Instance.new("UIStroke"); ns.Thickness = 2; ns.Color = Color3.new(0, 0, 0); ns.Parent = nm
-
-	-- DOCZEPIONE koniczyny — pionowy stos po prawej stronie itemu
-	if mults and #mults > 0 then
-		local col2 = Instance.new("Frame")
-		col2.AnchorPoint = Vector2.new(1, 0.5); col2.Position = UDim2.fromScale(1, 0.5); col2.Size = UDim2.fromOffset(50, CARD_H)
-		col2.BackgroundTransparency = 1; col2.ZIndex = 3; col2.Parent = card
-		local ll = Instance.new("UIListLayout"); ll.FillDirection = Enum.FillDirection.Vertical
-		ll.Padding = UDim.new(0, 2); ll.VerticalAlignment = Enum.VerticalAlignment.Center
-		ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.Parent = col2
-		for i, mv in ipairs(mults) do cloverBadge(mv, col2, i) end
-	end
 	return card
 end
 
@@ -217,42 +208,46 @@ function RollReelReveal.play(result)
 	setBlur(true)
 	clearStrip()
 
-	-- drabina koniczyn (2x -> ... -> mult) dla wygranego
+	-- drabina koniczyn (2x -> ... -> mult): kazda to OSOBNY spin (mozesz wylosowac koniczyne)
 	local mult = result.mutation and result.mutation.mult
 	local rungs = {}
 	local m = 2
 	while m <= (mult or 0) do rungs[#rungs + 1] = m; m *= 2 end
 
-	-- dlugi strip: decoye (losowy item + losowe koniczyny) + wygrany na WINNER_IDX
-	for i = 1, CARD_COUNT do
-		local card
-		if i == WINNER_IDX then
-			card = makeItemCard(unitId, unitModel, rungs)
-		else
-			local uid = cfg.decoyIds and cfg.decoyIds[math.random(1, #cfg.decoyIds)]
-			local model = uid and resolveModel(uid)
-			if model then
-				local dm = { 2 }
-				if math.random() < 0.6 then dm[#dm + 1] = 4 end
-				if math.random() < 0.2 then dm[#dm + 1] = 8 end
-				card = makeItemCard(uid, model, dm)
+	-- jeden spin pionowego reela lądujacy na danej pozycji (koniczyna ALBO item)
+	local function spinFor(kind, winnerValue, dur)
+		clearStrip()
+		refs.window.ClipsDescendants = true
+		refs.strip.Visible = true
+		for i = 1, CARD_COUNT do
+			local card
+			if kind == "clover" then
+				local mv = (i == WINNER_IDX) and winnerValue or LADDER[math.random(1, 4)]
+				card = makeCloverCard(mv)
+			else
+				local uid = (i == WINNER_IDX) and winnerValue or (cfg.decoyIds and cfg.decoyIds[math.random(1, #cfg.decoyIds)])
+				local model = uid and resolveModel(uid)
+				if model then card = makeItemCard(uid, model) end
 			end
+			if card then card.LayoutOrder = i; card.Parent = refs.strip end
 		end
-		if card then card.LayoutOrder = i; card.Parent = refs.strip end
+		task.wait()
+		RollReel.play({ strip = refs.strip, cardWidth = PITCH, winnerIndex = WINNER_IDX,
+			windowWidth = refs.window.AbsoluteSize.Y, duration = dur, jitter = 8, vertical = true })
 	end
 
-	task.spawn(cloverRain, 14, MUT_COLOR[mult or 2] or Color3.fromRGB(120, 255, 120))
+	-- sekwencja: koniczyny (kazda osobny szybki spin) -> na koniec DLUGI spin itemu
+	for _, mv in ipairs(rungs) do
+		task.spawn(cloverRain, 10, MUT_COLOR[mv] or Color3.fromRGB(120, 255, 120))
+		spinFor("clover", mv, 1.8)
+		task.wait(0.45) -- STOP, pokaz wylosowana koniczyne
+	end
+	spinFor("item", unitId, SPIN_DUR)
 
-	task.wait()
-	RollReel.play({
-		strip = refs.strip, cardWidth = PITCH, winnerIndex = WINNER_IDX,
-		windowWidth = refs.window.AbsoluteSize.Y, duration = SPIN_DUR, jitter = 8, vertical = true,
-	})
-
-	-- WYGRANY: nakladka poza layoutem (kolysze sie caly czas)
+	-- WYGRANY item: nakladka poza layoutem (kolysze sie caly czas)
 	refs.window.ClipsDescendants = false
 	refs.strip.Visible = false
-	refs.overlay = makeItemCard(unitId, unitModel, rungs)
+	refs.overlay = makeItemCard(unitId, unitModel)
 	refs.overlay.AnchorPoint = Vector2.new(0.5, 0.5); refs.overlay.Position = UDim2.fromScale(0.5, 0.5); refs.overlay.ZIndex = 5
 	refs.overlay.Parent = refs.window
 	if state.wobble then state.wobble:Stop() end
