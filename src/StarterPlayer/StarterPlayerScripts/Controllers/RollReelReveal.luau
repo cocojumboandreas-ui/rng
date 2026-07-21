@@ -129,14 +129,19 @@ local function buildSlot(order)
 	return win, strip
 end
 
--- reposycjonuj wskazniki "lezki" by objely caly rzad (rozszerzaja sie)
+-- skaluj rzad tak, by ZAWSZE miescil sie na ekranie (x128 = 8 slotow) + wskazniki po bokach
+local ROW_GAP = 10
 local function frameIndicators()
-	task.wait()
-	local w = refs.row.AbsoluteSize.X
-	local scale = 1
-	if w > MAX_ROW_W then scale = MAX_ROW_W / w end
-	refs.rowScale.Scale = scale
-	local half = (w * scale) / 2 + 46
+	local nSlots = 0
+	for _, c in ipairs(refs.row:GetChildren()) do
+		if c:IsA("Frame") then nSlots += 1 end
+	end
+	local w = nSlots * SLOT_W + math.max(0, nSlots - 1) * ROW_GAP -- realna szerokosc (bez mierzenia)
+	local screenW = refs.gui.AbsoluteSize.X
+	local maxW = screenW * 0.82 -- margines na wskazniki ◀ ▶
+	local scale = (w > maxW and w > 0) and (maxW / w) or 1
+	TweenService:Create(refs.rowScale, TweenInfo.new(0.25), { Scale = scale }):Play()
+	local half = (w * scale) / 2 + 40
 	TweenService:Create(refs.indL, TweenInfo.new(0.25), { Position = UDim2.new(0.5, -half, ROW_Y, 0) }):Play()
 	TweenService:Create(refs.indR, TweenInfo.new(0.25), { Position = UDim2.new(0.5, half, ROW_Y, 0) }):Play()
 end
