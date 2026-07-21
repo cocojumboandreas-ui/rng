@@ -18,10 +18,9 @@ local RollReelReveal = {}
 local SLOT_W = 150
 local SLOT_H = 190
 local PITCH = 150 -- rozstaw kart w pionie
-local CARD_COUNT = 85 -- DLUGA tasma (duzo kart przewija sie)
-local WINNER_IDX = 78 -- wygrany daleko -> dlugi zjazd
-local SPIN_DUR = 3.4 -- czas reela koniczyny
-local ITEM_DUR = 5.2 -- czas reela itemu (najdluzszy)
+local CARD_COUNT = 50 -- DLUZSZA tasma (wiecej kart przewija sie)
+local WINNER_IDX = 44 -- wygrany dalej -> dluzszy zjazd
+local SPIN_DUR = 2.5 -- czas jednego reela (dluzej, wiecej kart widac)
 local ROW_Y = 0.42
 local MAX_ROW_W = 1400 -- powyzej -> skaluj rzad w dol (mobile)
 local NEUTRAL = Color3.fromRGB(70, 74, 84)
@@ -159,11 +158,11 @@ local function cloverRain(n, color)
 end
 
 -- ── spin jednego slotu (yielduje az wyladuje) ──
-local function spinSlot(win, strip, dur)
+local function spinSlot(win, strip)
 	task.wait()
 	RollReel.play({
 		strip = strip, cardWidth = PITCH, winnerIndex = WINNER_IDX,
-		windowWidth = win.AbsoluteSize.Y, duration = dur or SPIN_DUR, jitter = 6, vertical = true,
+		windowWidth = win.AbsoluteSize.Y, duration = SPIN_DUR, jitter = 6, vertical = true,
 	})
 end
 
@@ -296,15 +295,15 @@ function RollReelReveal.play(result)
 		fillStrip(strip, "clover", mv)
 		frameIndicators()
 		task.spawn(cloverRain, 8, MUT_COLOR[mv] or Color3.fromRGB(120, 255, 120))
-		spinSlot(win, strip, SPIN_DUR)
-		task.wait(0.4) -- STOP przed nastepnym
+		spinSlot(win, strip)
+		task.wait(0.15) -- STOP przed nastepnym
 	end
-	-- 2) slot itemu — na koncu, najdluzszy zjazd
+	-- 2) slot itemu — na koncu
 	order += 1
 	local iwin, istrip = buildSlot(order)
 	fillStrip(istrip, "item", unitId)
 	frameIndicators()
-	spinSlot(iwin, istrip, ITEM_DUR)
+	spinSlot(iwin, istrip)
 
 	-- (bez info o ilosci w UI — nieistotne; koniczyny same pokazuja mnoznik)
 	-- WYBRANY item: nakladka POZA layoutem reela (UIListLayout nadpisywalby Position),
