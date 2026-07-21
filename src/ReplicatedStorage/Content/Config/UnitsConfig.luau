@@ -19,32 +19,32 @@ local Units = {
 	},
 	soldier = {
 		kind = W, rarityN = 8, footprint = { w = 1, d = 1 },
-		combat = { dmg = 5, fireRate = 1.0, range = 12 },
+		combat = { dmg = 6, fireRate = 1.2, range = 14 }, -- karabin: ciut lepszy od noob
 		model = "Soldier", displayName = "Zolnierz",
 	},
 	sniper = {
 		kind = W, rarityN = 15, footprint = { w = 1, d = 1 },
-		combat = { dmg = 14, fireRate = 0.4, range = 26 },
+		combat = { dmg = 16, fireRate = 0.4, range = 30 }, -- duzy zasieg/dmg, wolny
 		model = "Sniper", displayName = "Snajper",
 	},
 	swat = {
 		kind = W, rarityN = 30, footprint = { w = 1, d = 1 },
-		combat = { dmg = 8, fireRate = 1.4, range = 14 },
+		combat = { dmg = 8, fireRate = 1.4, range = 16 }, -- rifle + tarcza
 		model = "SWAT", displayName = "SWAT",
 	},
 	rocket_soldier = {
 		kind = W, rarityN = 60, footprint = { w = 1, d = 1 },
-		combat = { dmg = 22, fireRate = 0.5, range = 18 },
+		combat = { dmg = 30, fireRate = 0.5, range = 28 }, -- RPG: zasieg jak sniper, duzy dmg, wybuch
 		model = "Rocket Soldier", displayName = "Rakietowiec",
 	},
 	flamethrower = {
 		kind = W, rarityN = 100, footprint = { w = 1, d = 1 },
-		combat = { dmg = 10, fireRate = 2.0, range = 8 },
+		combat = { dmg = 8, fireRate = 4.0, range = 10 }, -- miotacz: krotki zasieg, szybki DPS
 		model = "Flamethrower", displayName = "Miotacz ognia",
 	},
 	tank_soldier = {
 		kind = W, rarityN = 150, footprint = { w = 1, d = 1 },
-		combat = { dmg = 18, fireRate = 0.9, range = 14 },
+		combat = { dmg = 5, fireRate = 6.0, range = 16 }, -- minigun: malo dmg/pocisk, bardzo szybko
 		model = "Tank Soldier", displayName = "Ciezki piechur",
 	},
 	jeep = {
