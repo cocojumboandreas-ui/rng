@@ -54,6 +54,22 @@ local cfg = {}
 local refs = {}
 local state = { rolling = false, wobble = nil, winnerScale = nil }
 
+-- BlurEffect rozmywa TYLKO swiat 3D (nie GUI) -> tlo zamazane, item (ViewportFrame) ostry na 1. planie.
+local Lighting = game:GetService("Lighting")
+local function setRevealBlur(on: boolean)
+	local blur = Lighting:FindFirstChild("WR_RevealBlur")
+	if on then
+		if not blur then
+			blur = Instance.new("BlurEffect")
+			blur.Name = "WR_RevealBlur"
+			blur.Parent = Lighting
+		end
+		TweenService:Create(blur, TweenInfo.new(0.25), { Size = 20 }):Play()
+	elseif blur then
+		TweenService:Create(blur, TweenInfo.new(0.25), { Size = 0 }):Play()
+	end
+end
+
 -- ---- helpers ----------------------------------------------------------------
 
 -- Frames a 3D model inside a ViewportFrame. Used for the final reveal (and for
@@ -88,38 +104,25 @@ local function resolveModel(unitId: string): Instance?
 	return nil
 end
 
-local function makeCard(model: Instance, strokeColor: Color3): Frame
+-- BEZ RAMEK: karta = tylko poswiata (starburst w kolorze rzadkosci) + model 3D na wierzchu.
+local function makeCard(model: Instance, glowColor: Color3): Frame
 	local card = Instance.new("Frame")
 	card.Size = UDim2.fromOffset(TUNING.cardWidth - CARD_PADDING, 168)
-	card.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
-	card.BackgroundTransparency = 0.08
+	card.BackgroundTransparency = 1
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = card
+	-- aura/poswiata za itemem (bez tekstury: skalowany starburst ✦)
+	local glow = Instance.new("TextLabel")
+	glow.BackgroundTransparency = 1
+	glow.AnchorPoint = Vector2.new(0.5, 0.5); glow.Position = UDim2.fromScale(0.5, 0.5)
+	glow.Size = UDim2.fromScale(1.35, 1.35)
+	glow.Font = Enum.Font.GothamBlack; glow.Text = "✦"; glow.TextScaled = true
+	glow.TextColor3 = glowColor; glow.TextTransparency = 0.5; glow.ZIndex = 1; glow.Parent = card
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = strokeColor
-	stroke.Thickness = 2
-	stroke.Transparency = 0.15
-	stroke.Parent = card
-
-	if cfg.iconFor then
-		-- Cheap, buttery reel: 2D icons scroll without per-frame GPU cost.
-		local icon = Instance.new("ImageLabel")
-		icon.Image = cfg.iconFor(model.Name)
-		icon.BackgroundTransparency = 1
-		icon.AnchorPoint = Vector2.new(0.5, 0.5)
-		icon.Position = UDim2.fromScale(0.5, 0.5)
-		icon.Size = UDim2.fromScale(0.85, 0.85)
-		icon.ScaleType = Enum.ScaleType.Fit
-		icon.Parent = card
-	else
-		local vpf = buildViewport(model, card)
-		vpf.AnchorPoint = Vector2.new(0.5, 0.5)
-		vpf.Position = UDim2.fromScale(0.5, 0.5)
-		vpf.Size = UDim2.fromScale(0.9, 0.9)
-	end
+	local vpf = buildViewport(model, card)
+	vpf.AnchorPoint = Vector2.new(0.5, 0.5)
+	vpf.Position = UDim2.fromScale(0.5, 0.5)
+	vpf.Size = UDim2.fromScale(0.98, 0.98)
+	vpf.ZIndex = 2
 
 	return card
 end
@@ -136,6 +139,19 @@ end
 local function showReveal(model: Instance, rarityN: number, tier, displayName: string)
 	refs.reveal.Visible = true
 	refs.revealAura.ImageColor3 = tier.color
+	-- poswiata za itemem: obracajacy sie starburst w kolorze rzadkosci (bez tekstury)
+	if not refs.revealStar then
+		refs.revealStar = Instance.new("TextLabel")
+		refs.revealStar.BackgroundTransparency = 1
+		refs.revealStar.AnchorPoint = Vector2.new(0.5, 0.5); refs.revealStar.Position = UDim2.fromScale(0.5, 0.46)
+		refs.revealStar.Size = UDim2.fromScale(1.15, 1.15)
+		refs.revealStar.Font = Enum.Font.GothamBlack; refs.revealStar.Text = "✦"; refs.revealStar.TextScaled = true
+		refs.revealStar.ZIndex = 1; refs.revealStar.Parent = refs.revealInner
+	end
+	refs.revealStar.TextColor3 = tier.color
+	refs.revealStar.TextTransparency = 0.32
+	refs.revealStar.Rotation = 0
+	TweenService:Create(refs.revealStar, TweenInfo.new(7, Enum.EasingStyle.Linear), { Rotation = 120 }):Play()
 	refs.revealOdds.Text = string.format("1 in %d", rarityN)
 	refs.revealOdds.TextColor3 = tier.color
 	refs.revealName.Text = displayName
@@ -183,7 +199,7 @@ function RollReelReveal.init(config)
 	refs.backdrop = Instance.new("Frame")
 	refs.backdrop.Size = UDim2.fromScale(1, 1)
 	refs.backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	refs.backdrop.BackgroundTransparency = 0.35
+	refs.backdrop.BackgroundTransparency = 0.5 -- przyciemnienie (z blurem tla = fokus na itemie)
 	refs.backdrop.Visible = false
 	refs.backdrop.Parent = gui
 
@@ -194,7 +210,7 @@ function RollReelReveal.init(config)
 	refs.window.Position = UDim2.fromScale(0.5, 0.42)
 	refs.window.Size = UDim2.new(0.9, 0, 0, 200)
 	refs.window.BackgroundColor3 = Color3.fromRGB(12, 13, 18)
-	refs.window.BackgroundTransparency = 0.2
+	refs.window.BackgroundTransparency = 1 -- BEZ RAMKI (itemy plyna po rozmytym tle, nie w pudelku)
 	refs.window.ClipsDescendants = true
 	refs.window.Visible = false
 	refs.window.Parent = refs.backdrop
@@ -241,7 +257,7 @@ function RollReelReveal.init(config)
 	marker.Position = UDim2.fromScale(0.5, 0.5)
 	marker.Size = UDim2.new(0, 3, 1, -8)
 	marker.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	marker.BackgroundTransparency = 0.2
+	marker.BackgroundTransparency = 1 -- ukryta linia srodka (wzor: brak ramek/wskaznika)
 	marker.ZIndex = 5
 	marker.Parent = refs.window
 	local mCorner = Instance.new("UICorner")
@@ -356,6 +372,7 @@ function RollReelReveal.play(result)
 	end
 
 	refs.backdrop.Visible = true
+	setRevealBlur(true) -- rozmyj swiat 3D (tlo), item (GUI) zostaje ostry
 	refs.reveal.Visible = false
 	refs.window.Visible = true
 	clearStrip()
@@ -423,6 +440,7 @@ function RollReelReveal.close()
 		state.wobble:Stop()
 		state.wobble = nil
 	end
+	setRevealBlur(false) -- zdejmij rozmycie tla
 	refs.reveal.Visible = false
 	refs.backdrop.Visible = false
 end
