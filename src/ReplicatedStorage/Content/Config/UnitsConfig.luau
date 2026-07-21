@@ -49,13 +49,24 @@ local Units = {
 	},
 	jeep = {
 		kind = W, rarityN = 300, footprint = { w = 2, d = 2 },
-		combat = { dmg = 16, fireRate = 1.6, range = 16 },
+		combat = { dmg = 8, fireRate = 1.5, range = 14 }, -- kierowca Noob strzela z pistoletu; duzo HP
 		model = "Jeep", displayName = "Jeep",
+		driver = "Noob Soldier", -- renderer doklada kierowce (kompozycja modelu)
 	},
 	tank = {
 		kind = W, rarityN = 1500, footprint = { w = 2, d = 2 },
-		combat = { dmg = 60, fireRate = 0.6, range = 22 },
+		combat = { dmg = 85, fireRate = 0.6, range = 24 }, -- dzialo glowne: najwiecej HP, ogromny dmg
 		model = "Tank", displayName = "Czolg",
+	},
+	helicopter = {
+		kind = W, rarityN = 800, footprint = { w = 2, d = 2 },
+		combat = { dmg = 24, fireRate = 5.0, range = 34 }, -- 2 miniguny, najwiekszy zasieg, lata (hover)
+		model = "Helicopter", displayName = "Helikopter",
+	},
+	jet = {
+		kind = W, rarityN = 2000, footprint = { w = 2, d = 2 },
+		combat = { dmg = 100, fireRate = 1.2, range = 40 }, -- lasery, ogromny dmg, HP jak jeep, lata
+		model = "Jet", displayName = "Jet",
 	},
 
 	-- ── TEST CONTENT (placeholder, nazwy do podmiany; ids/klucze zostaja EN) ──────

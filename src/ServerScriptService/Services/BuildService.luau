@@ -187,6 +187,28 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	local lift = groundY - (bbCf.Position.Y - bbSize.Y * 0.5)
 	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
 
+	-- KIEROWCA (np. Jeep): dokomponuj model kierowcy w fotel przod-lewo (kompozycja przed kotwiczeniem)
+	local ucfg = GameConfig.Units[unitId]
+	if ucfg.driver then
+		local assets = ReplicatedStorage:FindFirstChild("Assets")
+		local uf = assets and assets:FindFirstChild("Units")
+		local dtmpl = uf and uf:FindFirstChild(ucfg.driver)
+		if dtmpl then
+			local driver = dtmpl:Clone()
+			if not driver.PrimaryPart then
+				driver.PrimaryPart = driver:FindFirstChild("HumanoidRootPart")
+			end
+			local _, vSize = model:GetBoundingBox()
+			local dScale = (vSize.Y * 0.8) / math.max(driver:GetExtentsSize().Y, 0.01)
+			if driver.ScaleTo then driver:ScaleTo(dScale) end
+			local pivot = model:GetPivot()
+			local seat = pivot * CFrame.new(-vSize.X * 0.22, 0, -vSize.Z * 0.1)
+			driver:PivotTo(CFrame.lookAlong(seat.Position, pivot.LookVector))
+			driver.Name = "WR_Driver"
+			driver.Parent = model
+		end
+	end
+
 	-- Statyczny render: zakotwicz WSZYSTKIE czesci (zero fizyki/ragdoll), animacja = kosmetyka klienta
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
