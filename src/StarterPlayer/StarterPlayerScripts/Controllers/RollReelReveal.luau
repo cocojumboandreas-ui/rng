@@ -48,6 +48,12 @@ local TUNING = {
 }
 local CARD_PADDING = 16
 local NEUTRAL = Color3.fromRGB(70, 74, 84)
+-- kolory koniczyn kaskady mnoznika (2x zielony -> 128x bialy)
+local MUT_COLOR = {
+	[2] = Color3.fromRGB(90, 220, 90), [4] = Color3.fromRGB(80, 160, 255), [8] = Color3.fromRGB(190, 110, 255),
+	[16] = Color3.fromRGB(255, 205, 80), [32] = Color3.fromRGB(255, 130, 60), [64] = Color3.fromRGB(90, 235, 235),
+	[128] = Color3.fromRGB(255, 255, 255),
+}
 local REVEAL_SIZE = UDim2.fromOffset(480, 560)
 local REVEAL_SIZE_SMALL = UDim2.fromOffset(48, 56)
 
@@ -152,7 +158,37 @@ local function clearStrip()
 	state.winnerScale = nil
 end
 
-local function showReveal(model: Instance, rarityN: number, tier, displayName: string)
+-- Kaskada mnoznika mutacji: koniczyny 2x -> 4x -> ... -> mult, wyskakuja po kolei nad itemem.
+local function playMutationCascade(mult: number)
+	local holder = refs.cascadeHolder
+	for _, c in ipairs(holder:GetChildren()) do
+		if c:IsA("Frame") then c:Destroy() end
+	end
+	local rungs = {}
+	local m = 2
+	while m <= mult do rungs[#rungs + 1] = m; m *= 2 end
+	local n = #rungs
+	for i, mv in ipairs(rungs) do
+		local badge = Instance.new("Frame")
+		badge.BackgroundTransparency = 1
+		badge.AnchorPoint = Vector2.new(0.5, 0.5)
+		badge.Position = UDim2.new(0.5, (i - (n + 1) / 2) * 76, 0.5, 0)
+		badge.Size = UDim2.fromOffset(16, 18)
+		badge.ZIndex = 5; badge.Parent = holder
+		local clover = Instance.new("TextLabel")
+		clover.BackgroundTransparency = 1; clover.Size = UDim2.fromScale(1, 1); clover.Text = "🍀"
+		clover.TextScaled = true; clover.TextColor3 = MUT_COLOR[mv] or Color3.new(1, 1, 1); clover.ZIndex = 5; clover.Parent = badge
+		local mtxt = Instance.new("TextLabel")
+		mtxt.BackgroundTransparency = 1; mtxt.Size = UDim2.fromScale(1, 0.55); mtxt.Position = UDim2.fromScale(0, 0.25)
+		mtxt.Font = Enum.Font.GothamBlack; mtxt.Text = mv .. "x"; mtxt.TextScaled = true
+		mtxt.TextColor3 = Color3.new(1, 1, 1); mtxt.ZIndex = 6; mtxt.Parent = badge
+		local st = Instance.new("UIStroke"); st.Thickness = 2; st.Color = Color3.new(0, 0, 0); st.Parent = mtxt
+		TweenService:Create(badge, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(74, 86) }):Play()
+		task.wait(0.16)
+	end
+end
+
+local function showReveal(model: Instance, rarityN: number, tier, displayName: string, mult: number?)
 	refs.reveal.Visible = true
 	refs.revealAura.ImageColor3 = tier.color
 	-- swiecacy background za itemem: miekki krag (glow) + obracajacy sie starburst, kolor rzadkosci
@@ -210,6 +246,15 @@ local function showReveal(model: Instance, rarityN: number, tier, displayName: s
 			rotationAmplitude = 3, rotationSpeed = 6, bobAmplitude = 6, bobSpeed = 5, easeIn = 0.12,
 		})
 	end)
+
+	-- kaskada mnoznika (koniczyny 2x->..->mult) gdy item ma mutacje
+	if mult and mult > 1 then
+		task.spawn(playMutationCascade, mult)
+	else
+		for _, c in ipairs(refs.cascadeHolder:GetChildren()) do
+			if c:IsA("Frame") then c:Destroy() end
+		end
+	end
 end
 
 -- ---- public API -------------------------------------------------------------
@@ -361,6 +406,13 @@ function RollReelReveal.init(config)
 	refs.revealName.ZIndex = 3
 	refs.revealName.Parent = refs.revealInner
 
+	-- holder kaskady mnoznika (koniczyny) — nad itemem, na warstwie reveala (nie skaluje sie z itemem)
+	refs.cascadeHolder = Instance.new("Frame")
+	refs.cascadeHolder.Name = "Cascade"
+	refs.cascadeHolder.AnchorPoint = Vector2.new(0.5, 0.5); refs.cascadeHolder.Position = UDim2.fromScale(0.5, 0.2)
+	refs.cascadeHolder.Size = UDim2.fromScale(0.95, 0.16); refs.cascadeHolder.BackgroundTransparency = 1
+	refs.cascadeHolder.ZIndex = 5; refs.cascadeHolder.Parent = refs.reveal
+
 	-- Pasek sterowania — na BACKDROPIE, wiec widoczny CALY CZAS rolowania (spin + reveal): Auto | Rolka | Zamknij
 	local bar = Instance.new("Frame")
 	bar.Name = "RollBar"; bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.new(0.5, 0, 1, -16)
@@ -486,7 +538,7 @@ function RollReelReveal.play(result)
 	end
 
 	refs.window.Visible = false
-	showReveal(unitModel, rarityN, tier, displayName)
+	showReveal(unitModel, rarityN, tier, displayName, result.mutation and result.mutation.mult)
 	state.rolling = false
 
 	-- automatyczne toczenie: po revealu rzuc znowu (dopoki WŁ)
