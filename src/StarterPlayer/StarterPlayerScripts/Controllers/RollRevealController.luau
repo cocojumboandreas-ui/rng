@@ -15,6 +15,11 @@ local Net = require(Framework:WaitForChild("Net"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
+local UnitModelFactory = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UnitModelFactory"))
+local RollReelReveal = require(script.Parent:WaitForChild("RollReelReveal"))
+
+-- Flaga reveala: true = nowy reel (slot machine); false = stary starburst (zachowany, osiagalny).
+local REEL_REVEAL = true
 
 local RARITY_COLOR = {
 	[1] = Color3.fromRGB(185, 185, 195), -- common
@@ -45,6 +50,17 @@ local function deriveTier(rarityN: number): number
 		end
 	end
 	return 5
+end
+
+-- resolver dla RollReelReveal: rarityN -> { color, name } (kolor tieru + nazwa rzadkosci)
+local function resolveTier(rarityN: number)
+	for _, t in ipairs(GameConfig.Rarity.tiers) do
+		if rarityN <= t.maxN then
+			return { color = RARITY_COLOR[t.revealTier] or RARITY_COLOR[1], name = t.name }
+		end
+	end
+	local last = GameConfig.Rarity.tiers[#GameConfig.Rarity.tiers]
+	return { color = RARITY_COLOR[5], name = last and last.name or "Legendary" }
 end
 
 local function params(tier: number)
@@ -290,14 +306,38 @@ function RollRevealController.start()
 		Net.get("RollRequest"):FireServer()
 	end)
 
+	-- reel-reveal (slot machine): dekoje = wszystkie rollowalne unitId; model = UnitModelFactory
+	local decoyIds = {}
+	for id in pairs(GameConfig.Units) do
+		decoyIds[#decoyIds + 1] = id
+	end
+	RollReelReveal.init({
+		parent = Players.LocalPlayer:WaitForChild("PlayerGui"),
+		resolveTier = resolveTier,
+		modelProvider = UnitModelFactory.get,
+		decoyIds = decoyIds,
+		starburstId = "", -- repo uzywa tekstowego bursta (✦), brak asset id -> aura niewidoczna
+	})
+
 	Net.get("RollResult").OnClientEvent:Connect(function(result)
 		if type(result) ~= "table" or not result.unitId then
 			return
 		end
-		if #_queue < 6 then
-			_queue[#_queue + 1] = result
+		if REEL_REVEAL then
+			-- nazwa do rewealu (klient dokleja displayName + ew. mnoznik mutacji; RNG zostaje serwerowe)
+			local unit = GameConfig.Units[result.unitId]
+			local nm = (unit and unit.displayName) or result.unitId
+			if result.mutation and result.mutation.mult then
+				nm = nm .. "  (×" .. result.mutation.mult .. ")"
+			end
+			result.name = nm
+			task.spawn(RollReelReveal.play, result)
+		else
+			if #_queue < 6 then
+				_queue[#_queue + 1] = result
+			end
+			pump()
 		end
-		pump()
 	end)
 end
 

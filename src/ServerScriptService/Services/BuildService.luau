@@ -18,7 +18,9 @@ local Signal = require(Framework:WaitForChild("Signal"))
 local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
 local Net = require(Framework:WaitForChild("Net"))
 local GridMath = require(Framework:WaitForChild("GridMath"))
-local Enums = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Enums"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Enums = require(Shared:WaitForChild("Enums"))
+local UnitModelFactory = require(Shared:WaitForChild("UnitModelFactory"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
@@ -129,12 +131,10 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 		warn("[BuildService] spawnModel: brak plotu gracza")
 		return nil
 	end
-	local assets = ReplicatedStorage:FindFirstChild("Assets")
-	local unitsAssets = assets and assets:FindFirstChild("Units")
-	local modelName = GameConfig.Units[unitId].model
-	local template = unitsAssets and unitsAssets:FindFirstChild(modelName)
+	-- Model przez UnitModelFactory: prawdziwy z Assets.Units albo placeholder z kodu (blok/bron).
+	local template = UnitModelFactory.get(unitId)
 	if not template then
-		warn(("[BuildService] brak modelu '%s' w Assets.Units"):format(tostring(modelName)))
+		warn(("[BuildService] UnitModelFactory nie zwrocil modelu dla '%s'"):format(tostring(unitId)))
 		return nil
 	end
 	local fp = GameConfig.Units[unitId].footprint

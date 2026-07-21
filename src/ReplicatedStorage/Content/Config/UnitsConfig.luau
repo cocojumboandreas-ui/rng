@@ -9,6 +9,7 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Enums = require(Shared:WaitForChild("Enums"))
 
 local W = Enums.UnitKind.Weapon
+local B = Enums.UnitKind.Block
 
 local Units = {
 	noob_soldier = {
@@ -55,6 +56,47 @@ local Units = {
 		kind = W, rarityN = 1500, footprint = { w = 2, d = 2 },
 		combat = { dmg = 60, fireRate = 0.6, range = 22 },
 		model = "Tank", displayName = "Czolg",
+	},
+
+	-- ── TEST CONTENT (placeholder, nazwy do podmiany; ids/klucze zostaja EN) ──────
+	-- Modele budowane w RUNTIME przez UnitModelFactory (brak `model` -> placeholder z kodu).
+	-- BLOKI: kind=Block, footprint 1x1, brak combat (pasywne), hp w configu (StatProfile-spojne).
+	test_block_wood = {
+		kind = B, category = "block", rarityN = 5, footprint = { w = 1, d = 1 },
+		hp = 500, displayName = "Blok drewna",
+	},
+	test_block_stone = {
+		kind = B, category = "block", rarityN = 15, footprint = { w = 1, d = 1 },
+		hp = 1200, displayName = "Blok kamienia",
+	},
+	test_block_iron = {
+		kind = B, category = "block", rarityN = 40, footprint = { w = 1, d = 1 },
+		hp = 3000, displayName = "Blok zelaza",
+	},
+	test_block_rusty = {
+		kind = B, category = "block", rarityN = 150, footprint = { w = 1, d = 1 },
+		hp = 6000, displayName = "Blok zardzewialy",
+	},
+	-- BRONIE: kind=Weapon, footprint 1x1, base combat czytane przez StatProfile (dmg/fireRate/range Mult).
+	test_weapon_pistol = {
+		kind = W, category = "weapon", rarityN = 10, footprint = { w = 1, d = 1 },
+		combat = { dmg = 8, fireRate = 2.0, range = 35 },
+		displayName = "Pistolet (test)",
+	},
+	test_weapon_rifle = {
+		kind = W, category = "weapon", rarityN = 60, footprint = { w = 1, d = 1 },
+		combat = { dmg = 14, fireRate = 3.0, range = 45 },
+		displayName = "Karabin (test)",
+	},
+	test_weapon_cannon = {
+		kind = W, category = "weapon", rarityN = 300, footprint = { w = 1, d = 1 },
+		combat = { dmg = 55, fireRate = 0.7, range = 60 },
+		displayName = "Dzialko (test)",
+	},
+	test_weapon_launcher = {
+		kind = W, category = "weapon", rarityN = 1500, footprint = { w = 1, d = 1 },
+		combat = { dmg = 140, fireRate = 0.4, range = 70 },
+		displayName = "Wyrzutnia (test)",
 	},
 }
 

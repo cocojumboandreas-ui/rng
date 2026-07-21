@@ -158,7 +158,10 @@ local function step(dt: number)
 	for player, enemies in pairs(_enemies) do
 		local plot = resolvePlot(player)
 		if plot then
-			local dmgMult = (_stat and _stat.Get(player).dmgMult) or 1
+			local stats = _stat and _stat.Get(player)
+			local dmgMult = (stats and stats.dmgMult) or 1
+			local fireRateMult = (stats and stats.fireRateMult) or 1
+			local rangeMult = (stats and stats.rangeMult) or 1
 
 			-- 1) ruch
 			for _, e in pairs(enemies) do
@@ -175,7 +178,8 @@ local function step(dt: number)
 					cds[pid] = (cds[pid] or 0) - dt
 					if cds[pid] <= 0 then
 						local tpos = towerWorldPos(plot, pl.unitId, pl.x, pl.z)
-						local bestD = u.combat.range * u.combat.range
+						local effRange = u.combat.range * rangeMult
+						local bestD = effRange * effRange
 						local best = nil
 						for _, e in pairs(enemies) do
 							local epos = enemyWorldPos(plot, e.pathT)
@@ -188,7 +192,7 @@ local function step(dt: number)
 						end
 						if best then
 							best.hp -= u.combat.dmg * dmgMult
-							cds[pid] = 1 / u.combat.fireRate
+							cds[pid] = 1 / (u.combat.fireRate * fireRateMult)
 							if best.hp <= 0 then
 								enemies[best.id] = nil
 								queueDeath(player, best.id)
