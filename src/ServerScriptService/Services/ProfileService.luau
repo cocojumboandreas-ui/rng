@@ -23,7 +23,7 @@ local PROFILE_TEMPLATE = {
 	inventory = {}, -- { [invKey]: count }, invKey = unitId.."#"..(mutationId or "")
 	placements = {}, -- { [placementId]: {itemId, x, z, mut} } — BEZ rot (auto-face)
 	skills = {}, -- { [nodeId]: rank }
-	index = {}, -- { [unitId]: true }
+	index = {}, -- { [unitId.."#"..variant]: true } (ETAP 2: per-wariant; migracja starych unitId-only)
 	waveNumber = 1,
 	offlineTs = 0, -- os.time() zapisywany w ProfileReleasing
 	purchaseLog = {}, -- idempotencja ProcessReceipt

@@ -28,8 +28,8 @@ local REMOTES: { [string]: string } = {
 	RollsSync = "RemoteEvent", -- S->C {spendableRolls} (blizniak CoinsSync — druga waluta, zywe saldo)
 	SkillPurchase = "RemoteFunction", -- C->S (nodeId) -> {ok, reason?, rank?}
 	GetSkillState = "RemoteFunction", -- C->S () -> {ranks, coins, spendableRolls} (stan poczatkowy UI)
-	GetIndexState = "RemoteFunction", -- C->S () -> {discovered, count, total, percent, luckBonus} (§3.13)
-	IndexUpdated = "RemoteEvent", -- S->C {unitId, percent, luckBonus} (live % + notyfikacja "nowa jednostka")
+	GetIndexState = "RemoteFunction", -- C->S () -> {categories[], overall{count,total,percent}, luckBonus} (§3.13, ETAP2)
+	IndexUpdated = "RemoteEvent", -- S->C {unitId, variant, category, percent, luckBonus} (live wpis per-wariant)
 	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
 }
 

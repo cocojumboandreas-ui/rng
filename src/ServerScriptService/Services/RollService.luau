@@ -118,7 +118,7 @@ local function rollOnce(player: Player)
 	else
 		data.pity.sinceRare += 1
 	end
-	_index.Discover(player, result.unitId)
+	_index.Discover(player, result.unitId, result.variant)
 	if _economy then
 		_economy.SyncRolls(player) -- zdobyto spendableRoll -> zywe saldo do klienta
 	end
