@@ -17,3 +17,6 @@ IndexController.start()
 
 local OfflineController = require(Controllers:WaitForChild("OfflineController"))
 OfflineController.start()
+
+local RollRevealController = require(Controllers:WaitForChild("RollRevealController"))
+RollRevealController.start()
