@@ -48,25 +48,7 @@ Net.get("RollResult").OnClientEvent:Connect(function(result)
 	status.Text = "Ostatni: " .. lastName .. "  [" .. lastKey .. "]"
 end)
 
--- POSTAW OSTATNI (slot "Zbuduj") — dol-srodek, na LEWO od ROLL
-mk("POSTAW OSTATNI", Color3.fromRGB(60, 100, 70), function()
-	if not lastKey then status.Text = "Najpierw zrób ROLL"; return end
-	local W, D = GameConfig.Grid.width, GameConfig.Grid.depth
-	local place = Net.get("PlaceUnit")
-	for z = 1, D do
-		for x = 1, W do
-			local res = place:InvokeServer(lastKey, x, z)
-			if res and res.ok then
-				status.Text = ("Postawiono %s @ (%d,%d)"):format(lastName, x, z)
-				return
-			elseif res and res.reason ~= "Occupied" and res.reason ~= "OutOfBounds" then
-				status.Text = "PlaceUnit: " .. tostring(res.reason)
-				return -- NotOwned/BudgetExceeded/NotBuilding -> stop, pokaz powod
-			end
-		end
-	end
-	status.Text = "Brak wolnej kratki (pełna siatka)"
-end, { anchor = Vector2.new(1, 1), pos = UDim2.new(0.5, -120, 1, -32), size = UDim2.fromOffset(200, 54) })
+-- POSTAW OSTATNI usuniete: stawianie przejal prawdziwy BuildController (przycisk ZBUDUJ obok ROLL).
 
 -- START FALA (slot "Rozpocznij falę") — prawa krawedz, srodek, zielony
 mk("START FALA", Color3.fromRGB(60, 150, 70), function()
