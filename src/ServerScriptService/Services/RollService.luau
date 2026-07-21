@@ -74,10 +74,12 @@ local function computeRoll(stats, pity, rng)
 	-- 3) MUTACJA — KASKADA WSPINAJACA: wchodzisz od x2 w gore, kazdy szczebel wg step*mutChance.
 	--    x2/x4 zawsze; wyzsze wg malejacego %. Stop na pierwszym nietrafionym; final = najwyzszy osiagniety.
 	local mutation = nil
+	local totalMult = 1 -- ILOCZYN zlapanych koniczyn (2 * 4 * 8 ...)
 	for _, rung in ipairs(GameConfig.Mutation.ladder) do
 		local p = math.clamp((rung.step or 0) * (stats.mutChance or 1), 0, 1)
 		if rng:NextNumber() <= p then
 			mutation = { id = rung.id, mult = rung.mult }
+			totalMult *= rung.mult
 		else
 			break
 		end
@@ -95,9 +97,9 @@ local function computeRoll(stats, pity, rng)
 		end
 	end
 
-	-- ilosc sztuk itema = mnoznik mutacji (x4 -> 4 szt.); brak mutacji -> 1. (tunowalne)
-	local quantity = (mutation and mutation.mult) or 1
-	return { unitId = chosen.id, rarityN = chosen.rarityN, mutation = mutation, variant = variant, quantity = quantity, pityTriggered = pityTriggered }
+	-- ilosc sztuk itema = ILOCZYN koniczyn * baza itemu(1). np. 2*4*8 = 64 szt. (tunowalne)
+	local quantity = totalMult * 1
+	return { unitId = chosen.id, rarityN = chosen.rarityN, mutation = mutation, variant = variant, totalMult = totalMult, quantity = quantity, pityTriggered = pityTriggered }
 end
 
 -- Jedna rolka z efektami ubocznymi (kolejnosc §3.4).

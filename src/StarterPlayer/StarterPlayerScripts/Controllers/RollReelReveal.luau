@@ -295,10 +295,12 @@ function RollReelReveal.play(result)
 	frameIndicators()
 	spinSlot(iwin, istrip)
 
-	-- 3) podsumowanie: mnoznik (jakosc) + ilosc sztuk
-	local qty = result.quantity or (mult or 1)
+	-- 3) podsumowanie: ILOCZYN koniczyn (x razy) + ilosc sztuk
+	local total = result.totalMult
+	if not total then total = 1; for _, r in ipairs(rungs) do total *= r end end
+	local qty = result.quantity or total
 	if mult then
-		refs.summary.Text = ("×%d  •  %d szt."):format(mult, qty)
+		refs.summary.Text = ("×%d  •  %d szt."):format(total, qty)
 		refs.summary.Visible = true
 	end
 	-- lekkie, energiczne drganie itemu
