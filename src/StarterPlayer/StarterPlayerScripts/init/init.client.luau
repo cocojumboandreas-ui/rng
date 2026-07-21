@@ -20,3 +20,6 @@ OfflineController.start()
 
 local RollRevealController = require(Controllers:WaitForChild("RollRevealController"))
 RollRevealController.start()
+
+local BossController = require(Controllers:WaitForChild("BossController"))
+BossController.start()

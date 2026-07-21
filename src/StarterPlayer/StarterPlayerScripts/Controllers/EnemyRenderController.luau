@@ -21,6 +21,9 @@ local Y_OFFSET = 1.5 -- podstawa wroga nad sciezka
 
 -- ── MODEL-AGNOSTIC wizual (JEDNO miejsce) ──────────────────────────────────────
 local ENEMY_VISUAL = { size = Vector3.new(2, 3, 2), color = Color3.fromRGB(200, 40, 40), material = Enum.Material.SmoothPlastic }
+local BOSS_SCALE = 3 -- boss = 3x wiekszy placeholder
+local BOSS_COLOR = Color3.fromRGB(150, 40, 200) -- boss = odrebny kolor (fiolet)
+local BOSS_Y_EXTRA = 3 -- boss wyzej (wiekszy) nad sciezka
 local function createEnemyVisual(): BasePart
 	local p = Instance.new("Part")
 	p.Size = ENEMY_VISUAL.size
@@ -57,6 +60,8 @@ end
 local function release(part: BasePart)
 	part.Transparency = 1
 	part.Position = PARK
+	part.Size = ENEMY_VISUAL.size -- reset (mogl byc boss)
+	part.Color = ENEMY_VISUAL.color
 	table.insert(_free, part)
 end
 
@@ -107,7 +112,12 @@ local function onEvents(payload)
 			end -- inaczej: duplikat spawnu tego samego wroga -> ignoruj
 		end
 		if not _active[key] then
-			_active[key] = { part = acquire(), fullId = s.id, plotId = plotId, prevT = s.pathT, prevC = os.clock(), curT = s.pathT, curC = os.clock() }
+			local part = acquire()
+			if s.isBoss then
+				part.Size = ENEMY_VISUAL.size * BOSS_SCALE -- wiekszy
+				part.Color = BOSS_COLOR -- odrebny kolor
+			end
+			_active[key] = { part = part, fullId = s.id, plotId = plotId, isBoss = s.isBoss or false, prevT = s.pathT, prevC = os.clock(), curT = s.pathT, curC = os.clock() }
 		end
 	end
 	for _, id in ipairs(payload.deaths or {}) do
@@ -178,7 +188,8 @@ local function renderStep()
 				if e.part.Transparency ~= 0 then
 					e.part.Transparency = 0
 				end
-				e.part.Position = Vector3.new(pos.X, pos.Y + Y_OFFSET, pos.Z)
+				local yoff = e.isBoss and (Y_OFFSET + BOSS_Y_EXTRA) or Y_OFFSET
+				e.part.Position = Vector3.new(pos.X, pos.Y + yoff, pos.Z)
 			end
 		elseif e.part.Transparency ~= 1 then
 			e.part.Transparency = 1 -- LOD: ukryj wrogow spoza wlasnego/ogladanego plotu

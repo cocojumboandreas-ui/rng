@@ -12,8 +12,13 @@ local WaveConfig = {
 	scaling = { poolBase = 20, poolPerWave = 4, hpGrowth = 1.12, coinGrowth = 1.15 },
 	enemyTypes = {
 		grunt = { hp = 30, speed = 0.06, coreDmg = 5, coreAttackInterval = 1.0 },
+		-- BOSS = specjalny wrog w tej samej symulacji (isBoss). Wysokie HP (x hpMult fali),
+		-- wolny, mocny cios w rdzen. Zero bespoke AI — maszeruje do rdzenia jak inni.
+		boss = { hp = 500, speed = 0.03, coreDmg = 25, coreAttackInterval = 1.5, isBoss = true },
 	},
-	bossWave = 20, -- layer-2, zarezerwowane (poza v1)
+	bossWave = 20, -- INTERWAL: co 20. fala = boss (20, 40, 60...)
+	bossRewardMult = 3, -- boss-fala daje x nagrody normalnej fali n
+	bossGrunts = 10, -- kompozycja boss-fali = 1 boss + tylu zredukowanych gruntow
 }
 
 return WaveConfig

@@ -24,7 +24,7 @@ local GameConfig = require(
 local CombatService = {}
 
 local _plot, _stat, _grid = nil, nil, nil
-local _enemySync, _enemyEvents = nil, nil
+local _enemySync, _enemyEvents, _bossHP = nil, nil, nil
 
 local _enemies: { [any]: { [number]: any } } = {} -- player -> {enemyId -> row}
 local _towerCd: { [any]: { [string]: number } } = {} -- player -> {placementId -> cooldown}
@@ -89,6 +89,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 		return
 	end
 	local hp = et.hp * waveHpMult(waveNumber)
+	local isBoss = et.isBoss or false
 	local stagger = GameConfig.Sim.spawnStagger or 0.03
 	local plot = resolvePlot(player)
 	local plotId = plot and plot.plotId or 0
@@ -108,8 +109,9 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 			speed = et.speed,
 			plotId = plotId,
 			coreTimer = et.coreAttackInterval,
+			isBoss = isBoss, -- boss = zwykly wiersz z flaga (ta sama petla/pathing/core-dmg)
 		}
-		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT }
+		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss }
 	end
 	if _enemyEvents then
 		_enemyEvents:FireAllClients({ plotId = plotId, spawns = spawnList, deaths = {} })
@@ -231,6 +233,15 @@ local function step(dt: number)
 				_enemySync:FireAllClients(plot.plotId, buf)
 				_syncBytes += buffer.len(buf)
 			end
+
+			-- BossHP -> pasek bossa (rzadkie: <=1 boss/plot; reliable do wlasciciela plotu)
+			if _bossHP then
+				for _, e in pairs(enemies) do
+					if e.isBoss then
+						_bossHP:FireClient(player, { plotId = plot.plotId, hp = e.hp, maxHp = e.maxHp })
+					end
+				end
+			end
 		end
 	end
 
@@ -257,6 +268,7 @@ function CombatService.Start()
 	_grid = ServiceRegistry.get("GridService")
 	_enemySync = Net.get("EnemySync")
 	_enemyEvents = Net.get("EnemyEvents")
+	_bossHP = Net.get("BossHP")
 
 	local dtStep = 1 / (GameConfig.Sim.simHz or 10)
 	RunService.Heartbeat:Connect(function(dt)

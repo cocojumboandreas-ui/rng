@@ -20,12 +20,26 @@ local GameConfig = require(
 local WaveService = {}
 
 local _combat, _core, _economy, _stat, _profile, _plot = nil, nil, nil, nil, nil, nil
-local _waveProgress, _waveEnded = nil, nil
+local _waveProgress, _waveEnded, _bossDefeated = nil, nil, nil
 local _phase: { [any]: string } = {} -- player -> RunPhase (domyslnie Building)
 local _run: { [any]: any } = {} -- player -> {kills, pool} podczas WaveActive
 
+local function isBossWave(waveNumber: number): boolean
+	local bw = GameConfig.Wave.bossWave
+	return waveNumber > 0 and bw ~= nil and bw > 0 and (waveNumber % bw == 0)
+end
+
 -- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count}}, poolSize, formation)
 local function waveComposition(waveNumber: number)
+	-- boss-fala: 1 boss + zredukowani grunci (zawsze, niezaleznie od jawnych waves[n])
+	if isBossWave(waveNumber) then
+		local grunts = GameConfig.Wave.bossGrunts or 0
+		local comp = { { "boss", 1 } }
+		if grunts > 0 then
+			comp[#comp + 1] = { "grunt", grunts }
+		end
+		return comp, 1 + grunts, { cols = 6 }
+	end
 	local w = GameConfig.Wave.waves[waveNumber]
 	if w then
 		local pool = 0
@@ -83,7 +97,13 @@ local function endWave(player, reason)
 	local coinsEarned = 0
 
 	if reason == Enums.WaveEndReason.Cleared then
-		coinsEarned = _economy.AwardWave(player, waveNumber, run.kills)
+		coinsEarned = _economy.AwardWave(player, waveNumber, run.kills) -- boss-fala: x bossRewardMult (Economy)
+		if isBossWave(waveNumber) then
+			WaveService.BossDefeated:Fire(player, waveNumber)
+			if _bossDefeated then
+				_bossDefeated:FireClient(player, { plotId = plotIdOf(player), waveNumber = waveNumber })
+			end
+		end
 		if data then
 			data.waveNumber = waveNumber + 1
 		end
@@ -130,6 +150,7 @@ end
 function WaveService.Init()
 	WaveService.WaveStarted = Signal.new() -- (player, waveNumber, poolSize)
 	WaveService.WaveEnded = Signal.new() -- (player, reason, summary)
+	WaveService.BossDefeated = Signal.new() -- (player, waveNumber) — flourish klienta
 end
 
 function WaveService.Start()
@@ -141,6 +162,7 @@ function WaveService.Start()
 	_plot = ServiceRegistry.get("PlotService")
 	_waveProgress = Net.get("WaveProgress")
 	_waveEnded = Net.get("WaveEnded")
+	_bossDefeated = Net.get("BossDefeated")
 
 	Net.get("StartWave").OnServerEvent:Connect(function(player)
 		WaveService.StartWave(player)
@@ -168,6 +190,10 @@ function WaveService._OnEnemyDiedForTest(player)
 end
 function WaveService._OnCoreDestroyedForTest(player)
 	onCoreDestroyed(player)
+end
+function WaveService._WaveCompositionForTest(waveNumber)
+	local comp, pool = waveComposition(waveNumber)
+	return { comp = comp, pool = pool, isBoss = isBossWave(waveNumber) }
 end
 
 return WaveService

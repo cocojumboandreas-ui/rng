@@ -65,12 +65,15 @@ function EconomyService.SyncRolls(player)
 end
 
 function EconomyService.AwardWave(player, waveNumber: number, kills: number): number
-	local waves = GameConfig.Wave.waves
+	local wc = GameConfig.Wave
 	local base
-	if waves[waveNumber] and waves[waveNumber].coinReward then
-		base = waves[waveNumber].coinReward
+	if wc.waves[waveNumber] and wc.waves[waveNumber].coinReward then
+		base = wc.waves[waveNumber].coinReward
 	else
-		base = waves[1].coinReward * (GameConfig.Wave.scaling.coinGrowth ^ (waveNumber - 1))
+		base = wc.waves[1].coinReward * (wc.scaling.coinGrowth ^ (waveNumber - 1))
+	end
+	if wc.bossWave and wc.bossWave > 0 and waveNumber % wc.bossWave == 0 then
+		base = base * (wc.bossRewardMult or 1) -- boss-fala: wieksza nagroda
 	end
 	local total = base + kills * GameConfig.Economy.killReward
 	return EconomyService.Award(player, total, "wave")
