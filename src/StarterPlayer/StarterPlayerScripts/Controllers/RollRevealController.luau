@@ -297,11 +297,13 @@ function RollRevealController.start()
 
 	-- TYMCZASOWY przycisk ROLL (fires RollRequest). Re-hook do docelowego UI rolki pozniej.
 	local rollBtn = Instance.new("TextButton")
-	rollBtn.Size = UDim2.fromOffset(200, 56); rollBtn.AnchorPoint = Vector2.new(0.5, 1)
-	rollBtn.Position = UDim2.new(0.5, 0, 1, -20)
+	-- HUD: przycisk glowny "ROLL" (Rolka) — dol-srodek, najwiekszy (jak we wzorcu dobre.png)
+	rollBtn.Size = UDim2.fromOffset(220, 70); rollBtn.AnchorPoint = Vector2.new(0.5, 1)
+	rollBtn.Position = UDim2.new(0.5, 0, 1, -24)
 	rollBtn.BackgroundColor3 = Color3.fromRGB(60, 110, 70); rollBtn.TextColor3 = Color3.new(1, 1, 1)
-	rollBtn.Font = Enum.Font.GothamBlack; rollBtn.TextSize = 22; rollBtn.Text = "ROLL"; rollBtn.ZIndex = 40
+	rollBtn.Font = Enum.Font.GothamBlack; rollBtn.TextSize = 26; rollBtn.Text = "ROLL"; rollBtn.ZIndex = 40
 	rollBtn.Parent = gui
+	local rbCorner = Instance.new("UICorner"); rbCorner.CornerRadius = UDim.new(0, 12); rbCorner.Parent = rollBtn
 	rollBtn.MouseButton1Click:Connect(function()
 		Net.get("RollRequest"):FireServer()
 	end)

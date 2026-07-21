@@ -221,10 +221,13 @@ function IndexController.start()
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 	-- TYMCZASOWY przycisk wejscia (re-hook do HUD ksiazki gdy bedzie)
+	-- HUD: lewa krawedz, wysrodkowany w pionie (slot nawigacji "Indeks" ze wzorca)
 	local openBtn = Instance.new("TextButton")
-	openBtn.Size = UDim2.fromOffset(120, 40); openBtn.Position = UDim2.fromOffset(12, 250)
+	openBtn.Size = UDim2.fromOffset(130, 54); openBtn.AnchorPoint = Vector2.new(0, 0.5)
+	openBtn.Position = UDim2.new(0, 24, 0.5, 20)
 	openBtn.BackgroundColor3 = Color3.fromRGB(90, 75, 40); openBtn.TextColor3 = Color3.new(1, 1, 1)
 	openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 16; openBtn.Text = "INDEKS"; openBtn.Parent = gui
+	local ibCorner = Instance.new("UICorner"); ibCorner.CornerRadius = UDim.new(0, 10); ibCorner.Parent = openBtn
 
 	_panel = Instance.new("Frame")
 	_panel.Size = UDim2.fromOffset(660, 430); _panel.Position = UDim2.fromScale(0.5, 0.5)

@@ -143,10 +143,13 @@ function SkillTreeController.start()
 
 	-- przycisk wejscia
 	local openBtn = Instance.new("TextButton")
-	openBtn.Size = UDim2.fromOffset(120, 40); openBtn.Position = UDim2.fromOffset(12, 200)
+	-- HUD: dol-srodek, na PRAWO od ROLL (slot "Umiejetnosci" ze wzorca)
+	openBtn.Size = UDim2.fromOffset(150, 54); openBtn.AnchorPoint = Vector2.new(0, 1)
+	openBtn.Position = UDim2.new(0.5, 120, 1, -32)
 	openBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 90); openBtn.TextColor3 = Color3.new(1, 1, 1)
 	openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 16; openBtn.Text = "SKILLE"
 	openBtn.Parent = gui
+	local sbCorner = Instance.new("UICorner"); sbCorner.CornerRadius = UDim.new(0, 10); sbCorner.Parent = openBtn
 
 	-- panel
 	_panel = Instance.new("Frame")

@@ -9,8 +9,11 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "WR_BossTestHud"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 55
 gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
+-- debug: prawy-gorny rog, pod kolumna ODKRYJ (poza glownym HUD)
 local b = Instance.new("TextButton")
-b.Size = UDim2.fromOffset(200, 40); b.Position = UDim2.fromOffset(12, 300)
+b.Size = UDim2.fromOffset(180, 36); b.AnchorPoint = Vector2.new(1, 0)
+b.Position = UDim2.new(1, -12, 0, 206)
 b.BackgroundColor3 = Color3.fromRGB(150, 40, 200); b.TextColor3 = Color3.new(1, 1, 1)
-b.Font = Enum.Font.GothamBlack; b.TextSize = 15; b.Text = "FORCE BOSS WAVE"; b.ZIndex = 55; b.Parent = gui
+b.Font = Enum.Font.GothamBlack; b.TextSize = 14; b.Text = "FORCE BOSS WAVE"; b.ZIndex = 55; b.Parent = gui
+local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 8); bc.Parent = b
 b.MouseButton1Click:Connect(function() force:FireServer() end)
