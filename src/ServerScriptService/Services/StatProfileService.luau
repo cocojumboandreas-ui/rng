@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Signal = require(Framework:WaitForChild("Signal"))
 local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
+local Net = require(Framework:WaitForChild("Net"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
@@ -68,6 +69,9 @@ function StatProfileService.Recompute(player: Player)
 	_cache[player] = stats
 	if StatProfileService.StatsChanged then
 		StatProfileService.StatsChanged:Fire(player, stats)
+	end
+	if typeof(player) == "Instance" then
+		Net.get("StatsSync"):FireClient(player, stats) -- HUD: luck, offlineRate, cellBudget...
 	end
 	return stats
 end

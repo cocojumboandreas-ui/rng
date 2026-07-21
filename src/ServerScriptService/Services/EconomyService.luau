@@ -60,7 +60,10 @@ end
 function EconomyService.SyncRolls(player)
 	if _rollsSync then
 		local data = _profile and _profile.GetProfile(player)
-		_rollsSync:FireClient(player, { spendableRolls = (data and data.spendableRolls) or 0 })
+		_rollsSync:FireClient(player, {
+			spendableRolls = (data and data.spendableRolls) or 0,
+			lifetimeRolls = (data and data.lifetimeRolls) or 0, -- HUD: laczna liczba rolek nad nickiem
+		})
 	end
 end
 

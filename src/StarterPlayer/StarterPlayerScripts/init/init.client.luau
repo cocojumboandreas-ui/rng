@@ -32,3 +32,6 @@ UnitHealthController.start()
 
 local BuildController = require(Controllers:WaitForChild("BuildController"))
 BuildController.start()
+
+local HudController = require(Controllers:WaitForChild("HudController"))
+HudController.start()
