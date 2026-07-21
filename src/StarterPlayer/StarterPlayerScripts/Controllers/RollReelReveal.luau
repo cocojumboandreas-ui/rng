@@ -295,14 +295,7 @@ function RollReelReveal.play(result)
 	frameIndicators()
 	spinSlot(iwin, istrip)
 
-	-- 3) podsumowanie: ILOCZYN koniczyn (x razy) + ilosc sztuk
-	local total = result.totalMult
-	if not total then total = 1; for _, r in ipairs(rungs) do total *= r end end
-	local qty = result.quantity or total
-	if mult then
-		refs.summary.Text = ("×%d  •  %d szt."):format(total, qty)
-		refs.summary.Visible = true
-	end
+	-- (bez info o ilosci w UI — nieistotne; koniczyny same pokazuja mnoznik)
 	-- lekkie, energiczne drganie itemu
 	if state.wobble then state.wobble:Stop() end
 	state.wobble = Wobble.start(iwin, { rotationAmplitude = 2.5, rotationSpeed = 6, bobAmplitude = 5, bobSpeed = 5, easeIn = 0.12 })
