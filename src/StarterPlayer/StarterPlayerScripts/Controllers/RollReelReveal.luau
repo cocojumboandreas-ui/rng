@@ -39,7 +39,7 @@ local TUNING = {
 	cardWidth = 148, -- pitch: 132 card + 16 padding
 	cardCount = 34, -- cards per spin (decoys + winner). Fewer = cheaper. Icons let you go higher.
 	winnerIndex = 30, -- where the real winner sits (leave a few cards after it)
-	duration = 4.6, -- spin seconds
+	duration = 3.1, -- spin seconds (szybciej)
 	easingStyle = Enum.EasingStyle.Quint, -- Quint/Quart Out = long fast run, clean settle
 	jitter = 26, -- +/- px off dead-center for a natural stop (keep small)
 	landPopScale = 1.14, -- winner card scale pop on land
@@ -52,7 +52,7 @@ local REVEAL_SIZE_SMALL = UDim2.fromOffset(48, 56)
 
 local cfg = {}
 local refs = {}
-local state = { rolling = false, wobble = nil, winnerScale = nil }
+local state = { rolling = false, wobble = nil, winnerScale = nil, auto = false }
 
 -- BlurEffect rozmywa TYLKO swiat 3D (nie GUI) -> tlo zamazane, item (ViewportFrame) ostry na 1. planie.
 local Lighting = game:GetService("Lighting")
@@ -116,7 +116,7 @@ local function makeCard(model: Instance, glowColor: Color3): Frame
 	glow.AnchorPoint = Vector2.new(0.5, 0.5); glow.Position = UDim2.fromScale(0.5, 0.5)
 	glow.Size = UDim2.fromScale(1.35, 1.35)
 	glow.Font = Enum.Font.GothamBlack; glow.Text = "✦"; glow.TextScaled = true
-	glow.TextColor3 = glowColor; glow.TextTransparency = 0.5; glow.ZIndex = 1; glow.Parent = card
+	glow.TextColor3 = glowColor; glow.TextTransparency = 0.3; glow.ZIndex = 1; glow.Parent = card
 
 	local vpf = buildViewport(model, card)
 	vpf.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -139,19 +139,30 @@ end
 local function showReveal(model: Instance, rarityN: number, tier, displayName: string)
 	refs.reveal.Visible = true
 	refs.revealAura.ImageColor3 = tier.color
-	-- poswiata za itemem: obracajacy sie starburst w kolorze rzadkosci (bez tekstury)
+	-- swiecacy background za itemem: miekki krag (glow) + obracajacy sie starburst, kolor rzadkosci
+	if not refs.revealGlow then
+		refs.revealGlow = Instance.new("Frame")
+		refs.revealGlow.BackgroundColor3 = Color3.new(1, 1, 1)
+		refs.revealGlow.AnchorPoint = Vector2.new(0.5, 0.5); refs.revealGlow.Position = UDim2.fromScale(0.5, 0.46)
+		refs.revealGlow.Size = UDim2.fromScale(0.9, 0.9); refs.revealGlow.ZIndex = 0; refs.revealGlow.Parent = refs.revealInner
+		local gc = Instance.new("UICorner"); gc.CornerRadius = UDim.new(1, 0); gc.Parent = refs.revealGlow
+		local gg = Instance.new("UIGradient")
+		gg.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(0.55, 0.55), NumberSequenceKeypoint.new(1, 1) })
+		gg.Rotation = 90; gg.Parent = refs.revealGlow
+	end
+	refs.revealGlow.BackgroundColor3 = tier.color
 	if not refs.revealStar then
 		refs.revealStar = Instance.new("TextLabel")
 		refs.revealStar.BackgroundTransparency = 1
 		refs.revealStar.AnchorPoint = Vector2.new(0.5, 0.5); refs.revealStar.Position = UDim2.fromScale(0.5, 0.46)
-		refs.revealStar.Size = UDim2.fromScale(1.15, 1.15)
+		refs.revealStar.Size = UDim2.fromScale(1.3, 1.3)
 		refs.revealStar.Font = Enum.Font.GothamBlack; refs.revealStar.Text = "✦"; refs.revealStar.TextScaled = true
 		refs.revealStar.ZIndex = 1; refs.revealStar.Parent = refs.revealInner
 	end
 	refs.revealStar.TextColor3 = tier.color
-	refs.revealStar.TextTransparency = 0.32
+	refs.revealStar.TextTransparency = 0.12
 	refs.revealStar.Rotation = 0
-	TweenService:Create(refs.revealStar, TweenInfo.new(7, Enum.EasingStyle.Linear), { Rotation = 120 }):Play()
+	TweenService:Create(refs.revealStar, TweenInfo.new(4, Enum.EasingStyle.Linear), { Rotation = 120 }):Play()
 	refs.revealOdds.Text = string.format("1 in %d", rarityN)
 	refs.revealOdds.TextColor3 = tier.color
 	refs.revealName.Text = displayName
@@ -174,11 +185,14 @@ local function showReveal(model: Instance, rarityN: number, tier, displayName: s
 	):Play()
 
 	-- start the idle sway once the pop-in settles; Wobble eases its amplitude in
-	task.delay(0.35, function()
+	task.delay(0.2, function()
 		if state.wobble then
 			state.wobble:Stop()
 		end
-		state.wobble = Wobble.start(refs.revealInner, { rotationAmplitude = 4, bobAmplitude = 8, easeIn = 0.45 })
+		-- szybszy, energiczny ruch (nie wolne kolysanie)
+		state.wobble = Wobble.start(refs.revealInner, {
+			rotationAmplitude = 3, rotationSpeed = 6, bobAmplitude = 6, bobSpeed = 5, easeIn = 0.12,
+		})
 	end)
 end
 
@@ -189,6 +203,7 @@ function RollReelReveal.init(config)
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "RollReelReveal"
+	gui.DisplayOrder = 50 -- nad HUD (20): przyciemnienie zakrywa HUD, zostaje pasek + offline(60)
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
 	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -316,36 +331,40 @@ function RollReelReveal.init(config)
 	refs.revealName.ZIndex = 3
 	refs.revealName.Parent = refs.revealInner
 
-	-- "Zamknij" — widoczny razem z rewealem (parent do refs.reveal)
-	refs.closeBtn = Instance.new("TextButton")
-	refs.closeBtn.Name = "Zamknij"
-	refs.closeBtn.AnchorPoint = Vector2.new(0.5, 1)
-	refs.closeBtn.Position = UDim2.fromScale(0.5, 0.94)
-	refs.closeBtn.Size = UDim2.fromOffset(180, 48)
-	refs.closeBtn.BackgroundColor3 = Color3.fromRGB(40, 44, 54)
-	refs.closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	refs.closeBtn.Font = Enum.Font.GothamBold
-	refs.closeBtn.TextSize = 20
-	refs.closeBtn.Text = "Zamknij"
-	refs.closeBtn.ZIndex = 6
-	refs.closeBtn.Parent = refs.reveal
-	local cbCorner = Instance.new("UICorner")
-	cbCorner.CornerRadius = UDim.new(0, 10)
-	cbCorner.Parent = refs.closeBtn
-	refs.closeBtn.Activated:Connect(function()
-		RollReelReveal.close()
+	-- Pasek sterowania rewealem (zostaje na wierzchu, nad blurem): Auto | Rolka | Zamknij
+	local bar = Instance.new("Frame")
+	bar.Name = "RollBar"; bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.new(0.5, 0, 1, -16)
+	bar.Size = UDim2.fromOffset(440, 96); bar.BackgroundTransparency = 1; bar.ZIndex = 6; bar.Parent = refs.reveal
+
+	local function barBtn(name, xScale, w, h, bg, fg, txt, ts)
+		local b = Instance.new("TextButton")
+		b.Name = name; b.AnchorPoint = Vector2.new(0.5, 0.5); b.Position = UDim2.fromScale(xScale, 0.5)
+		b.Size = UDim2.fromOffset(w, h); b.BackgroundColor3 = bg; b.TextColor3 = fg
+		b.Font = Enum.Font.GothamBold; b.TextSize = ts; b.Text = txt; b.ZIndex = 7; b.Parent = bar
+		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = b
+		return b
+	end
+
+	-- Auto (lewo) — automatyczne toczenie WŁ/WYŁ
+	refs.autoBtn = barBtn("Auto", 0.15, 100, 72, Color3.fromRGB(38, 42, 52), Color3.fromRGB(150, 150, 150), "↻\nAuto: WYŁ", 13)
+	refs.autoBtn.Activated:Connect(function()
+		state.auto = not state.auto
+		refs.autoBtn.Text = state.auto and "↻\nAuto: WŁ" or "↻\nAuto: WYŁ"
+		refs.autoBtn.TextColor3 = state.auto and Color3.fromRGB(120, 255, 140) or Color3.fromRGB(150, 150, 150)
+		if state.auto and not state.rolling and cfg.onRollAgain then cfg.onRollAgain() end
 	end)
 
-	-- Tap na tło (poza spinem) też zamyka reveal.
-	refs.backdrop.Active = true
-	refs.backdrop.InputBegan:Connect(function(input)
-		if state.rolling or not refs.reveal.Visible then
-			return
-		end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			RollReelReveal.close()
-		end
+	-- Rolka (srodek) — rzuc ponownie
+	local rollaBtn = barBtn("Rolka", 0.5, 116, 88, Color3.fromRGB(240, 240, 240), Color3.fromRGB(30, 30, 30), "🎲\nRolka", 20)
+	rollaBtn.Activated:Connect(function()
+		if not state.rolling and cfg.onRollAgain then cfg.onRollAgain() end
+	end)
+
+	-- Zamknij (prawo) — wyjdz z trybu rolowania
+	local closeBtn = barBtn("Zamknij", 0.85, 96, 72, Color3.fromRGB(35, 38, 48), Color3.fromRGB(255, 255, 255), "✖\nZamknij", 15)
+	closeBtn.Activated:Connect(function()
+		state.auto = false
+		RollReelReveal.close()
 	end)
 end
 
@@ -434,6 +453,15 @@ function RollReelReveal.play(result)
 	refs.window.Visible = false
 	showReveal(unitModel, rarityN, tier, displayName)
 	state.rolling = false
+
+	-- automatyczne toczenie: po revealu rzuc znowu (dopoki WŁ)
+	if state.auto and cfg.onRollAgain then
+		task.delay(0.9, function()
+			if state.auto and not state.rolling and refs.reveal.Visible then
+				cfg.onRollAgain()
+			end
+		end)
+	end
 end
 
 -- Call to dismiss the reveal (e.g. from your "Zamknij" button).

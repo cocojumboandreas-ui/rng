@@ -45,6 +45,11 @@ function HudController.start()
 	gui.Name = "WR_Hud"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 20
 	gui.Parent = LP:WaitForChild("PlayerGui")
 
+	-- warstwa NAD rewealem (DisplayOrder 60 > reveal 50): zarobki offline zostaja jasne w trakcie rolowania
+	local guiOver = Instance.new("ScreenGui")
+	guiOver.Name = "WR_HudOver"; guiOver.ResetOnSpawn = false; guiOver.IgnoreGuiInset = true; guiOver.DisplayOrder = 60
+	guiOver.Parent = LP:WaitForChild("PlayerGui")
+
 	-- ── gora-lewo: monety ──
 	local coinF = pill(gui, UDim2.fromOffset(160, 44), UDim2.fromOffset(12, 12))
 	local coinL = label(coinF, "🪙 0", 20, Color3.fromRGB(255, 215, 90), Enum.TextXAlignment.Left)
@@ -91,8 +96,8 @@ function HudController.start()
 		task.delay(2, function() autoToast.Visible = false end)
 	end)
 
-	-- ── dol-prawo: zarobki offline / h ──
-	local offF = pill(gui, UDim2.fromOffset(210, 66), UDim2.new(1, -12, 1, -12), Vector2.new(1, 1))
+	-- ── dol-prawo: zarobki offline / h (warstwa NAD rewealem — zostaje jasne w trakcie rolowania) ──
+	local offF = pill(guiOver, UDim2.fromOffset(210, 66), UDim2.new(1, -12, 1, -12), Vector2.new(1, 1))
 	local offTitle = label(offF, "Zarobki offline (na godzinę)", 13, Color3.fromRGB(150, 255, 150))
 	offTitle.Position = UDim2.fromOffset(0, 4); offTitle.Size = UDim2.new(1, 0, 0, 20)
 	local offVals = label(offF, "🪙 0   🎲 0", 16, Color3.new(1, 1, 1))

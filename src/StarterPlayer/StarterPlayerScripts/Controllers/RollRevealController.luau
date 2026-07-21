@@ -319,6 +319,7 @@ function RollRevealController.start()
 		modelProvider = UnitModelFactory.get,
 		decoyIds = decoyIds,
 		starburstId = "", -- repo uzywa tekstowego bursta (✦), brak asset id -> aura niewidoczna
+		onRollAgain = function() Net.get("RollRequest"):FireServer() end, -- Rolka/Auto w pasku reveala
 	})
 
 	Net.get("RollResult").OnClientEvent:Connect(function(result)
