@@ -15,12 +15,12 @@ local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChil
 local RollReelReveal = {}
 
 -- ── tuning ──
-local SLOT_W = 150
-local SLOT_H = 190
-local PITCH = 150 -- rozstaw kart w pionie
-local CARD_COUNT = 50 -- DLUZSZA tasma (wiecej kart przewija sie)
-local WINNER_IDX = 44 -- wygrany dalej -> dluzszy zjazd
-local SPIN_DUR = 2.5 -- czas jednego reela (dluzej, wiecej kart widac)
+local SLOT_W = 220 -- WIEKSZE, wyrazne sloty (jak w ttt)
+local SLOT_H = 250
+local PITCH = 214 -- rozstaw kart w pionie (~1 karta widoczna -> mniej smieci z sasiadow)
+local CARD_COUNT = 50
+local WINNER_IDX = 44
+local SPIN_DUR = 2.5
 local ROW_Y = 0.42
 local MAX_ROW_W = 1400 -- powyzej -> skaluj rzad w dol (mobile)
 local NEUTRAL = Color3.fromRGB(70, 74, 84)
@@ -123,7 +123,8 @@ local function buildSlot(order)
 	local fade = Instance.new("Frame"); fade.Size = UDim2.fromScale(1, 1); fade.BackgroundColor3 = Color3.fromRGB(10, 11, 16)
 	fade.BorderSizePixel = 0; fade.ZIndex = 4; fade.Parent = win
 	local fg = Instance.new("UIGradient"); fg.Rotation = 90
-	fg.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 1), NumberSequenceKeypoint.new(1, 0.2) })
+	-- mocniejsze wygaszanie brzegow (sasiednie karty znikaja) -> czyste, wyrazne centrum
+	fg.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.35, 1), NumberSequenceKeypoint.new(0.65, 1), NumberSequenceKeypoint.new(1, 0) })
 	fg.Parent = fade
 	return win, strip
 end
