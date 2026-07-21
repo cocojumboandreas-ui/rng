@@ -220,6 +220,10 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	model:SetAttribute("PlacementId", placementId)
 	model:SetAttribute("OwnerUserId", typeof(player) == "Instance" and player.UserId or 0)
 	model:SetAttribute("UnitId", unitId) -- klient (UnitAnimator) rozpoznaje typ jednostki
+	model:SetAttribute("CellX", cellX) -- tryb budowania: klient liczy zajetosc kratek wlasnego plotu
+	model:SetAttribute("CellZ", cellZ)
+	model:SetAttribute("FpW", fp.w)
+	model:SetAttribute("FpD", fp.d)
 	model.Parent = ensureUnitsFolder()
 	_models[player] = _models[player] or {}
 	_models[player][placementId] = model

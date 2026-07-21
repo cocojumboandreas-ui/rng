@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Signal = require(Framework:WaitForChild("Signal"))
 local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
+local Net = require(Framework:WaitForChild("Net"))
 
 local InventoryService = {}
 
@@ -42,15 +43,28 @@ function InventoryService.Init()
 	InventoryService.Changed = Signal.new() -- (player)
 end
 
+local function pushInventory(player)
+	if typeof(player) == "Instance" then
+		Net.get("InventorySync"):FireClient(player, InventoryService.GetCounts(player))
+	end
+end
+
 function InventoryService.Start()
 	_profileService = ServiceRegistry.get("ProfileService")
-	-- migracja starych kluczy przy zaladowaniu profilu (brak wariantu -> regular)
+	-- migracja starych kluczy przy zaladowaniu profilu (brak wariantu -> regular) + pierwszy push do klienta
 	_profileService.ProfileLoaded:Connect(function(player)
 		local data = _profileService.GetProfile(player)
 		if data and data.inventory then
 			migrateInventory(data.inventory)
 		end
+		pushInventory(player)
 	end)
+	-- live liczby w panelu budowania po kazdej zmianie (rolka/postaw/usun)
+	InventoryService.Changed:Connect(pushInventory)
+	-- stan poczatkowy na zadanie (otwarcie panelu budowania)
+	Net.get("GetInventory").OnServerInvoke = function(player)
+		return InventoryService.GetCounts(player)
+	end
 end
 
 -- Publiczny budowniczy klucza (BuildService liczy kanoniczny invKey do walidacji wlasnosci).

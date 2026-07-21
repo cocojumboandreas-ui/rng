@@ -29,3 +29,6 @@ UnitCombatAnimator.start()
 
 local UnitHealthController = require(Controllers:WaitForChild("UnitHealthController"))
 UnitHealthController.start()
+
+local BuildController = require(Controllers:WaitForChild("BuildController"))
+BuildController.start()

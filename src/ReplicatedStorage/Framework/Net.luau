@@ -33,6 +33,9 @@ local REMOTES: { [string]: string } = {
 	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
 	UnitHp = "RemoteEvent", -- S->C {placementId, hpPct} (faza 5: pasek HP jednostki, throttled przy trafieniu)
 	UnitKilled = "RemoteEvent", -- S->C {placementId} (faza 5: jednostka zginela -> poof + zdejmij pasek)
+	GetPlotInfo = "RemoteFunction", -- C->S () -> {plotId, gridOrigin(CFrame), width, depth, cellSize, faceDir} (tryb budowania)
+	GetInventory = "RemoteFunction", -- C->S () -> { [invKey]=count } (poczatkowy stan panelu budowania)
+	InventorySync = "RemoteEvent", -- S->C { [invKey]=count } (live liczby w panelu; push na Changed/ProfileLoaded)
 }
 
 local Net = {}

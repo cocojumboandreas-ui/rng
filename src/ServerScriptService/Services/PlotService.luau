@@ -17,6 +17,7 @@ local Workspace = game:GetService("Workspace")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Signal = require(Framework:WaitForChild("Signal"))
+local Net = require(Framework:WaitForChild("Net"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
@@ -273,6 +274,23 @@ end
 function PlotService.Start()
 	ensureBuilt()
 	neutralizeGlobalSpawns()
+
+	-- Tryb budowania: klient pobiera geometrie swojego plotu (kratka<->swiat, footprint, zwrot)
+	Net.get("GetPlotInfo").OnServerInvoke = function(player)
+		local p = PlotService.GetPlot(player)
+		if not p then
+			return nil
+		end
+		return {
+			plotId = p.plotId,
+			gridOrigin = p.gridOrigin, -- CFrame (osiowany w swiecie, rog min komorki 1,1)
+			width = GameConfig.Grid.width,
+			depth = GameConfig.Grid.depth,
+			cellSize = GameConfig.Grid.cellSize,
+			faceDir = p.faceDirection, -- Vector3 (jednostki auto-obracaja sie w te strone)
+		}
+	end
+
 	Players.PlayerAdded:Connect(wirePlayer)
 	Players.PlayerRemoving:Connect(releasePlot)
 	for _, player in ipairs(Players:GetPlayers()) do
