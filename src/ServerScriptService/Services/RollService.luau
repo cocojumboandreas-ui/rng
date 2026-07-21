@@ -83,7 +83,19 @@ local function computeRoll(stats, pity, rng)
 		end
 	end
 
-	return { unitId = chosen.id, rarityN = chosen.rarityN, mutation = mutation, pityTriggered = pityTriggered }
+	-- 4) WARIANT — osobny, niezalezny rzut (finish kolekcjonerski), od najrzadszego (galaxy -> shiny).
+	-- v1: TYLKO wizual + kolekcja (zero wplywu na staty). Skalowany statem variantLuck.
+	local variant = GameConfig.Variant.fallback or "regular"
+	local vLuck = stats.variantLuck or 1
+	for _, v in ipairs(GameConfig.Variant.ladder) do
+		local vN = math.max(1, math.floor(v.chanceN / vLuck))
+		if rng:NextInteger(1, vN) == 1 then
+			variant = v.id
+			break
+		end
+	end
+
+	return { unitId = chosen.id, rarityN = chosen.rarityN, mutation = mutation, variant = variant, pityTriggered = pityTriggered }
 end
 
 -- Jedna rolka z efektami ubocznymi (kolejnosc §3.4).
@@ -97,8 +109,8 @@ local function rollOnce(player: Player)
 
 	local result = computeRoll(stats, data.pity, rng)
 
-	-- 4) KSIEGOWANIE: wynik -> Inventory.Add -> liczniki -> pity -> Index.Discover -> Net
-	_inv.Add(player, result.unitId, result.mutation)
+	-- 5) KSIEGOWANIE: wynik -> Inventory.Add -> liczniki -> pity -> Index.Discover -> Net
+	_inv.Add(player, result.unitId, result.mutation, result.variant)
 	data.lifetimeRolls += 1
 	data.spendableRolls += 1
 	if result.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then

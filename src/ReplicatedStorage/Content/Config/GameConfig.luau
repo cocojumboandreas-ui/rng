@@ -16,6 +16,7 @@ local GameConfig = {
 	StatBase = require(Config:WaitForChild("StatBaseConfig")), -- bazy plaskiej tabeli Stats (§3.2)
 	Sim = require(Config:WaitForChild("SimConfig")), -- parametry symulacji (simHz, spawnStagger)
 	Index = require(Config:WaitForChild("IndexConfig")), -- progi %kolekcji -> bonus luck (§3.13)
+	Variant = require(Config:WaitForChild("VariantConfig")), -- trzecia os rolla: finish (regular/shiny/galaxy)
 }
 
 return GameConfig

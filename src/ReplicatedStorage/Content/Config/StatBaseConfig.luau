@@ -19,6 +19,7 @@ local StatBaseConfig = {
 	coreHP = 100, -- bazowe HP rdzenia; core_1 +25/rank
 	coinMult = 1.0, -- mnoznik monet (killReward x coinMult)
 	offlineRate = 10, -- monety/h offline (POST-BRAMKA; placeholder)
+	variantLuck = 1, -- mnoznik szansy wariantu (chanceN / variantLuck); hook pod gamepassy shiny/galaxy
 }
 
 return StatBaseConfig

@@ -17,7 +17,7 @@ local GameConfig = require(
 -- Komplet pol Stats (§3.2). Kolejnosc = kontrakt; kompletnosc pilnowana w tescie.
 local STAT_FIELDS = {
 	"luck", "rollSpeed", "mutChance", "cellBudget", "dmgMult",
-	"fireRateMult", "rangeMult", "coreHP", "coinMult", "offlineRate",
+	"fireRateMult", "rangeMult", "coreHP", "coinMult", "offlineRate", "variantLuck",
 }
 
 local StatProfileService = {}

@@ -30,18 +30,20 @@ local _models: { [any]: { [string]: Instance } } = {} -- player -> {placementId 
 local _unitsFolder: Folder? = nil
 
 -- ── helpers czyste ───────────────────────────────────────────────────────────
--- split invKey na PIERWSZYM "#": "soldier#x2" -> "soldier","x2"; "noob#" -> "noob",nil
+-- split invKey "unitId#mutationId#variant" -> unitId, mutId(nil gdy pusty), variant(regular gdy brak).
+-- Toleruje stary 2-czesciowy klucz "unitId#mut" (variant -> regular) — segmenty bez "#".
 local function parseItemId(itemId: string)
-	local hash = string.find(itemId, "#", 1, true)
-	if not hash then
-		return itemId, nil
-	end
-	local unitId = string.sub(itemId, 1, hash - 1)
-	local mutId = string.sub(itemId, hash + 1)
+	local parts = string.split(itemId, "#")
+	local unitId = parts[1] or itemId
+	local mutId = parts[2]
 	if mutId == "" then
 		mutId = nil
 	end
-	return unitId, mutId
+	local variant = parts[3]
+	if variant == nil or variant == "" then
+		variant = "regular"
+	end
+	return unitId, mutId, variant
 end
 
 local function mutObject(mutId: string?)
@@ -62,29 +64,30 @@ local function doPlace(player, itemId: string, cellX: number, cellZ: number)
 	if _wave.GetPhase(player) ~= Enums.RunPhase.Building then
 		return false, "NotBuilding"
 	end
-	local unitId, mutId = parseItemId(itemId)
+	local unitId, mutId, variant = parseItemId(itemId)
 	if GameConfig.Units[unitId] == nil then
 		return false, "UnknownUnit"
 	end
-	-- ownership: gracz musi miec >=1 DOKLADNEGO wariantu (itemId == invKey)
+	local mutation = mutObject(mutId)
+	-- ownership: gracz musi miec >=1 DOKLADNEGO wariantu (kanoniczny invKey z 3 osi)
+	local canonicalKey = _inv.KeyFor(unitId, mutation, variant)
 	local counts = _inv.GetCounts(player)
-	if (counts[itemId] or 0) < 1 then
+	if (counts[canonicalKey] or 0) < 1 then
 		return false, "NotOwned"
 	end
 	local canOK, reason = _grid.CanPlace(player, unitId, cellX, cellZ)
 	if not canOK then
 		return false, reason
 	end
-	local mutation = mutObject(mutId)
 	local pid = HttpService:GenerateGUID(false)
 	_grid.Occupy(player, pid, unitId, cellX, cellZ)
-	if not _inv.Consume(player, unitId, mutation) then
+	if not _inv.Consume(player, unitId, mutation, variant) then
 		_grid.Free(player, pid) -- rollback (nie powinno sie zdarzyc po ownership-check)
 		return false, "NotOwned"
 	end
 	local data = _profile.GetProfile(player)
 	if data then
-		data.placements[pid] = { itemId = unitId, x = cellX, z = cellZ, mut = mutId }
+		data.placements[pid] = { itemId = unitId, x = cellX, z = cellZ, mut = mutId, variant = variant }
 	end
 	return true, pid
 end
@@ -100,7 +103,7 @@ local function doRemove(player, placementId: string)
 		return false, "NoSuchPlacement"
 	end
 	_grid.Free(player, placementId)
-	_inv.Refund(player, p.itemId, mutObject(p.mut))
+	_inv.Refund(player, p.itemId, mutObject(p.mut), p.variant or "regular")
 	data.placements[placementId] = nil
 	return true
 end
@@ -211,8 +214,16 @@ function BuildService.Start()
 		return { ok = false, reason = reason }
 	end
 
-	-- restore po zaladowaniu profilu
+	-- restore po zaladowaniu profilu (+ migracja: placements bez variant -> "regular")
 	_profile.ProfileLoaded:Connect(function(player)
+		local data = _profile.GetProfile(player)
+		if data and data.placements then
+			for _, p in pairs(data.placements) do
+				if p.variant == nil then
+					p.variant = "regular"
+				end
+			end
+		end
 		BuildService.RestorePlot(player)
 	end)
 

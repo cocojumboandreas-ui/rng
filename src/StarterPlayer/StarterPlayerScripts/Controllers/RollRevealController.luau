@@ -24,9 +24,15 @@ local RARITY_COLOR = {
 	[5] = Color3.fromRGB(255, 205, 80), -- legendary
 }
 
+-- FINISH wariantu (warstwa poza kaskada mutacji). regular = brak. galaxy rzadszy -> mocniejszy.
+local VARIANT_FINISH = {
+	shiny = { text = "✨ SHINY ✨", color = Color3.fromRGB(255, 240, 150), extraHold = 0.4 },
+	galaxy = { text = "🌌 GALAXY 🌌", color = Color3.fromRGB(150, 120, 255), extraHold = 1.0, strong = true },
+}
+
 local RollRevealController = {}
 
-local _stage, _dim, _revealBox, _burst, _titleLbl, _nameLbl, _cascadeHolder
+local _stage, _dim, _revealBox, _burst, _titleLbl, _nameLbl, _cascadeHolder, _finishLbl
 local _cloverPool = {}
 local _queue = {}
 local _playing = false
@@ -175,19 +181,36 @@ local function playReveal(result)
 	_titleLbl.Text = "1 in " .. tostring(result.rarityN)
 	_titleLbl.TextColor3 = color
 	_nameLbl.Text = result.mutation and (name .. "  (×" .. result.mutation.mult .. ")") or name
-	_burst.TextColor3 = color
+	local fin = VARIANT_FINISH[result.variant] -- shiny/galaxy; nil dla regular
+	_burst.TextColor3 = (fin and fin.strong) and fin.color or color -- galaxy tintuje burst
 	_revealBox.Visible = true
 	_revealBox.Size = UDim2.fromScale(0.05, 0.05)
 	_burst.Rotation = 0
-	tween(_revealBox, 0.32, { Size = UDim2.fromScale(tier >= 5 and 0.72 or 0.5, tier >= 5 and 0.5 or 0.36) }, Enum.EasingStyle.Back)
-	tween(_burst, p.holdSec + 0.4, { Rotation = tier >= 5 and 90 or 30 }, Enum.EasingStyle.Linear)
-	task.wait(p.holdSec)
+	local big = tier >= 5 or (fin and fin.strong) -- galaxy dostaje wiekszy reveal
+	tween(_revealBox, 0.32, { Size = UDim2.fromScale(big and 0.72 or 0.5, big and 0.5 or 0.36) }, Enum.EasingStyle.Back)
+	tween(_burst, p.holdSec + 0.4, { Rotation = big and 90 or 30 }, Enum.EasingStyle.Linear)
+
+	-- FINISH wariantu (obok kaskady mutacji)
+	if fin then
+		_finishLbl.Text = fin.text
+		_finishLbl.TextColor3 = fin.color
+		_finishLbl.Visible = true
+		_finishLbl.TextTransparency = 1
+		tween(_finishLbl, 0.3, { TextTransparency = 0 })
+	else
+		_finishLbl.Visible = false
+	end
+	task.wait(p.holdSec + (fin and fin.extraHold or 0))
 
 	-- 5) SETTLE
 	tween(_revealBox, 0.25, { Size = UDim2.fromScale(0.05, 0.05) })
+	if _finishLbl.Visible then
+		tween(_finishLbl, 0.25, { TextTransparency = 1 })
+	end
 	tween(_dim, 0.3, { BackgroundTransparency = 1 })
 	task.wait(0.3)
 	_revealBox.Visible = false
+	_finishLbl.Visible = false
 	_dim.Visible = false
 end
 
@@ -247,6 +270,14 @@ function RollRevealController.start()
 	_nameLbl.Size = UDim2.fromScale(0.9, 0.14); _nameLbl.Position = UDim2.fromScale(0.05, 0.52)
 	_nameLbl.BackgroundTransparency = 1; _nameLbl.Font = Enum.Font.GothamBold; _nameLbl.TextScaled = true
 	_nameLbl.TextColor3 = Color3.new(1, 1, 1); _nameLbl.Text = ""; _nameLbl.ZIndex = 9; _nameLbl.Parent = _revealBox
+
+	-- FINISH wariantu (shiny/galaxy) — nad boxem reveala, wyrazny
+	_finishLbl = Instance.new("TextLabel")
+	_finishLbl.Size = UDim2.fromScale(0.8, 0.08); _finishLbl.Position = UDim2.fromScale(0.1, 0.16)
+	_finishLbl.AnchorPoint = Vector2.new(0, 0)
+	_finishLbl.BackgroundTransparency = 1; _finishLbl.Font = Enum.Font.GothamBlack; _finishLbl.TextScaled = true
+	_finishLbl.Text = ""; _finishLbl.ZIndex = 10; _finishLbl.Visible = false; _finishLbl.Parent = gui
+	local fstroke = Instance.new("UIStroke"); fstroke.Color = Color3.new(0, 0, 0); fstroke.Thickness = 2; fstroke.Parent = _finishLbl
 
 	-- TYMCZASOWY przycisk ROLL (fires RollRequest). Re-hook do docelowego UI rolki pozniej.
 	local rollBtn = Instance.new("TextButton")
