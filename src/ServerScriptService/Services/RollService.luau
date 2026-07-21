@@ -95,7 +95,9 @@ local function computeRoll(stats, pity, rng)
 		end
 	end
 
-	return { unitId = chosen.id, rarityN = chosen.rarityN, mutation = mutation, variant = variant, pityTriggered = pityTriggered }
+	-- ilosc sztuk itema = mnoznik mutacji (x4 -> 4 szt.); brak mutacji -> 1. (tunowalne)
+	local quantity = (mutation and mutation.mult) or 1
+	return { unitId = chosen.id, rarityN = chosen.rarityN, mutation = mutation, variant = variant, quantity = quantity, pityTriggered = pityTriggered }
 end
 
 -- Jedna rolka z efektami ubocznymi (kolejnosc §3.4).
