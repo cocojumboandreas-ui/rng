@@ -8,3 +8,6 @@ local Controllers = playerScripts:WaitForChild("Controllers")
 
 local EnemyRenderController = require(Controllers:WaitForChild("EnemyRenderController"))
 EnemyRenderController.start()
+
+local SkillTreeController = require(Controllers:WaitForChild("SkillTreeController"))
+SkillTreeController.start()

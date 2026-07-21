@@ -16,6 +16,7 @@ local EconomyService = {}
 
 local _profile, _stat = nil, nil
 local _coinsSync = nil -- cache remote'a (guard: nil w edit-mode tescie)
+local _rollsSync = nil -- cache remote'a RollsSync (druga waluta)
 
 function EconomyService.GetCoins(player): number
 	local data = _profile and _profile.GetProfile(player)
@@ -53,6 +54,15 @@ function EconomyService.TrySpend(player, amount: number): boolean
 end
 
 -- Nagroda za czyszczenie fali: baza(waveNumber) z WaveConfig + kills*killReward, x coinMult (przez Award).
+-- Broadcast salda spendableRolls (druga waluta). Economy = prezenter walut;
+-- NIE jest writerem spendableRolls (pisza RollService +1 i SkillService -cost) — tylko czyta i syncuje.
+function EconomyService.SyncRolls(player)
+	if _rollsSync then
+		local data = _profile and _profile.GetProfile(player)
+		_rollsSync:FireClient(player, { spendableRolls = (data and data.spendableRolls) or 0 })
+	end
+end
+
 function EconomyService.AwardWave(player, waveNumber: number, kills: number): number
 	local waves = GameConfig.Wave.waves
 	local base
@@ -73,9 +83,11 @@ function EconomyService.Start()
 	_profile = ServiceRegistry.get("ProfileService")
 	_stat = ServiceRegistry.get("StatProfileService")
 	_coinsSync = Net.get("CoinsSync")
-	-- odswiez saldo klientowi po zaladowaniu profilu
+	_rollsSync = Net.get("RollsSync")
+	-- odswiez oba salda klientowi po zaladowaniu profilu
 	_profile.ProfileLoaded:Connect(function(player)
 		pushBalance(player, EconomyService.GetCoins(player))
+		EconomyService.SyncRolls(player)
 	end)
 end
 

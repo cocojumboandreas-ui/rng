@@ -92,10 +92,13 @@ function SkillService.TryPurchase(player, nodeId: string)
 		return false, "BadCurrency"
 	end
 
-	-- zapis ranku -> Recompute -> emit
+	-- zapis ranku -> Recompute -> (sync rolek jesli wydane) -> emit
 	data.skills[nodeId] = targetRank
 	if _stat then
 		_stat.Recompute(player)
+	end
+	if node.currency == Enums.Currency.Rolls and _economy then
+		_economy.SyncRolls(player) -- wydano spendableRolls -> odswiez saldo (coins juz idzie przez TrySpend)
 	end
 	SkillService.SkillPurchased:Fire(player, nodeId, targetRank)
 	return true
@@ -110,13 +113,27 @@ function SkillService.Start()
 	_economy = ServiceRegistry.get("EconomyService")
 	_stat = ServiceRegistry.get("StatProfileService")
 
-	-- Net.SkillPurchase (RemoteFunction, C->S intencja) -> (ok, reason?) wg §8
+	-- Net.SkillPurchase (RemoteFunction, C->S intencja) -> {ok, reason?, rank?}
 	Net.get("SkillPurchase").OnServerInvoke = function(player, nodeId)
 		if type(nodeId) ~= "string" then
 			return { ok = false, reason = "BadArgs" }
 		end
 		local ok, reason = SkillService.TryPurchase(player, nodeId)
-		return { ok = ok, reason = reason }
+		if ok then
+			local data = _profile.GetProfile(player)
+			return { ok = true, rank = data and data.skills[nodeId] }
+		end
+		return { ok = false, reason = reason }
+	end
+
+	-- Net.GetSkillState (RemoteFunction, C->S) -> stan poczatkowy UI drzewka
+	Net.get("GetSkillState").OnServerInvoke = function(player)
+		local data = _profile.GetProfile(player)
+		return {
+			ranks = SkillService.GetRanks(player),
+			coins = _economy.GetCoins(player),
+			spendableRolls = (data and data.spendableRolls) or 0,
+		}
 	end
 end
 

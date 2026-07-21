@@ -17,7 +17,7 @@ local GameConfig = require(
 
 local RollService = {}
 
-local _stat, _inv, _index, _profile = nil, nil, nil, nil
+local _stat, _inv, _index, _profile, _economy = nil, nil, nil, nil, nil
 local _lastRoll: { [Player]: number } = {} -- player -> os.clock() ostatniej rolki
 
 -- Jednostki posortowane MALEJACO po rarityN (najrzadsze pierwsze) — raz.
@@ -107,6 +107,9 @@ local function rollOnce(player: Player)
 		data.pity.sinceRare += 1
 	end
 	_index.Discover(player, result.unitId)
+	if _economy then
+		_economy.SyncRolls(player) -- zdobyto spendableRoll -> zywe saldo do klienta
+	end
 
 	RollService.Rolled:Fire(player, result)
 	Net.get("RollResult"):FireClient(player, result)
@@ -137,6 +140,7 @@ function RollService.Start()
 	_inv = ServiceRegistry.get("InventoryService")
 	_index = ServiceRegistry.get("IndexService")
 	_profile = ServiceRegistry.get("ProfileService")
+	_economy = ServiceRegistry.get("EconomyService")
 
 	Net.get("RollRequest").OnServerEvent:Connect(function(player)
 		RollService.RequestRoll(player)

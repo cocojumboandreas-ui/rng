@@ -23,7 +23,9 @@ local REMOTES: { [string]: string } = {
 	EnemyEvents = "RemoteEvent", -- S->C {plotId, spawns, deaths} — MUSI byc reliable
 	StatsSync = "RemoteEvent", -- S->C pelny snapshot Stats
 	CoinsSync = "RemoteEvent", -- S->C {balance}
-	SkillPurchase = "RemoteFunction", -- C->S (nodeId) -> (ok, reason?)
+	RollsSync = "RemoteEvent", -- S->C {spendableRolls} (blizniak CoinsSync — druga waluta, zywe saldo)
+	SkillPurchase = "RemoteFunction", -- C->S (nodeId) -> {ok, reason?, rank?}
+	GetSkillState = "RemoteFunction", -- C->S () -> {ranks, coins, spendableRolls} (stan poczatkowy UI)
 	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
 }
 
