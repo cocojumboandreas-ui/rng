@@ -280,6 +280,20 @@ function RollReelReveal.init(config)
 	mCorner.CornerRadius = UDim.new(1, 0)
 	mCorner.Parent = marker
 
+	-- Wskazniki linii losowania: podswietlone strzalki/"lzy" po lewej i prawej srodka reela (na wierzchu)
+	for _, side in ipairs({ { "L", "▶", -1 }, { "R", "◀", 1 } }) do
+		local ind = Instance.new("TextLabel")
+		ind.Name = "Ind" .. side[1]
+		ind.AnchorPoint = Vector2.new(0.5, 0.5)
+		ind.Position = UDim2.new(0.5, side[3] * 170, 0.44, 0)
+		ind.Size = UDim2.fromOffset(48, 64)
+		ind.BackgroundTransparency = 1
+		ind.Font = Enum.Font.GothamBlack; ind.Text = side[2]; ind.TextScaled = true
+		ind.TextColor3 = Color3.fromRGB(255, 255, 255); ind.TextTransparency = 0.12
+		ind.ZIndex = 6; ind.Parent = refs.backdrop
+		local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(120, 190, 255); st.Thickness = 2.5; st.Transparency = 0.15; st.Parent = ind
+	end
+
 	-- Reveal
 	refs.reveal = Instance.new("Frame")
 	refs.reveal.Name = "Reveal"
@@ -331,10 +345,10 @@ function RollReelReveal.init(config)
 	refs.revealName.ZIndex = 3
 	refs.revealName.Parent = refs.revealInner
 
-	-- Pasek sterowania rewealem (zostaje na wierzchu, nad blurem): Auto | Rolka | Zamknij
+	-- Pasek sterowania — na BACKDROPIE, wiec widoczny CALY CZAS rolowania (spin + reveal): Auto | Rolka | Zamknij
 	local bar = Instance.new("Frame")
 	bar.Name = "RollBar"; bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.new(0.5, 0, 1, -16)
-	bar.Size = UDim2.fromOffset(440, 96); bar.BackgroundTransparency = 1; bar.ZIndex = 6; bar.Parent = refs.reveal
+	bar.Size = UDim2.fromOffset(440, 96); bar.BackgroundTransparency = 1; bar.ZIndex = 6; bar.Parent = refs.backdrop
 
 	local function barBtn(name, xScale, w, h, bg, fg, txt, ts)
 		local b = Instance.new("TextButton")
