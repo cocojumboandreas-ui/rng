@@ -5,7 +5,7 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Enums = require(Shared:WaitForChild("Enums"))
 
 local SkillConfig = {
-	-- cost(rank) = round(base * rank ^ 1.5)  (WZOR w SkillService)
+	costExp = 1.5, -- cost(rank) = round(base * rank ^ costExp)  (liczone w SkillService)
 	nodes = {
 		luck_1 = { branch = "Roll", currency = Enums.Currency.Coins, maxRank = 5, base = 100, effect = { stat = "luck", perRank = 0.2 } },
 		fast_1 = { branch = "Roll", currency = Enums.Currency.Rolls, maxRank = 3, base = 15, effect = { stat = "rollSpeed", perRank = -0.15 } },

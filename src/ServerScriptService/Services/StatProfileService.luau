@@ -101,5 +101,9 @@ end
 function StatProfileService._ComputeBaseForTest()
 	return compute(nil)
 end
+-- Hook TYLKO do testow: policz staty dla podanego profileData (bazy + delty skilli).
+function StatProfileService._ComputeForTest(profileData)
+	return compute(profileData)
+end
 
 return StatProfileService
