@@ -31,6 +31,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RollReel = require(ReplicatedStorage.Framework.UI.RollReel)
 local Wobble = require(ReplicatedStorage.Framework.UI.Wobble)
+local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig"))
 
 local RollReelReveal = {}
 
@@ -104,8 +105,8 @@ local function resolveModel(unitId: string): Instance?
 	return nil
 end
 
--- BEZ RAMEK: karta = tylko poswiata (starburst w kolorze rzadkosci) + model 3D na wierzchu.
-local function makeCard(model: Instance, glowColor: Color3): Frame
+-- BEZ RAMEK: karta = poswiata (kolor rzadkosci) + model 3D + "1 in N" (gora) + nazwa (dol).
+local function makeCard(model: Instance, glowColor: Color3, rarityN: number?, name: string?): Frame
 	local card = Instance.new("Frame")
 	card.Size = UDim2.fromOffset(250, TUNING.cardWidth - CARD_PADDING) -- pion: szeroka + niska (wys = pitch)
 	card.BackgroundTransparency = 1
@@ -114,15 +115,30 @@ local function makeCard(model: Instance, glowColor: Color3): Frame
 	local glow = Instance.new("TextLabel")
 	glow.BackgroundTransparency = 1
 	glow.AnchorPoint = Vector2.new(0.5, 0.5); glow.Position = UDim2.fromScale(0.5, 0.5)
-	glow.Size = UDim2.fromScale(1.35, 1.35)
+	glow.Size = UDim2.fromScale(0.85, 1.5)
 	glow.Font = Enum.Font.GothamBlack; glow.Text = "✦"; glow.TextScaled = true
 	glow.TextColor3 = glowColor; glow.TextTransparency = 0.3; glow.ZIndex = 1; glow.Parent = card
 
 	local vpf = buildViewport(model, card)
 	vpf.AnchorPoint = Vector2.new(0.5, 0.5)
 	vpf.Position = UDim2.fromScale(0.5, 0.5)
-	vpf.Size = UDim2.fromScale(0.98, 0.98)
+	vpf.Size = UDim2.fromScale(0.6, 0.96)
 	vpf.ZIndex = 2
+
+	if rarityN then
+		local odds = Instance.new("TextLabel")
+		odds.AnchorPoint = Vector2.new(0.5, 0); odds.Position = UDim2.fromScale(0.5, 0.0); odds.Size = UDim2.fromScale(0.7, 0.22)
+		odds.BackgroundTransparency = 1; odds.Font = Enum.Font.GothamBlack; odds.TextScaled = true
+		odds.Text = "1 in " .. rarityN; odds.TextColor3 = glowColor; odds.ZIndex = 3; odds.Parent = card
+		local os_ = Instance.new("UIStroke"); os_.Thickness = 2; os_.Color = Color3.new(0, 0, 0); os_.Parent = odds
+	end
+	if name then
+		local nm = Instance.new("TextLabel")
+		nm.AnchorPoint = Vector2.new(0.5, 1); nm.Position = UDim2.fromScale(0.5, 1.0); nm.Size = UDim2.fromScale(0.95, 0.18)
+		nm.BackgroundTransparency = 1; nm.Font = Enum.Font.GothamBold; nm.TextScaled = true
+		nm.Text = name; nm.TextColor3 = Color3.new(1, 1, 1); nm.ZIndex = 3; nm.Parent = card
+		local ns = Instance.new("UIStroke"); ns.Thickness = 2; ns.Color = Color3.new(0, 0, 0); ns.Parent = nm
+	end
 
 	return card
 end
@@ -422,16 +438,21 @@ function RollReelReveal.play(result)
 		end
 	end
 
-	-- Build the strip: cosmetic decoys, with the real winner at winnerIndex.
+	-- Build the strip: kazda karta = model + aura/nazwa/"1 in N" wg WLASNEJ rzadkosci (jak qwer).
 	for i = 1, TUNING.cardCount do
-		local model, color, isWinner
+		local uid, model, isWinner
 		if i == TUNING.winnerIndex then
-			model, color, isWinner = unitModel, tier.color, true
+			uid, model, isWinner = unitId, unitModel, true
 		else
-			model, color, isWinner = resolveModel(decoyIds[math.random(1, #decoyIds)]), NEUTRAL, false
+			uid = decoyIds[math.random(1, #decoyIds)]
+			model, isWinner = resolveModel(uid), false
 		end
 		if model then
-			local card = makeCard(model, color)
+			local u = GameConfig.Units[uid]
+			local rN = u and u.rarityN
+			local nm = (u and u.displayName) or uid
+			local col = (rN and cfg.resolveTier) and cfg.resolveTier(rN).color or NEUTRAL
+			local card = makeCard(model, col, rN, nm)
 			if isWinner then
 				local s = Instance.new("UIScale")
 				s.Parent = card
