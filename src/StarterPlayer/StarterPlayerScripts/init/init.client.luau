@@ -14,3 +14,6 @@ SkillTreeController.start()
 
 local IndexController = require(Controllers:WaitForChild("IndexController"))
 IndexController.start()
+
+local OfflineController = require(Controllers:WaitForChild("OfflineController"))
+OfflineController.start()

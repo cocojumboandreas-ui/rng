@@ -17,6 +17,7 @@ local EconomyService = {}
 local _profile, _stat = nil, nil
 local _coinsSync = nil -- cache remote'a (guard: nil w edit-mode tescie)
 local _rollsSync = nil -- cache remote'a RollsSync (druga waluta)
+local _offlineRemote = nil -- cache remote'a OfflineEarnings
 
 function EconomyService.GetCoins(player): number
 	local data = _profile and _profile.GetProfile(player)
@@ -75,8 +76,44 @@ function EconomyService.AwardWave(player, waveNumber: number, kills: number): nu
 	return EconomyService.Award(player, total, "wave")
 end
 
+-- ── OFFLINE EARN (§3.11) — FLAT RATE, tylko monety w v1 (offline spins = layer-2 gamepass) ──
+-- PURE: raw monety (BEZ coinMult) + capped sekundy. Guardy klasycznych bugow offline:
+--   first-login (offlineTs==0) -> 0 (NIE licz od epoki 1970); clock-skew (elapsed<0) -> 0; cap capHours.
+local function computeOfflineRaw(offlineTs: number, now: number, offlineRate: number, capHours: number)
+	if offlineTs == 0 then
+		return 0, 0, true -- first-login -> brak zarobkow, tylko baseline
+	end
+	local elapsed = now - offlineTs
+	if elapsed < 0 then
+		elapsed = 0 -- clock skew
+	end
+	local capped = math.min(elapsed, capHours * 3600)
+	local raw = (capped / 3600) * offlineRate
+	return raw, capped, false
+end
+
+-- Liczone na ProfileLoaded. Przyznaje monety (Award -> coinMult RAZ) i zwraca {coins, seconds}.
+-- Resetuje offlineTs=now (anti double-grant przy crash-rejoin + init first-login).
+function EconomyService.ComputeOfflineEarnings(player)
+	local data = _profile and _profile.GetProfile(player)
+	if not data then
+		return { coins = 0, seconds = 0 }
+	end
+	local now = os.time()
+	local offlineRate = (_stat and _stat.Get(player).offlineRate) or 0
+	local capHours = GameConfig.Economy.offline.capHours
+	local raw, seconds, firstLogin = computeOfflineRaw(data.offlineTs or 0, now, offlineRate, capHours)
+	data.offlineTs = now -- reset baseline (offlineTs znow ustawi ProfileReleasing przy leave)
+	if firstLogin or raw <= 0 then
+		return { coins = 0, seconds = seconds }
+	end
+	local gained = EconomyService.Award(player, raw, "offline") -- coinMult raz + CoinsSync
+	return { coins = gained, seconds = seconds }
+end
+
 function EconomyService.Init()
 	EconomyService.CoinsChanged = Signal.new() -- (player, newBalance)
+	EconomyService.OfflineEarningsReady = Signal.new() -- (player, {coins, seconds})
 end
 
 function EconomyService.Start()
@@ -84,16 +121,27 @@ function EconomyService.Start()
 	_stat = ServiceRegistry.get("StatProfileService")
 	_coinsSync = Net.get("CoinsSync")
 	_rollsSync = Net.get("RollsSync")
-	-- odswiez oba salda klientowi po zaladowaniu profilu
+	_offlineRemote = Net.get("OfflineEarnings")
+	-- po zaladowaniu profilu: salda + offline earn (popup gdy coins>0)
 	_profile.ProfileLoaded:Connect(function(player)
 		pushBalance(player, EconomyService.GetCoins(player))
 		EconomyService.SyncRolls(player)
+		local result = EconomyService.ComputeOfflineEarnings(player)
+		if result.coins > 0 then
+			EconomyService.OfflineEarningsReady:Fire(player, result)
+			if _offlineRemote then
+				_offlineRemote:FireClient(player, result)
+			end
+		end
 	end)
 end
 
 -- Hooki TYLKO do testow.
 function EconomyService._InjectForTest(deps)
 	_profile, _stat = deps.profile, deps.stat
+end
+function EconomyService._ComputeOfflineRawForTest(offlineTs, now, offlineRate, capHours)
+	return computeOfflineRaw(offlineTs, now, offlineRate, capHours)
 end
 
 return EconomyService
