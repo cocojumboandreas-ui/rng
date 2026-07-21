@@ -24,6 +24,7 @@ local StatProfileService = {}
 
 local _cache: { [Player]: any } = {}
 local _profileService = nil
+local _index = nil -- IndexService (bonus luck z kolekcji)
 
 -- Swieza kopia baz z configu (nigdy nie mutujemy wspoldzielonej tabeli StatBaseConfig).
 local function freshBase()
@@ -60,7 +61,10 @@ end
 
 function StatProfileService.Recompute(player: Player)
 	local data = _profileService and _profileService.GetProfile(player) or nil
-	local stats = compute(data)
+	local stats = compute(data) -- baza + delty skilli
+	if _index then
+		stats.luck += _index.GetLuckBonus(player) -- + bonus luck z indeksu (§3.13); domyka petle rolki->indeks->luck
+	end
 	_cache[player] = stats
 	if StatProfileService.StatsChanged then
 		StatProfileService.StatsChanged:Fire(player, stats)
@@ -78,10 +82,14 @@ end
 
 function StatProfileService.Start()
 	_profileService = ServiceRegistry.get("ProfileService")
+	_index = ServiceRegistry.get("IndexService")
 
-	-- Recompute triggery dostepne w slice: ProfileLoaded.
-	-- (SkillPurchased / zakup passa-boosta / wygasniecie boosta -> POST-BRAMKA.)
+	-- Recompute triggery: ProfileLoaded + IndexUpdated (nowy typ w indeksie -> mogl zmienic prog luck).
+	-- (SkillPurchase wola Recompute bezposrednio z SkillService; passy/boosty -> POST-BRAMKA.)
 	_profileService.ProfileLoaded:Connect(function(player: Player)
+		StatProfileService.Recompute(player)
+	end)
+	_index.IndexUpdated:Connect(function(player: Player)
 		StatProfileService.Recompute(player)
 	end)
 
@@ -101,9 +109,18 @@ end
 function StatProfileService._ComputeBaseForTest()
 	return compute(nil)
 end
--- Hook TYLKO do testow: policz staty dla podanego profileData (bazy + delty skilli).
+-- Hook TYLKO do testow: policz staty dla podanego profileData (bazy + delty skilli, BEZ indeksu).
 function StatProfileService._ComputeForTest(profileData)
 	return compute(profileData)
+end
+-- Hook TYLKO do testow: wstrzyknij zaleznosci (profileService, index) do pelnego Recompute.
+function StatProfileService._InjectForTest(deps)
+	if deps.profileService ~= nil then
+		_profileService = deps.profileService
+	end
+	if deps.index ~= nil then
+		_index = deps.index
+	end
 end
 
 return StatProfileService
