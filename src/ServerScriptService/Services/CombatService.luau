@@ -23,8 +23,10 @@ local GameConfig = require(
 
 local CombatService = {}
 
-local _plot, _stat, _grid = nil, nil, nil
-local _enemySync, _enemyEvents, _bossHP = nil, nil, nil
+local _plot, _stat, _grid, _build = nil, nil, nil, nil
+local _enemySync, _enemyEvents, _bossHP, _unitHpNet = nil, nil, nil, nil
+local _unitHp: { [any]: { [string]: number } } = {} -- player -> {placementId -> hp} (faza 5)
+local _unitHpSend: { [string]: number } = {} -- placementId -> os.clock ostatniego pushu HP (throttle)
 
 local _enemies: { [any]: { [number]: any } } = {} -- player -> {enemyId -> row}
 local _towerCd: { [any]: { [string]: number } } = {} -- player -> {placementId -> cooldown}
@@ -146,6 +148,7 @@ function CombatService.ClearPlot(player)
 	_enemies[player] = nil
 	_towerCd[player] = nil
 	_deaths[player] = nil
+	_unitHp[player] = nil
 end
 
 -- ── tick ──────────────────────────────────────────────────────────────────────
@@ -197,6 +200,55 @@ local function step(dt: number)
 								enemies[best.id] = nil
 								queueDeath(player, best.id)
 								CombatService.EnemyDied:Fire(player, best.typeId)
+							end
+						end
+					end
+				end
+			end
+
+			-- 2b) FAZA 5: wrogowie zadaja obrazenia jednostkom w zasiegu; jednostka ginie przy 0 HP
+			local uhp = _unitHp[player]
+			if not uhp then uhp = {}; _unitHp[player] = uhp end
+			local unitList = {}
+			for pid, pl in pairs(placements) do
+				local u = GameConfig.Units[pl.unitId]
+				if u then
+					if uhp[pid] == nil then uhp[pid] = u.hp or 100 end
+					unitList[#unitList + 1] = { pid = pid, pos = towerWorldPos(plot, pl.unitId, pl.x, pl.z), maxHp = u.hp or 100 }
+				end
+			end
+			for pid in pairs(uhp) do -- prune HP jednostek usunietych przez gracza
+				if placements[pid] == nil then uhp[pid] = nil end
+			end
+			if #unitList > 0 then
+				for _, e in pairs(enemies) do
+					local et = GameConfig.Wave.enemyTypes[e.typeId]
+					if et and et.atkDmg then
+						e.unitTimer = (e.unitTimer or 0) - dt
+						if e.unitTimer <= 0 then
+							local epos = enemyWorldPos(plot, e.pathT)
+							local best, bestD = nil, (et.atkRange or 14) * (et.atkRange or 14)
+							for _, ui in ipairs(unitList) do
+								if uhp[ui.pid] then
+									local dx, dz = ui.pos.X - epos.X, ui.pos.Z - epos.Z
+									local d2 = dx * dx + dz * dz
+									if d2 <= bestD then bestD = d2; best = ui end
+								end
+							end
+							if best then
+								e.unitTimer = 1 / (et.atkRate or 1)
+								uhp[best.pid] = uhp[best.pid] - et.atkDmg
+								if uhp[best.pid] <= 0 then
+									uhp[best.pid] = nil
+									_unitHpSend[best.pid] = nil
+									if _build then _build.KillUnit(player, best.pid) end
+								elseif _unitHpNet then
+									local last = _unitHpSend[best.pid]
+									if not last or (os.clock() - last) >= 0.2 then
+										_unitHpSend[best.pid] = os.clock()
+										_unitHpNet:FireClient(player, { placementId = best.pid, hpPct = uhp[best.pid] / best.maxHp })
+									end
+								end
 							end
 						end
 					end
@@ -270,9 +322,11 @@ function CombatService.Start()
 	_plot = ServiceRegistry.get("PlotService")
 	_stat = ServiceRegistry.get("StatProfileService")
 	_grid = ServiceRegistry.get("GridService")
+	_build = ServiceRegistry.get("BuildService")
 	_enemySync = Net.get("EnemySync")
 	_enemyEvents = Net.get("EnemyEvents")
 	_bossHP = Net.get("BossHP")
+	_unitHpNet = Net.get("UnitHp")
 
 	local dtStep = 1 / (GameConfig.Sim.simHz or 10)
 	RunService.Heartbeat:Connect(function(dt)
@@ -316,6 +370,11 @@ end
 -- Hooki TYLKO do testow (deterministyczny krok, wstrzykniecie deps).
 function CombatService._InjectForTest(deps)
 	_plot, _stat, _grid = deps.plot, deps.stat, deps.grid
+	if deps.build ~= nil then _build = deps.build end
+	if deps.hpNet ~= nil then _unitHpNet = deps.hpNet end
+end
+function CombatService._GetUnitHpForTest(player)
+	return _unitHp[player]
 end
 function CombatService._StepForTest(dt)
 	step(dt)

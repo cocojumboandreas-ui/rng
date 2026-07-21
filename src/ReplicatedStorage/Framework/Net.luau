@@ -31,6 +31,8 @@ local REMOTES: { [string]: string } = {
 	GetIndexState = "RemoteFunction", -- C->S () -> {categories[], overall{count,total,percent}, luckBonus} (§3.13, ETAP2)
 	IndexUpdated = "RemoteEvent", -- S->C {unitId, variant, category, percent, luckBonus} (live wpis per-wariant)
 	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
+	UnitHp = "RemoteEvent", -- S->C {placementId, hpPct} (faza 5: pasek HP jednostki, throttled przy trafieniu)
+	UnitKilled = "RemoteEvent", -- S->C {placementId} (faza 5: jednostka zginela -> poof + zdejmij pasek)
 }
 
 local Net = {}

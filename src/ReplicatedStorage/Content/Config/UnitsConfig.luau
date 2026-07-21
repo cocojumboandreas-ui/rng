@@ -12,59 +12,60 @@ local W = Enums.UnitKind.Weapon
 local B = Enums.UnitKind.Block
 
 local Units = {
+	-- hp = wytrzymalosc jednostki (faza 5: wrogowie zadaja dmg, jednostka ginie przy 0). Tarcze/tanki = duzo hp.
 	noob_soldier = {
-		kind = W, rarityN = 3, footprint = { w = 1, d = 1 },
+		kind = W, rarityN = 3, footprint = { w = 1, d = 1 }, hp = 80,
 		combat = { dmg = 3, fireRate = 1.0, range = 10 },
 		model = "Noob Soldier", displayName = "Rekrut",
 	},
 	soldier = {
-		kind = W, rarityN = 8, footprint = { w = 1, d = 1 },
+		kind = W, rarityN = 8, footprint = { w = 1, d = 1 }, hp = 140,
 		combat = { dmg = 6, fireRate = 1.2, range = 14 }, -- karabin: ciut lepszy od noob
 		model = "Soldier", displayName = "Zolnierz",
 	},
 	sniper = {
-		kind = W, rarityN = 15, footprint = { w = 1, d = 1 },
+		kind = W, rarityN = 15, footprint = { w = 1, d = 1 }, hp = 120,
 		combat = { dmg = 16, fireRate = 0.4, range = 30 }, -- duzy zasieg/dmg, wolny
 		model = "Sniper", displayName = "Snajper",
 	},
 	swat = {
-		kind = W, rarityN = 30, footprint = { w = 1, d = 1 },
+		kind = W, rarityN = 30, footprint = { w = 1, d = 1 }, hp = 500, -- tarcza = duzo HP (tank)
 		combat = { dmg = 8, fireRate = 1.4, range = 16 }, -- rifle + tarcza
 		model = "SWAT", displayName = "SWAT",
 	},
 	rocket_soldier = {
-		kind = W, rarityN = 60, footprint = { w = 1, d = 1 },
+		kind = W, rarityN = 60, footprint = { w = 1, d = 1 }, hp = 200,
 		combat = { dmg = 30, fireRate = 0.5, range = 28 }, -- RPG: zasieg jak sniper, duzy dmg, wybuch
 		model = "Rocket Soldier", displayName = "Rakietowiec",
 	},
 	flamethrower = {
-		kind = W, rarityN = 100, footprint = { w = 1, d = 1 },
+		kind = W, rarityN = 100, footprint = { w = 1, d = 1 }, hp = 400,
 		combat = { dmg = 8, fireRate = 4.0, range = 10 }, -- miotacz: krotki zasieg, szybki DPS
 		model = "Flamethrower", displayName = "Miotacz ognia",
 	},
 	tank_soldier = {
-		kind = W, rarityN = 150, footprint = { w = 1, d = 1 },
+		kind = W, rarityN = 150, footprint = { w = 1, d = 1 }, hp = 900, -- Big Shield = bardzo tanky
 		combat = { dmg = 5, fireRate = 6.0, range = 16 }, -- minigun: malo dmg/pocisk, bardzo szybko
 		model = "Tank Soldier", displayName = "Ciezki piechur",
 	},
 	jeep = {
-		kind = W, rarityN = 300, footprint = { w = 2, d = 2 },
+		kind = W, rarityN = 300, footprint = { w = 2, d = 2 }, hp = 700,
 		combat = { dmg = 8, fireRate = 1.5, range = 14 }, -- kierowca Noob strzela z pistoletu; duzo HP
 		model = "Jeep", displayName = "Jeep",
 		driver = "Noob Soldier", -- renderer doklada kierowce (kompozycja modelu)
 	},
 	tank = {
-		kind = W, rarityN = 1500, footprint = { w = 2, d = 2 },
+		kind = W, rarityN = 1500, footprint = { w = 2, d = 2 }, hp = 1500, -- najwiecej HP
 		combat = { dmg = 85, fireRate = 0.6, range = 24 }, -- dzialo glowne: najwiecej HP, ogromny dmg
 		model = "Tank", displayName = "Czolg",
 	},
 	helicopter = {
-		kind = W, rarityN = 800, footprint = { w = 2, d = 2 },
+		kind = W, rarityN = 800, footprint = { w = 2, d = 2 }, hp = 900,
 		combat = { dmg = 24, fireRate = 5.0, range = 34 }, -- 2 miniguny, najwiekszy zasieg, lata (hover)
 		model = "Helicopter", displayName = "Helikopter",
 	},
 	jet = {
-		kind = W, rarityN = 2000, footprint = { w = 2, d = 2 },
+		kind = W, rarityN = 2000, footprint = { w = 2, d = 2 }, hp = 700, -- HP jak jeep
 		combat = { dmg = 100, fireRate = 1.2, range = 40 }, -- lasery, ogromny dmg, HP jak jeep, lata
 		model = "Jet", displayName = "Jet",
 	},

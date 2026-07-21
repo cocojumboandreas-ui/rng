@@ -249,6 +249,21 @@ function BuildService.RestorePlot(player)
 	BuildService.PlacementChanged:Fire(player)
 end
 
+-- FAZA 5: jednostka zabita przez wroga (BEZ refundu). Zwalnia grid, usuwa placement, despawnuje, notyfikuje klienta.
+function BuildService.KillUnit(player, placementId: string): boolean
+	local data = _profile.GetProfile(player)
+	local p = data and data.placements[placementId]
+	if not p then
+		return false
+	end
+	_grid.Free(player, placementId)
+	despawnModel(player, placementId)
+	data.placements[placementId] = nil
+	Net.get("UnitKilled"):FireClient(player, { placementId = placementId })
+	BuildService.PlacementChanged:Fire(player)
+	return true
+end
+
 function BuildService.Init()
 	BuildService.PlacementChanged = Signal.new() -- (player)
 end
