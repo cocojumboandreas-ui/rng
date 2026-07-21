@@ -71,14 +71,14 @@ local function computeRoll(stats, pity, rng)
 		chosen = pool[#pool] -- FALLBACK = najmniejsze rarityN w puli
 	end
 
-	-- 3) MUTACJA — osobny, niezalezny rzut, od najrzadszej (x8 -> x4 -> x2)
+	-- 3) MUTACJA — KASKADA WSPINAJACA: wchodzisz od x2 w gore, kazdy szczebel wg step*mutChance.
+	--    x2/x4 zawsze; wyzsze wg malejacego %. Stop na pierwszym nietrafionym; final = najwyzszy osiagniety.
 	local mutation = nil
-	local ladder = GameConfig.Mutation.ladder
-	for i = #ladder, 1, -1 do
-		local m = ladder[i]
-		local mN = math.max(1, math.floor(m.chanceN / stats.mutChance))
-		if rng:NextInteger(1, mN) == 1 then
-			mutation = { id = m.id, mult = m.mult }
+	for _, rung in ipairs(GameConfig.Mutation.ladder) do
+		local p = math.clamp((rung.step or 0) * (stats.mutChance or 1), 0, 1)
+		if rng:NextNumber() <= p then
+			mutation = { id = rung.id, mult = rung.mult }
+		else
 			break
 		end
 	end
