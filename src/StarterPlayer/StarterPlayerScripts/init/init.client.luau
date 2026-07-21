@@ -23,3 +23,6 @@ RollRevealController.start()
 
 local BossController = require(Controllers:WaitForChild("BossController"))
 BossController.start()
+
+local UnitCombatAnimator = require(Controllers:WaitForChild("UnitCombatAnimator"))
+UnitCombatAnimator.start()

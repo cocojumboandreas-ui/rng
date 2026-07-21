@@ -139,13 +139,65 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	end
 	local fp = GameConfig.Units[unitId].footprint
 	local model = template:Clone()
+
+	-- PrimaryPart: modele ze store czesto go nie maja -> ustaw (HumanoidRootPart albo najwieksza czesc)
+	if not model.PrimaryPart then
+		local hrp = model:FindFirstChild("HumanoidRootPart")
+		if hrp and hrp:IsA("BasePart") then
+			model.PrimaryPart = hrp
+		else
+			local biggest, bestVol = nil, -1
+			for _, d in ipairs(model:GetDescendants()) do
+				if d:IsA("BasePart") then
+					local v = d.Size.X * d.Size.Y * d.Size.Z
+					if v > bestVol then bestVol, biggest = v, d end
+				end
+			end
+			model.PrimaryPart = biggest
+		end
+	end
+
+	-- ORIENTACJA NAJPIERW (front = faceDirection), potem pomiar/skala — GetExtentsSize jest
+	-- osiowany w swiecie, wiec mierzenie przed obrotem dawalo zle osie (np. dlugi czolg nie miescil Z).
 	local center = GridMath.cellToWorld(plot.gridOrigin, GameConfig.Grid.cellSize, cellX, cellZ, fp).Position
-	-- podstawa modelu na kaflach: przesun w gore o pol wysokosci
-	local h = model:GetExtentsSize().Y
-	local pos = Vector3.new(center.X, plot.gridOrigin.Position.Y + h * 0.5, center.Z)
-	model:PivotTo(CFrame.lookAlong(pos, plot.faceDirection))
+	local groundY = plot.gridOrigin.Position.Y
+	model:PivotTo(CFrame.lookAlong(Vector3.new(center.X, groundY, center.Z), plot.faceDirection))
+
+	-- Fit-to-cell: przeskaluj tak, by footprint XZ zmiescil sie w kratkach (pojazdy male, piechota lekko);
+	-- NIE powiekszaj (cap 1). Margines 0.85 zostawia odstep od krawedzi kratki. ScaleTo skaluje wzgl. pivota.
+	local size = model:GetExtentsSize() -- juz w orientacji docelowej
+	local cellW = fp.w * GameConfig.Grid.cellSize
+	local cellD = fp.d * GameConfig.Grid.cellSize
+	local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * 0.85
+	factor = math.min(factor, 1)
+	if factor < 0.999 and model.ScaleTo then
+		model:ScaleTo(factor)
+	end
+	-- GWARANCJA zmieszczenia (dlugie pojazdy typu czolg): domiar po skalowaniu, dociagnij jesli wystaje
+	if model.GetScale and model.ScaleTo then
+		local s2 = model:GetExtentsSize()
+		local over = math.max(s2.X / cellW, s2.Z / cellD)
+		if over > 1 then
+			model:ScaleTo(model:GetScale() / over * 0.98)
+		end
+	end
+
+	-- PODSTAWA na ziemi (stopy na kaflach) — po skalowaniu
+	local bbCf, bbSize = model:GetBoundingBox()
+	local lift = groundY - (bbCf.Position.Y - bbSize.Y * 0.5)
+	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
+
+	-- Statyczny render: zakotwicz WSZYSTKIE czesci (zero fizyki/ragdoll), animacja = kosmetyka klienta
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+		end
+	end
+
 	model:SetAttribute("PlacementId", placementId)
 	model:SetAttribute("OwnerUserId", typeof(player) == "Instance" and player.UserId or 0)
+	model:SetAttribute("UnitId", unitId) -- klient (UnitAnimator) rozpoznaje typ jednostki
 	model.Parent = ensureUnitsFolder()
 	_models[player] = _models[player] or {}
 	_models[player][placementId] = model
