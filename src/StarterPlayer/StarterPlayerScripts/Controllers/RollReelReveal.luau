@@ -296,9 +296,15 @@ function RollReelReveal.play(result)
 	spinSlot(iwin, istrip)
 
 	-- (bez info o ilosci w UI — nieistotne; koniczyny same pokazuja mnoznik)
-	-- lekkie, energiczne drganie itemu
+	-- WYBRANY item: nakladka POZA layoutem reela (UIListLayout nadpisywalby Position),
+	-- kolysze sie CALY CZAS az do zamkniecia/nastepnej rolki.
+	iwin.ClipsDescendants = false
+	istrip.Visible = false
+	local overlay = (makeItemCard(unitId, unitModel))
+	overlay.AnchorPoint = Vector2.new(0.5, 0.5); overlay.Position = UDim2.fromScale(0.5, 0.5); overlay.ZIndex = 5
+	overlay.Parent = iwin
 	if state.wobble then state.wobble:Stop() end
-	state.wobble = Wobble.start(iwin, { rotationAmplitude = 2.5, rotationSpeed = 6, bobAmplitude = 5, bobSpeed = 5, easeIn = 0.12 })
+	state.wobble = Wobble.start(overlay, { rotationAmplitude = 3, rotationSpeed = 4.5, bobAmplitude = 7, bobSpeed = 4, easeIn = 0.15 })
 
 	state.rolling = false
 	if state.auto and cfg.onRollAgain then
