@@ -9,9 +9,6 @@ local Framework = ReplicatedStorage:WaitForChild("Framework")
 local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
 local Services = ServerScriptService:WaitForChild("Services")
 
--- ROUND-TRIP MARKER (do usuniecia po weryfikacji slice'a):
-print("[war-rng] server init OK")
-
 -- Sekcja 2: ProfileService -> StatProfileService -> PlotService -> EconomyService ->
 -- InventoryService -> IndexService -> RollService -> GridService -> BuildService ->
 -- CoreService -> CombatService -> WaveService -> SkillService -> PurchaseService.

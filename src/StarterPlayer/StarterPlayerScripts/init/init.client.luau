@@ -8,6 +8,3 @@ local Controllers = playerScripts:WaitForChild("Controllers")
 
 local EnemyRenderController = require(Controllers:WaitForChild("EnemyRenderController"))
 EnemyRenderController.start()
-
--- ROUND-TRIP MARKER (do usuniecia po zielonej bramce):
-print("[war-rng] client init OK")
