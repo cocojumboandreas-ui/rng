@@ -11,3 +11,6 @@ EnemyRenderController.start()
 
 local SkillTreeController = require(Controllers:WaitForChild("SkillTreeController"))
 SkillTreeController.start()
+
+local IndexController = require(Controllers:WaitForChild("IndexController"))
+IndexController.start()
