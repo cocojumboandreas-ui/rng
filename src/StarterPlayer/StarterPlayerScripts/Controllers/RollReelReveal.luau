@@ -1,9 +1,10 @@
 --!nonstrict
--- RollReelReveal (KLIENT) — JEDEN wysoki PIONOWY reel (od gory az do przycisku Rolki).
--- Dlugi spin (duzo itemow przelatuje). Koniczyny mnoznika sa DOCZEPIONE do kart itemow
--- (kazda karta = model + rzadkosc + nazwa + rzad koniczyn 2x/4x/[8x]). Wygrany kolysze sie caly czas.
--- RNG serwerowe (RollResult); tu tylko animacja lądowania. Mnoznik = ILOCZYN koniczyn.
+-- RollReelReveal (KLIENT) — kaskada SEKWENCYJNYCH reeli (styl qwer/ttt).
+-- Reel koniczyny ląduje 2x -> STOP -> obok startuje reel 2 (4x) -> STOP -> ... -> reel ITEMU.
+-- Rzad rosnie w prawo, wskazniki "lezki" ◀ ▶ rozszerzaja sie by objac caly rzad; latajace koniczyny (VFX).
+-- Mnoznik = mutacja (jakosc) + ilosc sztuk. RNG jest serwerowe (RollResult); tu tylko animacja lądowania.
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
 
@@ -14,13 +15,14 @@ local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChil
 local RollReelReveal = {}
 
 -- ── tuning ──
-local CARD_W = 280
-local PITCH = 168 -- rozstaw kart w pionie
-local CARD_H = PITCH - 12
-local CARD_COUNT = 44 -- DLUGI reel (duzo itemow)
-local WINNER_IDX = 38
-local SPIN_DUR = 4.7
-local WIN_Y = 0.42
+local SLOT_W = 150
+local SLOT_H = 190
+local PITCH = 150 -- rozstaw kart w pionie
+local CARD_COUNT = 24
+local WINNER_IDX = 20
+local SPIN_DUR = 1.35 -- czas jednego reela (jest ich kilka)
+local ROW_Y = 0.42
+local MAX_ROW_W = 1400 -- powyzej -> skaluj rzad w dol (mobile)
 local NEUTRAL = Color3.fromRGB(70, 74, 84)
 local MUT_COLOR = {
 	[2] = Color3.fromRGB(90, 220, 90), [4] = Color3.fromRGB(80, 160, 255), [8] = Color3.fromRGB(255, 205, 80),
@@ -33,6 +35,7 @@ local cfg = {}
 local refs = {}
 local state = { rolling = false, auto = false, wobble = nil }
 
+-- ── blur (rozmywa tylko swiat 3D, nie GUI) ──
 local function setBlur(on)
 	local blur = Lighting:FindFirstChild("WR_RevealBlur")
 	if on then
@@ -56,63 +59,94 @@ local function buildViewport(model, parent)
 end
 
 local function resolveModel(unitId)
-	return cfg.modelProvider and cfg.modelProvider(unitId) or nil
+	if cfg.modelProvider then return cfg.modelProvider(unitId) end
+	return nil
 end
 
--- KARTA-KONICZYNA (osobna pozycja w rolce — mozna ja wylosowac jak item)
+-- ── karty ──
 local function makeCloverCard(mult)
 	local card = Instance.new("Frame")
-	card.Size = UDim2.fromOffset(CARD_W, CARD_H); card.BackgroundTransparency = 1
+	card.Size = UDim2.fromOffset(SLOT_W - 8, PITCH - 12); card.BackgroundTransparency = 1
 	local clover = Instance.new("TextLabel")
-	clover.BackgroundTransparency = 1; clover.AnchorPoint = Vector2.new(0.5, 0.5); clover.Position = UDim2.fromScale(0.5, 0.5)
-	clover.Size = UDim2.fromScale(0.8, 1.15); clover.Text = "🍀"; clover.TextScaled = true
+	clover.BackgroundTransparency = 1; clover.Size = UDim2.fromScale(1, 1); clover.Text = "🍀"; clover.TextScaled = true
 	clover.TextColor3 = MUT_COLOR[mult] or Color3.new(1, 1, 1); clover.ZIndex = 2; clover.Parent = card
 	local t = Instance.new("TextLabel")
-	t.BackgroundTransparency = 1; t.AnchorPoint = Vector2.new(0.5, 0.5); t.Position = UDim2.fromScale(0.5, 0.52)
-	t.Size = UDim2.fromScale(0.55, 0.5); t.Font = Enum.Font.GothamBlack; t.Text = mult .. "x"; t.TextScaled = true
+	t.BackgroundTransparency = 1; t.AnchorPoint = Vector2.new(0.5, 0.5); t.Position = UDim2.fromScale(0.5, 0.5)
+	t.Size = UDim2.fromScale(0.7, 0.5); t.Font = Enum.Font.GothamBlack; t.Text = mult .. "x"; t.TextScaled = true
 	t.TextColor3 = Color3.new(1, 1, 1); t.ZIndex = 3; t.Parent = card
 	local st = Instance.new("UIStroke"); st.Thickness = 3; st.Color = Color3.new(0, 0, 0); st.Parent = t
 	return card
 end
 
--- KARTA-ITEM (bez doczepionych koniczyn)
 local function makeItemCard(unitId, model)
 	local card = Instance.new("Frame")
-	card.Size = UDim2.fromOffset(CARD_W, CARD_H); card.BackgroundTransparency = 1
+	card.Size = UDim2.fromOffset(SLOT_W - 8, PITCH - 12); card.BackgroundTransparency = 1
 	local u = GameConfig.Units[unitId]
 	local rN = u and u.rarityN
 	local col = (rN and cfg.resolveTier) and cfg.resolveTier(rN).color or NEUTRAL
-
 	local glow = Instance.new("TextLabel")
 	glow.BackgroundTransparency = 1; glow.AnchorPoint = Vector2.new(0.5, 0.5); glow.Position = UDim2.fromScale(0.5, 0.5)
-	glow.Size = UDim2.fromScale(0.8, 1.3); glow.Font = Enum.Font.GothamBlack; glow.Text = "✦"; glow.TextScaled = true
+	glow.Size = UDim2.fromScale(0.9, 1.4); glow.Font = Enum.Font.GothamBlack; glow.Text = "✦"; glow.TextScaled = true
 	glow.TextColor3 = col; glow.TextTransparency = 0.3; glow.ZIndex = 1; glow.Parent = card
-
 	if model then
 		local vpf = buildViewport(model, card)
-		vpf.AnchorPoint = Vector2.new(0.5, 0.5); vpf.Position = UDim2.fromScale(0.5, 0.5); vpf.Size = UDim2.fromScale(0.55, 0.9); vpf.ZIndex = 2
+		vpf.AnchorPoint = Vector2.new(0.5, 0.5); vpf.Position = UDim2.fromScale(0.5, 0.48); vpf.Size = UDim2.fromScale(0.7, 0.7); vpf.ZIndex = 2
 	end
 	if rN then
 		local odds = Instance.new("TextLabel")
-		odds.AnchorPoint = Vector2.new(0.5, 0); odds.Position = UDim2.fromScale(0.5, 0.02); odds.Size = UDim2.fromScale(0.6, 0.16)
+		odds.AnchorPoint = Vector2.new(0.5, 0); odds.Position = UDim2.fromScale(0.5, 0); odds.Size = UDim2.fromScale(0.8, 0.16)
 		odds.BackgroundTransparency = 1; odds.Font = Enum.Font.GothamBlack; odds.TextScaled = true
 		odds.Text = "1 in " .. rN; odds.TextColor3 = col; odds.ZIndex = 3; odds.Parent = card
 		local s = Instance.new("UIStroke"); s.Thickness = 2; s.Color = Color3.new(0, 0, 0); s.Parent = odds
 	end
 	local nm = Instance.new("TextLabel")
-	nm.AnchorPoint = Vector2.new(0.5, 1); nm.Position = UDim2.fromScale(0.5, 1); nm.Size = UDim2.fromScale(0.8, 0.15)
+	nm.AnchorPoint = Vector2.new(0.5, 1); nm.Position = UDim2.fromScale(0.5, 1); nm.Size = UDim2.fromScale(0.98, 0.16)
 	nm.BackgroundTransparency = 1; nm.Font = Enum.Font.GothamBold; nm.TextScaled = true
 	nm.Text = (u and u.displayName) or unitId; nm.TextColor3 = Color3.new(1, 1, 1); nm.ZIndex = 3; nm.Parent = card
 	local ns = Instance.new("UIStroke"); ns.Thickness = 2; ns.Color = Color3.new(0, 0, 0); ns.Parent = nm
-	return card
+	return card, col
 end
 
+-- ── slot (mini reel pionowy) ──
+local function buildSlot(order)
+	local win = Instance.new("Frame")
+	win.Name = "Slot"; win.Size = UDim2.fromOffset(SLOT_W, SLOT_H); win.BackgroundTransparency = 1
+	win.ClipsDescendants = true; win.LayoutOrder = order; win.Parent = refs.row
+	local strip = Instance.new("Frame")
+	strip.Name = "Strip"; strip.BackgroundTransparency = 1; strip.Position = UDim2.fromOffset(0, 0)
+	strip.Size = UDim2.new(1, 0, 0, 0); strip.Parent = win
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical; layout.Padding = UDim.new(0, 12)
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center; layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = strip
+	-- wygaszanie gora/dol
+	local fade = Instance.new("Frame"); fade.Size = UDim2.fromScale(1, 1); fade.BackgroundColor3 = Color3.fromRGB(10, 11, 16)
+	fade.BorderSizePixel = 0; fade.ZIndex = 4; fade.Parent = win
+	local fg = Instance.new("UIGradient"); fg.Rotation = 90
+	fg.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 1), NumberSequenceKeypoint.new(1, 0.2) })
+	fg.Parent = fade
+	return win, strip
+end
+
+-- reposycjonuj wskazniki "lezki" by objely caly rzad (rozszerzaja sie)
+local function frameIndicators()
+	task.wait()
+	local w = refs.row.AbsoluteSize.X
+	local scale = 1
+	if w > MAX_ROW_W then scale = MAX_ROW_W / w end
+	refs.rowScale.Scale = scale
+	local half = (w * scale) / 2 + 46
+	TweenService:Create(refs.indL, TweenInfo.new(0.25), { Position = UDim2.new(0.5, -half, ROW_Y, 0) }):Play()
+	TweenService:Create(refs.indR, TweenInfo.new(0.25), { Position = UDim2.new(0.5, half, ROW_Y, 0) }):Play()
+end
+
+-- ── latajace koniczyny (VFX szczescia) ──
 local function cloverRain(n, color)
 	for _ = 1, n do
 		task.spawn(function()
 			local c = Instance.new("TextLabel")
 			c.BackgroundTransparency = 1; c.Text = "🍀"; c.TextScaled = true; c.TextColor3 = color
-			c.Size = UDim2.fromOffset(32, 32); c.ZIndex = 2
+			c.Size = UDim2.fromOffset(34, 34); c.ZIndex = 2
 			local x = math.random(3, 97) / 100
 			c.Position = UDim2.new(x, 0, 1.1, 0); c.Rotation = math.random(-40, 40); c.Parent = refs.backdrop
 			local dur = 1.1 + math.random() * 0.7
@@ -123,6 +157,16 @@ local function cloverRain(n, color)
 	end
 end
 
+-- ── spin jednego slotu (yielduje az wyladuje) ──
+local function spinSlot(win, strip)
+	task.wait()
+	RollReel.play({
+		strip = strip, cardWidth = PITCH, winnerIndex = WINNER_IDX,
+		windowWidth = win.AbsoluteSize.Y, duration = SPIN_DUR, jitter = 6, vertical = true,
+	})
+end
+
+-- ── init ──
 function RollReelReveal.init(config)
 	cfg = config
 	local gui = Instance.new("ScreenGui")
@@ -134,36 +178,36 @@ function RollReelReveal.init(config)
 	refs.backdrop.Size = UDim2.fromScale(1, 1); refs.backdrop.BackgroundColor3 = Color3.new(0, 0, 0)
 	refs.backdrop.BackgroundTransparency = 0.5; refs.backdrop.Visible = false; refs.backdrop.Parent = gui
 
-	-- WYSOKIE pionowe okno (od gory az do przycisku Rolki)
-	refs.window = Instance.new("Frame")
-	refs.window.Name = "Window"; refs.window.AnchorPoint = Vector2.new(0.5, 0.5); refs.window.Position = UDim2.fromScale(0.5, WIN_Y)
-	refs.window.Size = UDim2.new(0, CARD_W + 20, 0.8, 0); refs.window.BackgroundTransparency = 1
-	refs.window.ClipsDescendants = true; refs.window.Visible = false; refs.window.Parent = refs.backdrop
+	-- rzad slotow (AutomaticSize -> rosnie w prawo, wysrodkowany), z UIScale do fit
+	refs.row = Instance.new("Frame")
+	refs.row.Name = "Row"; refs.row.AnchorPoint = Vector2.new(0.5, 0.5); refs.row.Position = UDim2.fromScale(0.5, ROW_Y)
+	refs.row.Size = UDim2.fromOffset(0, SLOT_H); refs.row.AutomaticSize = Enum.AutomaticSize.X
+	refs.row.BackgroundTransparency = 1; refs.row.Parent = refs.backdrop
+	refs.rowScale = Instance.new("UIScale"); refs.rowScale.Parent = refs.row
+	local rl = Instance.new("UIListLayout"); rl.FillDirection = Enum.FillDirection.Horizontal
+	rl.Padding = UDim.new(0, 10); rl.VerticalAlignment = Enum.VerticalAlignment.Center
+	rl.HorizontalAlignment = Enum.HorizontalAlignment.Center; rl.SortOrder = Enum.SortOrder.LayoutOrder; rl.Parent = refs.row
 
-	refs.strip = Instance.new("Frame")
-	refs.strip.Name = "Strip"; refs.strip.BackgroundTransparency = 1; refs.strip.Position = UDim2.fromOffset(0, 0)
-	refs.strip.Size = UDim2.new(1, 0, 0, 0); refs.strip.ZIndex = 1; refs.strip.Parent = refs.window
-	local layout = Instance.new("UIListLayout"); layout.FillDirection = Enum.FillDirection.Vertical
-	layout.Padding = UDim.new(0, 12); layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.SortOrder = Enum.SortOrder.LayoutOrder; layout.Parent = refs.strip
-
-	local fade = Instance.new("Frame"); fade.Size = UDim2.fromScale(1, 1); fade.BackgroundColor3 = Color3.fromRGB(10, 11, 16)
-	fade.BorderSizePixel = 0; fade.ZIndex = 4; fade.Parent = refs.window
-	local fg = Instance.new("UIGradient"); fg.Rotation = 90
-	fg.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.12, 1), NumberSequenceKeypoint.new(0.88, 1), NumberSequenceKeypoint.new(1, 0) })
-	fg.Parent = fade
-
-	-- wskazniki linii losowania (srodek okna)
+	-- wskazniki "lezki"
 	for _, side in ipairs({ { "indL", "▶", -1 }, { "indR", "◀", 1 } }) do
 		local ind = Instance.new("TextLabel")
-		ind.AnchorPoint = Vector2.new(0.5, 0.5); ind.Position = UDim2.new(0.5, side[3] * (CARD_W / 2 + 40), WIN_Y, 0)
+		ind.AnchorPoint = Vector2.new(0.5, 0.5); ind.Position = UDim2.new(0.5, side[3] * 130, ROW_Y, 0)
 		ind.Size = UDim2.fromOffset(50, 66); ind.BackgroundTransparency = 1
 		ind.Font = Enum.Font.GothamBlack; ind.Text = side[2]; ind.TextScaled = true
 		ind.TextColor3 = Color3.fromRGB(255, 255, 255); ind.TextTransparency = 0.1; ind.ZIndex = 6; ind.Parent = refs.backdrop
 		local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(120, 190, 255); st.Thickness = 2.5; st.Transparency = 0.15; st.Parent = ind
+		refs[side[1]] = ind
 	end
 
-	-- pasek sterowania (widoczny caly czas): Auto | Rolka | Zamknij
+	-- podsumowanie mnoznika + ilosci (pod rzedem)
+	refs.summary = Instance.new("TextLabel")
+	refs.summary.AnchorPoint = Vector2.new(0.5, 0.5); refs.summary.Position = UDim2.fromScale(0.5, ROW_Y + 0.28)
+	refs.summary.Size = UDim2.fromOffset(520, 54); refs.summary.BackgroundTransparency = 1
+	refs.summary.Font = Enum.Font.GothamBlack; refs.summary.TextScaled = true; refs.summary.Text = ""
+	refs.summary.TextColor3 = Color3.fromRGB(255, 235, 120); refs.summary.ZIndex = 6; refs.summary.Visible = false; refs.summary.Parent = refs.backdrop
+	local ss = Instance.new("UIStroke"); ss.Thickness = 3; ss.Color = Color3.new(0, 0, 0); ss.Parent = refs.summary
+
+	-- pasek sterowania (widoczny caly czas rolowania)
 	local bar = Instance.new("Frame")
 	bar.AnchorPoint = Vector2.new(0.5, 1); bar.Position = UDim2.new(0.5, 0, 1, -16); bar.Size = UDim2.fromOffset(440, 96)
 	bar.BackgroundTransparency = 1; bar.ZIndex = 6; bar.Parent = refs.backdrop
@@ -182,16 +226,43 @@ function RollReelReveal.init(config)
 		if state.auto and not state.rolling and cfg.onRollAgain then cfg.onRollAgain() end
 	end)
 	local rollaBtn = barBtn(0.5, 116, 88, Color3.fromRGB(240, 240, 240), Color3.fromRGB(30, 30, 30), "🎲\nRolka", 20)
-	rollaBtn.Activated:Connect(function() if not state.rolling and cfg.onRollAgain then cfg.onRollAgain() end end)
+	rollaBtn.Activated:Connect(function()
+		if not state.rolling and cfg.onRollAgain then cfg.onRollAgain() end
+	end)
 	local closeBtn = barBtn(0.85, 96, 72, Color3.fromRGB(35, 38, 48), Color3.fromRGB(255, 255, 255), "✖\nZamknij", 15)
 	closeBtn.Activated:Connect(function() state.auto = false; RollReelReveal.close() end)
 end
 
-local function clearStrip()
-	for _, c in ipairs(refs.strip:GetChildren()) do
-		if c:IsA("Frame") then c:Destroy() end
+-- ── play: sekwencyjna kaskada ──
+local function clearRow()
+	for _, ch in ipairs(refs.row:GetChildren()) do
+		if ch:IsA("Frame") then ch:Destroy() end
 	end
-	if refs.overlay then refs.overlay:Destroy(); refs.overlay = nil end
+end
+
+local function fillStrip(strip, kind, winnerValue)
+	for i = 1, CARD_COUNT do
+		local card
+		if i == WINNER_IDX then
+			-- wygrany: zgodnie z rodzajem tego reela (koniczyna albo item)
+			if kind == "clover" then
+				card = makeCloverCard(winnerValue)
+			else
+				local model = resolveModel(winnerValue)
+				if model then card = (makeItemCard(winnerValue, model)) end
+			end
+		else
+			-- decoye = MIKS koniczyn i itemow (koniczyna to jedna z opcji obok itemow)
+			if math.random() < 0.4 then
+				card = makeCloverCard(LADDER[math.random(1, 4)])
+			else
+				local uid = cfg.decoyIds and cfg.decoyIds[math.random(1, #cfg.decoyIds)]
+				local model = uid and resolveModel(uid)
+				if model then card = (makeItemCard(uid, model)) end
+			end
+		end
+		if card then card.LayoutOrder = i; card.Parent = strip end
+	end
 end
 
 function RollReelReveal.play(result)
@@ -203,55 +274,47 @@ function RollReelReveal.play(result)
 	if state.wobble then state.wobble:Stop(); state.wobble = nil end
 
 	refs.backdrop.Visible = true
-	refs.window.Visible = true
-	refs.window.ClipsDescendants = true
+	refs.summary.Visible = false
 	setBlur(true)
-	clearStrip()
+	clearRow()
+	refs.rowScale.Scale = 1
+	refs.indL.Position = UDim2.new(0.5, -130, ROW_Y, 0)
+	refs.indR.Position = UDim2.new(0.5, 130, ROW_Y, 0)
 
-	-- drabina koniczyn (2x -> ... -> mult): kazda to OSOBNY spin (mozesz wylosowac koniczyne)
+	-- drabina mnoznika z mutacji (2x -> ... -> mult); potem slot itemu
 	local mult = result.mutation and result.mutation.mult
 	local rungs = {}
 	local m = 2
 	while m <= (mult or 0) do rungs[#rungs + 1] = m; m *= 2 end
 
-	-- jeden spin pionowego reela lądujacy na danej pozycji (koniczyna ALBO item)
-	local function spinFor(kind, winnerValue, dur)
-		clearStrip()
-		refs.window.ClipsDescendants = true
-		refs.strip.Visible = true
-		for i = 1, CARD_COUNT do
-			local card
-			if kind == "clover" then
-				local mv = (i == WINNER_IDX) and winnerValue or LADDER[math.random(1, 4)]
-				card = makeCloverCard(mv)
-			else
-				local uid = (i == WINNER_IDX) and winnerValue or (cfg.decoyIds and cfg.decoyIds[math.random(1, #cfg.decoyIds)])
-				local model = uid and resolveModel(uid)
-				if model then card = makeItemCard(uid, model) end
-			end
-			if card then card.LayoutOrder = i; card.Parent = refs.strip end
-		end
-		task.wait()
-		RollReel.play({ strip = refs.strip, cardWidth = PITCH, winnerIndex = WINNER_IDX,
-			windowWidth = refs.window.AbsoluteSize.Y, duration = dur, jitter = 8, vertical = true })
-	end
-
-	-- sekwencja: koniczyny (kazda osobny szybki spin) -> na koniec DLUGI spin itemu
+	local order = 0
+	-- 1) sloty koniczyn — po kolei
 	for _, mv in ipairs(rungs) do
-		task.spawn(cloverRain, 10, MUT_COLOR[mv] or Color3.fromRGB(120, 255, 120))
-		spinFor("clover", mv, 1.8)
-		task.wait(0.45) -- STOP, pokaz wylosowana koniczyne
+		order += 1
+		local win, strip = buildSlot(order)
+		fillStrip(strip, "clover", mv)
+		frameIndicators()
+		task.spawn(cloverRain, 8, MUT_COLOR[mv] or Color3.fromRGB(120, 255, 120))
+		spinSlot(win, strip)
+		task.wait(0.15) -- STOP przed nastepnym
 	end
-	spinFor("item", unitId, SPIN_DUR)
+	-- 2) slot itemu — na koncu
+	order += 1
+	local iwin, istrip = buildSlot(order)
+	fillStrip(istrip, "item", unitId)
+	frameIndicators()
+	spinSlot(iwin, istrip)
 
-	-- WYGRANY item: nakladka poza layoutem (kolysze sie caly czas)
-	refs.window.ClipsDescendants = false
-	refs.strip.Visible = false
-	refs.overlay = makeItemCard(unitId, unitModel)
-	refs.overlay.AnchorPoint = Vector2.new(0.5, 0.5); refs.overlay.Position = UDim2.fromScale(0.5, 0.5); refs.overlay.ZIndex = 5
-	refs.overlay.Parent = refs.window
+	-- (bez info o ilosci w UI — nieistotne; koniczyny same pokazuja mnoznik)
+	-- WYBRANY item: nakladka POZA layoutem reela (UIListLayout nadpisywalby Position),
+	-- kolysze sie CALY CZAS az do zamkniecia/nastepnej rolki.
+	iwin.ClipsDescendants = false
+	istrip.Visible = false
+	local overlay = (makeItemCard(unitId, unitModel))
+	overlay.AnchorPoint = Vector2.new(0.5, 0.5); overlay.Position = UDim2.fromScale(0.5, 0.5); overlay.ZIndex = 5
+	overlay.Parent = iwin
 	if state.wobble then state.wobble:Stop() end
-	state.wobble = Wobble.start(refs.overlay, { rotationAmplitude = 3, rotationSpeed = 4.5, bobAmplitude = 7, bobSpeed = 4, easeIn = 0.15 })
+	state.wobble = Wobble.start(overlay, { rotationAmplitude = 3, rotationSpeed = 4.5, bobAmplitude = 7, bobSpeed = 4, easeIn = 0.15 })
 
 	state.rolling = false
 	if state.auto and cfg.onRollAgain then
@@ -265,7 +328,6 @@ function RollReelReveal.close()
 	if state.wobble then state.wobble:Stop(); state.wobble = nil end
 	setBlur(false)
 	refs.backdrop.Visible = false
-	refs.window.Visible = false
 end
 
 return RollReelReveal
