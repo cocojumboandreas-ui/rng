@@ -76,8 +76,9 @@ wtyczki Rojo. `rojo serve` + plugin Rojo → Connect działa tak samo (partial n
 ```powershell
 # walidacja
 /d/rojo/rojo-7.6.1-windows-x86_64/rojo build --output build.rbxm   # tylko test; build/ w .gitignore
-# pełny push src/ -> Studio (z katalogu D:\RobloxProjects)
-.\Invoke-Studio.ps1 -File jobs\push_full_sync.luau
+# pełny sync src/ -> Studio (job jest GENEROWANY — patrz tools/README.md)
+python tools\gen_full_sync.py jobs\push_full_sync.luau
+.\Invoke-Studio.ps1 -File jobs\push_full_sync.luau                 # z D:\RobloxProjects (hub StudioBridge on)
 ```
 
 **Spójność disk = git(origin) = plac Studio = chmura Roblox:**
