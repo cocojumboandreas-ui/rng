@@ -107,7 +107,7 @@ end
 -- BEZ RAMEK: karta = tylko poswiata (starburst w kolorze rzadkosci) + model 3D na wierzchu.
 local function makeCard(model: Instance, glowColor: Color3): Frame
 	local card = Instance.new("Frame")
-	card.Size = UDim2.fromOffset(TUNING.cardWidth - CARD_PADDING, 168)
+	card.Size = UDim2.fromOffset(250, TUNING.cardWidth - CARD_PADDING) -- pion: szeroka + niska (wys = pitch)
 	card.BackgroundTransparency = 1
 
 	-- aura/poswiata za itemem (bez tekstury: skalowany starburst ✦)
@@ -207,8 +207,8 @@ function RollReelReveal.init(config)
 	refs.window = Instance.new("Frame")
 	refs.window.Name = "Window"
 	refs.window.AnchorPoint = Vector2.new(0.5, 0.5)
-	refs.window.Position = UDim2.fromScale(0.5, 0.42)
-	refs.window.Size = UDim2.new(0.9, 0, 0, 200)
+	refs.window.Position = UDim2.fromScale(0.5, 0.44)
+	refs.window.Size = UDim2.new(0, 300, 0.72, 0) -- PIONOWY reel: waski + wysoki
 	refs.window.BackgroundColor3 = Color3.fromRGB(12, 13, 18)
 	refs.window.BackgroundTransparency = 1 -- BEZ RAMKI (itemy plyna po rozmytym tle, nie w pudelku)
 	refs.window.ClipsDescendants = true
@@ -221,14 +221,14 @@ function RollReelReveal.init(config)
 	refs.strip = Instance.new("Frame")
 	refs.strip.Name = "Strip"
 	refs.strip.BackgroundTransparency = 1
-	refs.strip.Position = UDim2.fromOffset(0, 16)
-	refs.strip.Size = UDim2.new(0, 0, 1, -32)
+	refs.strip.Position = UDim2.fromOffset(0, 0)
+	refs.strip.Size = UDim2.new(1, 0, 0, 0) -- pelna szerokosc, rosnie w dol
 	refs.strip.ZIndex = 1
 	refs.strip.Parent = refs.window
 	local layout = Instance.new("UIListLayout")
-	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.FillDirection = Enum.FillDirection.Vertical -- PIONOWO
 	layout.Padding = UDim.new(0, CARD_PADDING)
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = refs.strip
 
@@ -242,6 +242,7 @@ function RollReelReveal.init(config)
 	fade.ZIndex = 4
 	fade.Parent = refs.window
 	local fadeGrad = Instance.new("UIGradient")
+	fadeGrad.Rotation = 90 -- pionowe wygaszanie (gora/dol)
 	fadeGrad.Transparency = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0),
 		NumberSequenceKeypoint.new(0.14, 1),
@@ -411,12 +412,13 @@ function RollReelReveal.play(result)
 	task.wait()
 	RollReel.play({
 		strip = refs.strip,
-		cardWidth = TUNING.cardWidth,
+		cardWidth = TUNING.cardWidth, -- pitch (wysokosc rozstawu w pionie)
 		winnerIndex = TUNING.winnerIndex,
-		windowWidth = refs.window.AbsoluteSize.X,
+		windowWidth = refs.window.AbsoluteSize.Y, -- dlugosc okna w pionie
 		duration = TUNING.duration,
 		easingStyle = TUNING.easingStyle,
 		jitter = TUNING.jitter,
+		vertical = true,
 	})
 
 	-- Land "clunk": a scale pop on the winner card (separate property, no scroll seam).

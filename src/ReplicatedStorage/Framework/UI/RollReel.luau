@@ -29,27 +29,36 @@ local function offsetForIndex(index: number, cardWidth: number, windowWidth: num
 end
 
 -- Plays the reel. YIELDS in the calling thread until the animation finishes.
+-- config.vertical = true -> przewija w PIONIE (oś Y); inaczej w poziomie (oś X).
+-- cardWidth = pitch (rozstaw wzdluz osi przewijania), windowWidth = dlugosc okna wzdluz tej osi.
 function RollReel.play(config: ReelConfig)
 	local duration = config.duration or 5
 	local easingStyle = config.easingStyle or Enum.EasingStyle.Quint
 	local jitter = config.jitter or 0
 	local strip = config.strip
+	local vertical = config.vertical
 
-	-- Start with the first cards showing on the left edge of the window.
-	local yScale = strip.Position.Y.Scale
-	local yOffset = strip.Position.Y.Offset
-	strip.Position = UDim2.new(0, 0, yScale, yOffset)
+	-- reset pozycji na osi przewijania do 0 (druga os bez zmian)
+	if vertical then
+		strip.Position = UDim2.new(strip.Position.X.Scale, strip.Position.X.Offset, 0, 0)
+	else
+		strip.Position = UDim2.new(0, 0, strip.Position.Y.Scale, strip.Position.Y.Offset)
+	end
 
 	local targetOffset = offsetForIndex(config.winnerIndex, config.cardWidth, config.windowWidth)
 	if jitter > 0 then
 		targetOffset += math.random(-jitter, jitter)
 	end
 
-	local info = TweenInfo.new(duration, easingStyle, Enum.EasingDirection.Out)
-	local tween = TweenService:Create(strip, info, {
-		Position = UDim2.new(0, targetOffset, yScale, yOffset),
-	})
+	local goal
+	if vertical then
+		goal = UDim2.new(strip.Position.X.Scale, strip.Position.X.Offset, 0, targetOffset)
+	else
+		goal = UDim2.new(0, targetOffset, strip.Position.Y.Scale, strip.Position.Y.Offset)
+	end
 
+	local info = TweenInfo.new(duration, easingStyle, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(strip, info, { Position = goal })
 	tween:Play()
 	tween.Completed:Wait()
 end
