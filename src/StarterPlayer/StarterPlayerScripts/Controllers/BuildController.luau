@@ -124,6 +124,15 @@ local function makeGhost()
 	end
 	g.Parent = Workspace
 	_ghost = g
+	-- podglad = WIDOCZNY realny model + Highlight walidacji (zielony/czerwony), zamiast przezroczystego ghosta
+	local hl = Instance.new("Highlight")
+	hl.Adornee = g
+	hl.DepthMode = Enum.HighlightDepthMode.Occluded
+	hl.FillColor = GREEN
+	hl.FillTransparency = 0.7
+	hl.OutlineColor = GREEN
+	hl.OutlineTransparency = 0
+	hl.Parent = g
 	if _sel.isWeapon and _sel.range then
 		local ring = Instance.new("Part")
 		ring.Shape = Enum.PartType.Cylinder
@@ -152,7 +161,11 @@ local function updateGhost()
 	local _, bb = _ghost:GetBoundingBox()
 	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, groundY - (_ghost:GetPivot().Position.Y - bb.Y * 0.5), 0))
 	local ok = validAt(c.x, c.z)
-	tint(_ghost, ok and GREEN or RED, 0.45)
+	local hl = _ghost:FindFirstChildOfClass("Highlight")
+	if hl then
+		hl.FillColor = ok and GREEN or RED
+		hl.OutlineColor = ok and GREEN or RED
+	end
 	if _ring then
 		_ring.Parent = Workspace
 		_ring.CFrame = CFrame.new(center.X, groundY + 0.3, center.Z) * CFrame.Angles(0, 0, math.rad(90))
