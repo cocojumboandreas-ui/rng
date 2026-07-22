@@ -104,7 +104,7 @@ local Nodes = {}
 -- root wymagany przez pack
 Nodes["root"] = { icon = "", text = "DRZEWO\nUMIEJĘTNOŚCI" }
 
-for _, branch in ipairs(LAYOUT) do
+for bi, branch in ipairs(LAYOUT) do
 	local branchNodeId = "b:" .. branch.id
 	Nodes[branchNodeId] = {
 		parentNodeId = "root",
@@ -113,9 +113,10 @@ for _, branch in ipairs(LAYOUT) do
 		text = branch.label,
 		inheritVisibility = true, -- pokaz zawsze gdy root widoczny
 		wrBranch = branch.id, -- pole nasze (pack ignoruje) -> kolor w controllerze
+		wrBranchIdx = bi, -- kolejnosc galezi (progresywne odkrywanie)
 	}
 
-	for _, entry in ipairs(branch.skills) do
+	for si, entry in ipairs(branch.skills) do
 		local skillId = entry.skill
 		local node = SkillConfig.nodes[skillId]
 		if node then
@@ -129,8 +130,10 @@ for _, branch in ipairs(LAYOUT) do
 					text = tostring(rank),
 					headerText = (rank == 1) and node.label or nil,
 					price = { quantity = costFor(node, rank), currencyIcon = currencyIcon },
+					wrBranch = branch.id, -- galaz skilla (kolor + gating)
+					wrBranchIdx = bi, -- kolejnosc galezi
+					wrSkillIdx = si, -- kolejnosc skilla w galezi (odkrywaj po kolei)
 					inheritVisibility = false, -- odkrywaj rank po ranku (po zakupie poprzedniego)
-					wrBranch = branch.id, -- pole nasze (pack ignoruje) -> kolor w controllerze
 				}
 			end
 		end

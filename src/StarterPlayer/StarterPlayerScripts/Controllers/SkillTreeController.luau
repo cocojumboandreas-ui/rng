@@ -444,11 +444,71 @@ function SkillTreeController.start()
 		end
 	end
 
-	-- hook zasiegu odkrycia: root/galaz zawsze; rank do frontier+LOOKAHEAD (reszta ukryta)
+	-- ── progresywne GALEZIE + skille: mapy kolejnosci ──
+	local branchOrder = {} -- [idx] = branchId
+	local branchSkills = {} -- [branchId] = { [skillIdx] = skillId }
+	local skillMeta = {} -- [skillId] = { branch, branchIdx, skillIdx }
+	for id, cfg in pairs(nodes) do
+		if string.sub(id, 1, 2) == "b:" and cfg.wrBranchIdx then
+			branchOrder[cfg.wrBranchIdx] = cfg.wrBranch
+		end
+		local sId, rk = parseNodeId(id)
+		if sId and rk == 1 and cfg.wrSkillIdx then
+			branchSkills[cfg.wrBranch] = branchSkills[cfg.wrBranch] or {}
+			branchSkills[cfg.wrBranch][cfg.wrSkillIdx] = sId
+			skillMeta[sId] = { branch = cfg.wrBranch, branchIdx = cfg.wrBranchIdx, skillIdx = cfg.wrSkillIdx }
+		end
+	end
+
+	local function branchStarted(branchId) -- czy w galezi ruszyl jakis skill (>=rank1)
+		local sk = branchSkills[branchId]
+		if not sk then
+			return false
+		end
+		for _, sId in pairs(sk) do
+			if frontier(sId) >= 1 then
+				return true
+			end
+		end
+		return false
+	end
+	local function branchUnlocked(branchIdx) -- 1. zawsze; kolejna gdy poprzednia ruszyla
+		if not branchIdx or branchIdx <= 1 then
+			return true
+		end
+		local prev = branchOrder[branchIdx - 1]
+		return prev ~= nil and branchStarted(prev)
+	end
+	local function skillUnlocked(skillId) -- 1. w galezi; kolejny gdy poprzedni ruszyl
+		local m = skillMeta[skillId]
+		if not m then
+			return true
+		end
+		if not branchUnlocked(m.branchIdx) then
+			return false
+		end
+		if m.skillIdx <= 1 then
+			return true
+		end
+		local prev = branchSkills[m.branch] and branchSkills[m.branch][m.skillIdx - 1]
+		return prev ~= nil and frontier(prev) >= 1
+	end
+
+	-- hook zasiegu: root zawsze; galaz gdy odblokowana; rank gdy skill odblokowany + do frontier+LOOKAHEAD
 	NodeTreeClient.wrVisible = function(nodeId)
+		if nodeId == "root" then
+			return true
+		end
+		if string.sub(nodeId, 1, 2) == "b:" then
+			local cfg = nodes[nodeId]
+			return cfg ~= nil and branchUnlocked(cfg.wrBranchIdx)
+		end
 		local skillId, rank = parseNodeId(nodeId)
 		if not (skillId and rank) then
 			return true
+		end
+		if not skillUnlocked(skillId) then
+			return false
 		end
 		return rank <= frontier(skillId) + LOOKAHEAD
 	end
