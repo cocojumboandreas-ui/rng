@@ -6,6 +6,8 @@
 -- Stan poczatkowy: GetSkillState (RF) -> oznacz posiadane ranki. HUD "SKILLE" toggluje widocznosc.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -90,8 +92,8 @@ function SkillTreeController.start()
 	openBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 90)
 	openBtn.TextColor3 = Color3.new(1, 1, 1)
 	openBtn.Font = Enum.Font.GothamBold
-	openBtn.TextSize = 16
-	openBtn.Text = "SKILLE"
+	openBtn.TextSize = 15
+	openBtn.Text = "🌳 Umiejętności"
 	openBtn.Parent = gui
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 10)
@@ -99,6 +101,54 @@ function SkillTreeController.start()
 
 	openBtn.MouseButton1Click:Connect(function()
 		NodeTreeClient.setIsTreeVisible(not NodeTreeClient.isTreeVisible())
+	end)
+
+	-- ── nawigacja po drzewie: scroll = zoom (obsluguje pack), RMB trzymany = pan ──
+	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+	local ntGui = playerGui:WaitForChild("NodeTreeGui")
+	local mainFrame = ntGui:WaitForChild("MainFrame")
+
+	local panning = false
+	local lastMouse = Vector2.zero
+
+	-- Gdy drzewko otwarte: sink RMB przez caly czas -> kamera sie nie obraca, RMB = pan.
+	NodeTreeClient.treeVisibilityChanged:Connect(function(isVisible)
+		if isVisible then
+			ContextActionService:BindActionAtPriority(
+				"WR_TreePanSink",
+				function()
+					return Enum.ContextActionResult.Sink
+				end,
+				false,
+				Enum.ContextActionPriority.High.Value,
+				Enum.UserInputType.MouseButton2
+			)
+		else
+			panning = false
+			ContextActionService:UnbindAction("WR_TreePanSink")
+		end
+	end)
+
+	UserInputService.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton2 and NodeTreeClient.isTreeVisible() then
+			panning = true
+			lastMouse = UserInputService:GetMouseLocation()
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if panning and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local m = UserInputService:GetMouseLocation()
+			local delta = m - lastMouse
+			lastMouse = m
+			mainFrame.Position += UDim2.fromOffset(delta.X, delta.Y)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			panning = false
+		end
 	end)
 end
 
