@@ -224,9 +224,32 @@ function SkillTreeController.start()
 	local panning = false
 	local lastMouse = Vector2.zero
 
+	-- modal: przy otwartym drzewku chowamy CALE inne UI (zostaje drzewko + naglowek + Zamknij)
+	local hiddenGuis = {}
+	local function setHudHidden(hidden)
+		if hidden then
+			table.clear(hiddenGuis)
+			for _, g in ipairs(playerGui:GetChildren()) do
+				if g:IsA("ScreenGui") and g ~= gui and g ~= ntGui and g.Enabled then
+					g.Enabled = false
+					table.insert(hiddenGuis, g)
+				end
+			end
+		else
+			for _, g in ipairs(hiddenGuis) do
+				if g and g.Parent then
+					g.Enabled = true
+				end
+			end
+			table.clear(hiddenGuis)
+		end
+	end
+
 	NodeTreeClient.treeVisibilityChanged:Connect(function(isVisible)
 		header.Visible = isVisible
 		closeBtn.Visible = isVisible
+		openBtn.Visible = not isVisible -- gdy modal otwarty: tylko Zamknij
+		setHudHidden(isVisible)
 		if isVisible then
 			task.delay(0.35, function()
 				local bf = ntGui:FindFirstChild("BackgroundFrame")
