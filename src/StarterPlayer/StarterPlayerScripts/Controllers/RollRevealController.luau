@@ -295,17 +295,32 @@ function RollRevealController.start()
 	_finishLbl.Text = ""; _finishLbl.ZIndex = 10; _finishLbl.Visible = false; _finishLbl.Parent = gui
 	local fstroke = Instance.new("UIStroke"); fstroke.Color = Color3.new(0, 0, 0); fstroke.Thickness = 2; fstroke.Parent = _finishLbl
 
-	-- TYMCZASOWY przycisk ROLL (fires RollRequest). Re-hook do docelowego UI rolki pozniej.
-	local rollBtn = Instance.new("TextButton")
-	-- HUD: przycisk glowny "ROLL" (Rolka) — dol-srodek, najwiekszy (jak we wzorcu dobre.png)
-	rollBtn.Size = UDim2.fromOffset(220, 70); rollBtn.AnchorPoint = Vector2.new(0.5, 1)
-	rollBtn.Position = UDim2.new(0.5, 0, 1, -24)
-	rollBtn.BackgroundColor3 = Color3.fromRGB(60, 110, 70); rollBtn.TextColor3 = Color3.new(1, 1, 1)
-	rollBtn.Font = Enum.Font.GothamBlack; rollBtn.TextSize = 26; rollBtn.Text = "ROLL"; rollBtn.ZIndex = 40
+	-- przycisk ROLL = KOSTKA (ikona z packa "RNG Roll"), wpieta pod nasz RollRequest.
+	local rollBtn = Instance.new("ImageButton")
+	-- HUD: dol-srodek, kwadratowa kostka
+	rollBtn.Size = UDim2.fromOffset(112, 112); rollBtn.AnchorPoint = Vector2.new(0.5, 1)
+	rollBtn.Position = UDim2.new(0.5, 0, 1, -14)
+	rollBtn.BackgroundTransparency = 1
+	rollBtn.Image = "rbxassetid://92245991358603" -- kostka (RollButton.Icon z dema Roll v1.0)
+	rollBtn.ScaleType = Enum.ScaleType.Fit
+	rollBtn.ZIndex = 40
 	rollBtn.Parent = gui
-	local rbCorner = Instance.new("UICorner"); rbCorner.CornerRadius = UDim.new(0, 12); rbCorner.Parent = rollBtn
+	-- napis "Roll" na dole kostki (jak w packu)
+	local rbName = Instance.new("TextLabel")
+	rbName.Size = UDim2.new(1, 0, 0, 22); rbName.AnchorPoint = Vector2.new(0.5, 1)
+	rbName.Position = UDim2.new(0.5, 0, 0.98, 0)
+	rbName.BackgroundTransparency = 1; rbName.Text = "Roll"; rbName.TextColor3 = Color3.new(1, 1, 1)
+	rbName.Font = Enum.Font.GothamBlack; rbName.TextSize = 20; rbName.ZIndex = 41; rbName.Parent = rollBtn
+	local rbStroke = Instance.new("UIStroke"); rbStroke.Thickness = 2; rbStroke.Color = Color3.new(0, 0, 0); rbStroke.Parent = rbName
 	rollBtn.MouseButton1Click:Connect(function()
 		Net.get("RollRequest"):FireServer()
+	end)
+	-- klik-feedback: lekkie wcisniecie
+	rollBtn.MouseButton1Down:Connect(function()
+		rollBtn.Size = UDim2.fromOffset(102, 102)
+	end)
+	rollBtn.MouseButton1Up:Connect(function()
+		rollBtn.Size = UDim2.fromOffset(112, 112)
 	end)
 
 	-- reel-reveal (slot machine): dekoje = wszystkie rollowalne unitId; model = UnitModelFactory
