@@ -337,25 +337,18 @@ function RollRevealController.start()
 		onRollAgain = function() Net.get("RollRequest"):FireServer() end, -- Rolka/Auto w pasku reveala
 	})
 
+	-- reveal packa "RNG Roll" sterowany NASZYM wynikiem (nasze modele w viewport + audio packa).
+	-- Stary RollReelReveal wylaczony (ich wyglad zamiast naszego).
+	local RollClient = require(game:GetService("ReplicatedStorage"):WaitForChild("Roll"):WaitForChild("RollClient"))
+	RollClient.setBaseRollTime(2.5) -- czas reveala (snappy)
+
 	Net.get("RollResult").OnClientEvent:Connect(function(result)
 		if type(result) ~= "table" or not result.unitId then
 			return
 		end
-		if REEL_REVEAL then
-			-- nazwa do rewealu (klient dokleja displayName + ew. mnoznik mutacji; RNG zostaje serwerowe)
-			local unit = GameConfig.Units[result.unitId]
-			local nm = (unit and unit.displayName) or result.unitId
-			if result.mutation and result.mutation.mult then
-				nm = nm .. "  (×" .. result.mutation.mult .. ")"
-			end
-			result.name = nm
-			task.spawn(RollReelReveal.play, result)
-		else
-			if #_queue < 6 then
-				_queue[#_queue + 1] = result
-			end
-			pump()
-		end
+		RollClient.playRoll({
+			columns = { { itemId = result.unitId, rollItemType = "Item" } },
+		}, function() end)
 	end)
 end
 
