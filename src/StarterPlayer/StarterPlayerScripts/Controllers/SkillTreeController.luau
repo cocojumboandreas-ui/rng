@@ -353,6 +353,14 @@ function SkillTreeController.start()
 		header.Visible = isVisible
 		closeBtn.Visible = isVisible
 		if isVisible then
+			-- polprzezroczyste tlo zamiast czarnego void (pack ustawia BackgroundFrame transp=0
+			-- -> wygladalo jakby caly ekran zniknal). Ustaw po tweenie otwarcia packa (~0.3s).
+			task.delay(0.35, function()
+				local bf = ntGui:FindFirstChild("BackgroundFrame")
+				if bf and NodeTreeClient.isTreeVisible() then
+					bf.Transparency = 0.45
+				end
+			end)
 			ContextActionService:BindActionAtPriority(
 				"WR_TreePanSink",
 				function()
