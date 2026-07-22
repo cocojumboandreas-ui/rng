@@ -4,7 +4,9 @@
 -- Pack = tylko wizual (owned/nie, layout z SkillTreeLayout). Ekonomia + efekty = serwer:
 --   klik wezla "<skillId>#<rank>" -> SkillPurchase(skillId) (RF) -> ok -> setIsNodeOwned(true).
 -- Warstwa nasza (git): HUD "Umiejetnosci" toggle, naglowek (postep X/Y + salda 🪙/🎲 na zywo),
---   przycisk Zamknij, nawigacja (scroll zoom = pack, RMB trzymany = pan).
+--   Zamknij, nawigacja (scroll zoom = pack, RMB trzymany = pan), KOLORY body (bialy hex + tint
+--   per galaz), "?" na zablokowanych (pack pokazuje wszystko, controller styluje), tooltipy.
+-- Sync odporny na desync: self-heal po zakupie (oznacz 1..resp.rank) + re-sync przy otwarciu.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -56,6 +58,7 @@ function SkillTreeController.start()
 		end
 	end
 	local coins, rolls = 0, 0
+	local restyle -- forward decl; przypisany po zbudowaniu mapy instancji wezlow
 
 	-- ── naglowek + zamknij (osobne GUI nad drzewkiem) ──
 	local gui = Instance.new("ScreenGui")
@@ -117,6 +120,9 @@ function SkillTreeController.start()
 			ownedIds[id] = true
 			NodeTreeClient.setIsNodeOwned(id, true)
 			refreshHeader()
+			if restyle then
+				restyle()
+			end
 		end
 	end
 
@@ -127,20 +133,28 @@ function SkillTreeController.start()
 		end
 	end
 
-	-- stan poczatkowy z serwera
-	local ok, state = pcall(function()
-		return Net.get("GetSkillState"):InvokeServer()
-	end)
-	if ok and state then
-		coins = state.coins or 0
-		rolls = state.spendableRolls or 0
-		for skillId, rank in pairs(state.ranks or {}) do
-			for k = 1, rank do
-				markOwned(skillId .. "#" .. k)
+	-- sync posiadanych rankow z serwera (idempotentne; server = zrodlo prawdy, ranki tylko rosna).
+	-- Wolane na starcie ORAZ przy kazdym otwarciu (leczy wyscig z ProfileLoaded i desync).
+	local function syncOwned()
+		local ok, state = pcall(function()
+			return Net.get("GetSkillState"):InvokeServer()
+		end)
+		if ok and state then
+			if state.coins ~= nil then
+				coins = state.coins
+			end
+			if state.spendableRolls ~= nil then
+				rolls = state.spendableRolls
+			end
+			for skillId, rank in pairs(state.ranks or {}) do
+				for k = 1, rank do
+					markOwned(skillId .. "#" .. k)
+				end
 			end
 		end
+		refreshHeader()
 	end
-	refreshHeader()
+	syncOwned()
 
 	-- zakup na klik (serwer waliduje koszt/kolejnosc/walute)
 	for nodeId in pairs(nodes) do
@@ -154,8 +168,11 @@ function SkillTreeController.start()
 				local okc = pcall(function()
 					resp = Net.get("SkillPurchase"):InvokeServer(skillId)
 				end)
-				if okc and resp and resp.ok and resp.rank == rank then
-					markOwned(nodeId)
+				-- self-heal: oznacz wszystkie ranki do serwerowego (odporne na desync klient<->serwer)
+				if okc and resp and resp.ok and resp.rank then
+					for k = 1, resp.rank do
+						markOwned(skillId .. "#" .. k)
+					end
 				end
 			end)
 		end
@@ -189,7 +206,11 @@ function SkillTreeController.start()
 	local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 10); cc.Parent = closeBtn
 
 	openBtn.MouseButton1Click:Connect(function()
-		NodeTreeClient.setIsTreeVisible(not NodeTreeClient.isTreeVisible())
+		local willOpen = not NodeTreeClient.isTreeVisible()
+		if willOpen then
+			syncOwned() -- odswiez posiadane ranki z serwera przy otwarciu
+		end
+		NodeTreeClient.setIsTreeVisible(willOpen)
 	end)
 	closeBtn.MouseButton1Click:Connect(function()
 		NodeTreeClient.setIsTreeVisible(false)
@@ -200,10 +221,18 @@ function SkillTreeController.start()
 	local ntGui = playerGui:WaitForChild("NodeTreeGui")
 	local mainFrame = ntGui:WaitForChild("MainFrame")
 
-	-- ── tooltipy (mapowanie instancja->nodeId przez atrybut WR_NodeId z packa) ──
-	-- (kolor body wezla zostawiamy domyslny — pack koloruje przez podmiane obrazka hexa,
-	--  a nie tint; kolorowa paleta hexow = przyszly polish. Ikony roznicuja galezie.)
+	-- ── kolory (bialy fill hex + tint per galaz), "?" zablokowane, tooltipy ──
+	-- Mapowanie instancja->nodeId przez atrybut WR_NodeId (dodany w packu NodeTreeClient).
 	local SkillConfig = require(ReplicatedStorage.Content.Config:WaitForChild("SkillConfig"))
+	local FILL = "rbxassetid://72596611749182" -- bialy hex (playmakers) do tintowania
+	local BRANCH_COLOR = {
+		RNG = Color3.fromRGB(70, 205, 110),
+		Eco = Color3.fromRGB(240, 195, 60),
+		Combat = Color3.fromRGB(230, 75, 75),
+		Base = Color3.fromRGB(70, 140, 240),
+	}
+	local ROOT_COLOR = Color3.fromRGB(150, 100, 235)
+	local LOCK_COLOR = Color3.fromRGB(70, 74, 90)
 	local STAT_LABEL = {
 		luck = "szczescie", rollSpeed = "tempo rolki", mutChance = "szansa mutacji",
 		cellBudget = "budzet cel", dmgMult = "obrazenia", fireRateMult = "szybkostrzelnosc",
@@ -212,6 +241,11 @@ function SkillTreeController.start()
 	}
 	local CUR_EMOJI = { Coins = "🪙", Rolls = "🎲" }
 
+	pcall(function()
+		game:GetService("ContentProvider"):PreloadAsync({ FILL })
+	end)
+
+	-- tooltip (jeden, reuzywalny)
 	local tip = Instance.new("Frame")
 	tip.Size = UDim2.fromOffset(230, 58); tip.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
 	tip.BackgroundTransparency = 0.05; tip.BorderSizePixel = 0; tip.Visible = false
@@ -244,9 +278,12 @@ function SkillTreeController.start()
 		tip.Visible = true
 	end
 
+	-- mapa instancja wezla po nodeId + podpiecie tooltipow
+	local instById = {}
 	for _, inst in ipairs(mainFrame:GetDescendants()) do
 		local id = inst:GetAttribute("WR_NodeId")
 		if id and inst:IsA("GuiButton") then
+			instById[id] = inst
 			local skillId, rank = parseNodeId(id)
 			if skillId and rank then
 				inst.MouseEnter:Connect(function()
@@ -258,6 +295,47 @@ function SkillTreeController.start()
 			end
 		end
 	end
+
+	-- wyglad jednego wezla: available = kolor galezi + tresc; locked = szary "?"
+	local function styleNode(inst, id, available)
+		local cfg = nodes[id]
+		local bg = inst:FindFirstChild("Background")
+		local bgIcon = bg and bg:FindFirstChild("Icon")
+		if bgIcon then
+			bgIcon.Image = FILL
+			bgIcon.ImageColor3 = available and ((cfg and cfg.wrBranch and BRANCH_COLOR[cfg.wrBranch]) or ROOT_COLOR) or LOCK_COLOR
+		end
+		local mainIcon = inst:FindFirstChild("Icon")
+		local ptext = inst:FindFirstChild("PrimaryText")
+		local price = inst:FindFirstChild("Price")
+		local hdr = inst:FindFirstChild("HeaderText")
+		if available then
+			if mainIcon then mainIcon.ImageTransparency = 0 end
+			if price then price.Visible = true end
+			if ptext then ptext.Text = (cfg and cfg.text) or "" end
+			if hdr and cfg and cfg.headerText then hdr.Visible = true end
+		else
+			if mainIcon then mainIcon.ImageTransparency = 1 end
+			if price then price.Visible = false end
+			if ptext then ptext.Text = "?" end
+			if hdr then hdr.Visible = false end
+		end
+	end
+
+	-- available = kupione LUB nastepne do kupienia (poprzedni rank kupiony / rank1 / galaz-root)
+	restyle = function()
+		for id, inst in pairs(instById) do
+			local skillId, rank = parseNodeId(id)
+			local available
+			if skillId and rank then
+				available = ownedIds[id] or rank == 1 or ownedIds[skillId .. "#" .. (rank - 1)] == true
+			else
+				available = true
+			end
+			styleNode(inst, id, available)
+		end
+	end
+	restyle()
 
 	local panning = false
 	local lastMouse = Vector2.zero
