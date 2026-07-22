@@ -29,17 +29,44 @@ local function isBossWave(waveNumber: number): boolean
 	return waveNumber > 0 and bw ~= nil and bw > 0 and (waveNumber % bw == 0)
 end
 
+-- ── tiery wrogow (dane w WaveConfig; tu sam WZOR wyboru) ────────────────────────
+-- najwyzszy odblokowany tier dla fali n (rosnie co tierEvery fal, do #tierTypes)
+local function maxTierFor(waveNumber: number): number
+	local every = GameConfig.Wave.tierEvery or 6
+	local nTiers = #GameConfig.Wave.tierTypes
+	return math.clamp(1 + math.floor((waveNumber - 1) / every), 1, nTiers)
+end
+
+-- deterministyczny wybor wariantu wroga w tierze (salt = numer fali -> stabilne, ale zmienne miedzy falami)
+local function pickTierType(tier: number, salt: number): string
+	local list = GameConfig.Wave.tierTypes[tier]
+	if not list or #list == 0 then
+		return "grunt"
+	end
+	return list[(salt % #list) + 1]
+end
+
+-- boss dla boss-fali: k = n/bossWave (1,2,3...) -> bossTiers[k] (coraz wiekszy, k>#-> ostatni)
+local function bossTypeFor(waveNumber: number): string
+	local bosses = GameConfig.Wave.bossTiers or { "boss" }
+	local bw = GameConfig.Wave.bossWave or 20
+	local k = math.max(1, math.floor(waveNumber / math.max(bw, 1)))
+	return bosses[math.clamp(k, 1, #bosses)]
+end
+
 -- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count}}, poolSize, formation)
 local function waveComposition(waveNumber: number)
-	-- boss-fala: 1 boss + zredukowani grunci (zawsze, niezaleznie od jawnych waves[n])
+	-- boss-fala: 1 boss (rosnacy z numerem) + podklad wrogow (tier maxTier-1)
 	if isBossWave(waveNumber) then
 		local grunts = GameConfig.Wave.bossGrunts or 0
-		local comp = { { "boss", 1 } }
+		local comp = { { bossTypeFor(waveNumber), 1 } }
 		if grunts > 0 then
-			comp[#comp + 1] = { "grunt", grunts }
+			local backTier = math.max(1, maxTierFor(waveNumber) - 1)
+			comp[#comp + 1] = { pickTierType(backTier, waveNumber), grunts }
 		end
 		return comp, 1 + grunts, { cols = 6 }
 	end
+	-- jawna fala (np. [1]) — bez zmian
 	local w = GameConfig.Wave.waves[waveNumber]
 	if w then
 		local pool = 0
@@ -48,10 +75,35 @@ local function waveComposition(waveNumber: number)
 		end
 		return w.composition, pool, w.formation
 	end
-	-- generowana wzorem (WZOR w configu): pool = poolBase + n*poolPerWave, sami grunci
+	-- generowana wzorem: pula z formuly, rozdzielona miedzy aktywne tiery (okno tierWindow, waga ~tier).
+	-- Wyzszy tier = wieksza waga -> fala wizualnie "przechodzi" na nowe jednostki, z podkladem nizszych.
 	local s = GameConfig.Wave.scaling
 	local pool = math.floor(s.poolBase + waveNumber * s.poolPerWave)
-	return { { "grunt", pool } }, pool, { cols = 6 }
+	local maxTier = maxTierFor(waveNumber)
+	local window = GameConfig.Wave.tierWindow or 3
+	local lowTier = math.max(1, maxTier - window + 1)
+
+	local totalW = 0
+	for tr = lowTier, maxTier do
+		totalW += tr
+	end
+	local comp = {}
+	local assigned = 0
+	local i = 0
+	for tr = lowTier, maxTier do
+		i += 1
+		local cnt
+		if tr == maxTier then
+			cnt = pool - assigned -- reszta puli na najwyzszy tier (nie gubimy sztuk przez floor)
+		else
+			cnt = math.floor(pool * tr / totalW)
+			assigned += cnt
+		end
+		if cnt > 0 then
+			comp[#comp + 1] = { pickTierType(tr, waveNumber + i), cnt }
+		end
+	end
+	return comp, pool, { cols = 6 }
 end
 
 local function plotIdOf(player): number

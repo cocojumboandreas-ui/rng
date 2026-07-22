@@ -83,6 +83,11 @@ local function waveHpMult(waveNumber: number): number
 	return GameConfig.Wave.scaling.hpGrowth ^ (waveNumber - 1)
 end
 
+-- mnoznik obrazen wroga dla fali n (skaluje atkDmg -> DEF bloku spowalnia, nie zatrzymuje na zawsze)
+local function waveAtkMult(waveNumber: number): number
+	return (GameConfig.Wave.scaling.dmgGrowth or 1) ^ (waveNumber - 1)
+end
+
 -- ── API (§3.9) ────────────────────────────────────────────────────────────────
 function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	local et = GameConfig.Wave.enemyTypes[spec.enemyTypeId]
@@ -91,6 +96,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 		return
 	end
 	local hp = et.hp * waveHpMult(waveNumber)
+	local atkDmg = (et.atkDmg or 0) * waveAtkMult(waveNumber) -- obrazenia jednostek skalowane z fala
 	local isBoss = et.isBoss or false
 	local stagger = GameConfig.Sim.spawnStagger or 0.03
 	local plot = resolvePlot(player)
@@ -111,6 +117,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 			speed = et.speed,
 			plotId = plotId,
 			coreTimer = et.coreAttackInterval,
+			atkDmg = atkDmg, -- atkDmg × waveAtkMult (zamrozony na spawnie, jak hp)
 			isBoss = isBoss, -- boss = zwykly wiersz z flaga (ta sama petla/pathing/core-dmg)
 		}
 		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss }
@@ -214,7 +221,7 @@ local function step(dt: number)
 				local u = GameConfig.Units[pl.unitId]
 				if u then
 					if uhp[pid] == nil then uhp[pid] = u.hp or 100 end
-					unitList[#unitList + 1] = { pid = pid, pos = towerWorldPos(plot, pl.unitId, pl.x, pl.z), maxHp = u.hp or 100 }
+					unitList[#unitList + 1] = { pid = pid, pos = towerWorldPos(plot, pl.unitId, pl.x, pl.z), maxHp = u.hp or 100, def = u.def or 0 }
 				end
 			end
 			for pid in pairs(uhp) do -- prune HP jednostek usunietych przez gracza
@@ -237,7 +244,10 @@ local function step(dt: number)
 							end
 							if best then
 								e.unitTimer = 1 / (et.atkRate or 1)
-								uhp[best.pid] = uhp[best.pid] - et.atkDmg
+								-- DEF: pancerz jednostki mityguje obrazenia; min 1 (zawsze chip damage).
+								-- e.atkDmg juz zeskalowany fala (waveAtkMult) na spawnie.
+								local dealt = math.max(1, (e.atkDmg or et.atkDmg) - (best.def or 0))
+								uhp[best.pid] = uhp[best.pid] - dealt
 								if uhp[best.pid] <= 0 then
 									uhp[best.pid] = nil
 									_unitHpSend[best.pid] = nil

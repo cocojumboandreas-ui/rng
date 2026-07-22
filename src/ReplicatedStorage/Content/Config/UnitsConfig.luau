@@ -29,7 +29,7 @@ local Units = {
 		model = "Sniper", displayName = "Snajper",
 	},
 	swat = {
-		kind = W, rarityN = 30, footprint = { w = 1, d = 1 }, hp = 500, -- tarcza = duzo HP (tank)
+		kind = W, rarityN = 30, footprint = { w = 1, d = 1 }, hp = 500, def = 6, -- tarcza = duzo HP (tank) + DEF
 		combat = { dmg = 8, fireRate = 1.4, range = 16 }, -- rifle + tarcza
 		model = "SWAT", displayName = "SWAT",
 	},
@@ -44,23 +44,23 @@ local Units = {
 		model = "Flamethrower", displayName = "Miotacz ognia",
 	},
 	tank_soldier = {
-		kind = W, rarityN = 150, footprint = { w = 1, d = 1 }, hp = 900, -- Big Shield = bardzo tanky
+		kind = W, rarityN = 150, footprint = { w = 1, d = 1 }, hp = 900, def = 12, -- Big Shield = bardzo tanky + DEF
 		combat = { dmg = 5, fireRate = 6.0, range = 16 }, -- minigun: malo dmg/pocisk, bardzo szybko
 		model = "Tank Soldier", displayName = "Ciezki piechur",
 	},
 	jeep = {
-		kind = W, rarityN = 300, footprint = { w = 2, d = 2 }, hp = 700,
+		kind = W, rarityN = 300, footprint = { w = 2, d = 2 }, hp = 700, def = 8,
 		combat = { dmg = 8, fireRate = 1.5, range = 14 }, -- kierowca Noob strzela z pistoletu; duzo HP
 		model = "Jeep", displayName = "Jeep",
 		driver = "Noob Soldier", -- renderer doklada kierowce (kompozycja modelu)
 	},
 	tank = {
-		kind = W, rarityN = 1500, footprint = { w = 2, d = 2 }, hp = 1500, -- najwiecej HP
+		kind = W, rarityN = 1500, footprint = { w = 2, d = 2 }, hp = 1500, def = 22, -- najwiecej HP + pancerz
 		combat = { dmg = 85, fireRate = 0.6, range = 24 }, -- dzialo glowne: najwiecej HP, ogromny dmg
 		model = "Tank", displayName = "Czolg",
 	},
 	helicopter = {
-		kind = W, rarityN = 800, footprint = { w = 2, d = 2 }, hp = 900,
+		kind = W, rarityN = 800, footprint = { w = 2, d = 2 }, hp = 900, def = 6,
 		combat = { dmg = 24, fireRate = 5.0, range = 34 }, -- 2 miniguny, najwiekszy zasieg, lata (hover)
 		model = "Helicopter", displayName = "Helikopter",
 	},
@@ -73,21 +73,23 @@ local Units = {
 	-- ── TEST CONTENT (placeholder, nazwy do podmiany; ids/klucze zostaja EN) ──────
 	-- Modele budowane w RUNTIME przez UnitModelFactory (brak `model` -> placeholder z kodu).
 	-- BLOKI: kind=Block, footprint 1x1, brak combat (pasywne), hp w configu (StatProfile-spojne).
+	-- def = NIEWIDOCZNY pancerz bloku: obrazenia wroga = max(1, atkDmg - def) (mityguje CombatService).
+	-- Blok drewna def=10 vs wrog atkDmg=20 -> dostaje 10/cios; lepszy material = wyzszy def i hp.
 	test_block_wood = {
 		kind = B, category = "block", rarityN = 5, footprint = { w = 1, d = 1 },
-		hp = 500, displayName = "Blok drewna",
+		hp = 500, def = 10, displayName = "Blok drewna",
 	},
 	test_block_stone = {
 		kind = B, category = "block", rarityN = 15, footprint = { w = 1, d = 1 },
-		hp = 1200, displayName = "Blok kamienia",
+		hp = 1200, def = 22, displayName = "Blok kamienia",
 	},
 	test_block_iron = {
 		kind = B, category = "block", rarityN = 40, footprint = { w = 1, d = 1 },
-		hp = 3000, displayName = "Blok zelaza",
+		hp = 3000, def = 45, displayName = "Blok zelaza",
 	},
 	test_block_rusty = {
 		kind = B, category = "block", rarityN = 150, footprint = { w = 1, d = 1 },
-		hp = 6000, displayName = "Blok zardzewialy",
+		hp = 6000, def = 80, displayName = "Blok zardzewialy",
 	},
 	-- BRONIE: kind=Weapon, footprint 1x1, base combat czytane przez StatProfile (dmg/fireRate/range Mult).
 	test_weapon_pistol = {
