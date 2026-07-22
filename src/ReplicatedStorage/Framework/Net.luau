@@ -36,6 +36,8 @@ local REMOTES: { [string]: string } = {
 	GetPlotInfo = "RemoteFunction", -- C->S () -> {plotId, gridOrigin(CFrame), width, depth, cellSize, faceDir} (tryb budowania)
 	GetInventory = "RemoteFunction", -- C->S () -> { [invKey]=count } (poczatkowy stan panelu budowania)
 	InventorySync = "RemoteEvent", -- S->C { [invKey]=count } (live liczby w panelu; push na Changed/ProfileLoaded)
+	DevAction = "RemoteFunction", -- C->S {action, amount?} -> {ok, msg?} (panel DEV; serwer gated isDev)
+	SkillTreeReset = "RemoteEvent", -- S->C () — DEV wyczyscil skille -> klient czysci drzewko
 }
 
 local Net = {}

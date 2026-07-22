@@ -186,6 +186,15 @@ function SkillTreeController.start()
 		if p and p.spendableRolls ~= nil then rolls = p.spendableRolls; refreshHeader() end
 	end)
 
+	-- DEV wyczyscil skille -> wyczysc lokalny stan posiadania + przemaluj drzewko
+	Net.get("SkillTreeReset").OnClientEvent:Connect(function()
+		table.clear(ownedIds)
+		refreshHeader()
+		if restyle then
+			restyle()
+		end
+	end)
+
 	-- ── przycisk HUD "Umiejetnosci" (mirror ZBUDUJ) ──
 	local openBtn = Instance.new("TextButton")
 	openBtn.Size = UDim2.fromOffset(150, 54); openBtn.AnchorPoint = Vector2.new(0, 1)

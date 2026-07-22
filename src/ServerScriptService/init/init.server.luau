@@ -28,6 +28,7 @@ local ORDER = {
 	"BaseDoorService",
 	"SkillService",
 	"PurchaseService",
+	"DevService",
 }
 
 for _, name in ipairs(ORDER) do

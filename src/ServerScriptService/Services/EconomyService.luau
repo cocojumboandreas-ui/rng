@@ -44,6 +44,16 @@ function EconomyService.Award(player, amount: number, reason: string?): number
 	return gained
 end
 
+-- DEV: dodaj monety FLAT (bez coinMult) + push salda. Uzywane przez DevService.
+function EconomyService.GrantCoins(player, amount: number)
+	local data = _profile and _profile.GetProfile(player)
+	if not data then
+		return
+	end
+	data.coins += amount
+	pushBalance(player, data.coins)
+end
+
 function EconomyService.TrySpend(player, amount: number): boolean
 	local data = _profile and _profile.GetProfile(player)
 	if not data or data.coins < amount then
