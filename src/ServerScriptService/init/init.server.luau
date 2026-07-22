@@ -11,7 +11,7 @@ local Services = ServerScriptService:WaitForChild("Services")
 
 -- Sekcja 2: ProfileService -> StatProfileService -> PlotService -> EconomyService ->
 -- InventoryService -> IndexService -> RollService -> GridService -> BuildService ->
--- CoreService -> CombatService -> WaveService -> SkillService -> PurchaseService.
+-- CoreService -> CombatService -> WaveService -> BaseDoorService -> SkillService -> PurchaseService.
 local ORDER = {
 	"ProfileService",
 	"StatProfileService",
@@ -25,6 +25,7 @@ local ORDER = {
 	"CoreService",
 	"CombatService",
 	"WaveService",
+	"BaseDoorService",
 	"SkillService",
 	"PurchaseService",
 }
