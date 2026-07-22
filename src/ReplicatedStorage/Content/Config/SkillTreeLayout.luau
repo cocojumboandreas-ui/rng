@@ -35,7 +35,7 @@ local SKILL_ICON = {
 }
 -- ikona per galaz (b:*)
 local BRANCH_ICON = {
-	RNG = IC.clover, Eco = IC.coin, Combat = IC.sword, Base = IC.shield,
+	LUCK = IC.clover, DICE = IC.dice, COMBAT = IC.sword, DEFEND = IC.shield,
 }
 
 -- kierunki hex (jak w packu: X * sqrt(3)*halfW, Y * halfH)
@@ -51,8 +51,8 @@ local Side = {
 -- 4 galezie w rogach root; kazdy skill startuje z innego kierunku, lancuch idzie wspolnym `chain`.
 local LAYOUT = {
 	{
-		id = "RNG",
-		label = "RNG",
+		id = "LUCK",
+		label = "LUCK",
 		dir = Side.topLeft,
 		chain = Side.topLeft,
 		skills = {
@@ -62,8 +62,8 @@ local LAYOUT = {
 		},
 	},
 	{
-		id = "Eco",
-		label = "Ekonomia",
+		id = "DICE",
+		label = "DICE UPDATE",
 		dir = Side.topRight,
 		chain = Side.topRight,
 		skills = {
@@ -73,8 +73,8 @@ local LAYOUT = {
 		},
 	},
 	{
-		id = "Combat",
-		label = "Combat",
+		id = "COMBAT",
+		label = "COMBAT",
 		dir = Side.bottomRight,
 		chain = Side.bottomRight,
 		skills = {
@@ -84,8 +84,8 @@ local LAYOUT = {
 		},
 	},
 	{
-		id = "Base",
-		label = "Baza",
+		id = "DEFEND",
+		label = "DEFEND",
 		dir = Side.bottomLeft,
 		chain = Side.bottomLeft,
 		skills = {
