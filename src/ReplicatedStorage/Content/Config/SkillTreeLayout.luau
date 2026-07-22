@@ -17,6 +17,27 @@ local CURRENCY_ICON = {
 	[Enums.Currency.Rolls] = "rbxassetid://92190657341460",
 }
 
+-- ikony tematyczne (textureId): koniczyna/kostka/moneta/miecz/tarcza
+local IC = {
+	clover = "rbxassetid://123550318368193",
+	dice = "rbxassetid://92190657341460",
+	coin = "rbxassetid://5684864491",
+	sword = "rbxassetid://7485051715",
+	shield = "rbxassetid://11322093465",
+}
+-- ikona per skill
+local SKILL_ICON = {
+	luck_1 = IC.clover, mut_1 = IC.clover, variant_1 = IC.clover,
+	fast_1 = IC.dice,
+	coin_1 = IC.coin, offline_1 = IC.coin,
+	dmg_1 = IC.sword, fire_1 = IC.sword, range_1 = IC.sword,
+	cells_1 = IC.shield, core_1 = IC.shield,
+}
+-- ikona per galaz (b:*)
+local BRANCH_ICON = {
+	RNG = IC.clover, Eco = IC.coin, Combat = IC.sword, Base = IC.shield,
+}
+
 -- kierunki hex (jak w packu: X * sqrt(3)*halfW, Y * halfH)
 local Side = {
 	bottom = Vector2.new(0, 2),
@@ -81,14 +102,14 @@ end
 local Nodes = {}
 
 -- root wymagany przez pack
-Nodes["root"] = { icon = "", text = "SKILLE" }
+Nodes["root"] = { icon = "", text = "DRZEWO" }
 
 for _, branch in ipairs(LAYOUT) do
 	local branchNodeId = "b:" .. branch.id
 	Nodes[branchNodeId] = {
 		parentNodeId = "root",
 		direction = branch.dir,
-		icon = "",
+		icon = BRANCH_ICON[branch.id] or "",
 		text = branch.label,
 		inheritVisibility = true, -- pokaz zawsze gdy root widoczny
 	}
@@ -103,7 +124,7 @@ for _, branch in ipairs(LAYOUT) do
 				Nodes[nodeId] = {
 					parentNodeId = (rank == 1) and branchNodeId or (skillId .. "#" .. (rank - 1)),
 					direction = (rank == 1) and entry.start or branch.chain,
-					icon = "",
+					icon = SKILL_ICON[skillId] or "",
 					text = tostring(rank),
 					headerText = (rank == 1) and node.label or nil,
 					price = { quantity = costFor(node, rank), currencyIcon = currencyIcon },
