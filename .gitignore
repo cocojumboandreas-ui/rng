@@ -19,3 +19,8 @@ Thumbs.db
 # Paczki dostawcze / kopie zapasowe — lokalnie, poza repo
 *.zip
 _backup*/
+
+# pliki referencyjne (lokalne, nie do repo)
+og.png
+oooo.mp4
+*.mp4
