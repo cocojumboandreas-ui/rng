@@ -199,6 +199,66 @@ function SkillTreeController.start()
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local ntGui = playerGui:WaitForChild("NodeTreeGui")
 	local mainFrame = ntGui:WaitForChild("MainFrame")
+
+	-- ── tooltipy (mapowanie instancja->nodeId przez atrybut WR_NodeId z packa) ──
+	-- (kolor body wezla zostawiamy domyslny — pack koloruje przez podmiane obrazka hexa,
+	--  a nie tint; kolorowa paleta hexow = przyszly polish. Ikony roznicuja galezie.)
+	local SkillConfig = require(ReplicatedStorage.Content.Config:WaitForChild("SkillConfig"))
+	local STAT_LABEL = {
+		luck = "szczescie", rollSpeed = "tempo rolki", mutChance = "szansa mutacji",
+		cellBudget = "budzet cel", dmgMult = "obrazenia", fireRateMult = "szybkostrzelnosc",
+		rangeMult = "zasieg", coreHP = "HP rdzenia", coinMult = "monety", offlineRate = "offline/h",
+		variantLuck = "szansa wariantu",
+	}
+	local CUR_EMOJI = { Coins = "🪙", Rolls = "🎲" }
+
+	local tip = Instance.new("Frame")
+	tip.Size = UDim2.fromOffset(230, 58); tip.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
+	tip.BackgroundTransparency = 0.05; tip.BorderSizePixel = 0; tip.Visible = false
+	tip.ZIndex = 30; tip.Parent = gui
+	local tipc = Instance.new("UICorner"); tipc.CornerRadius = UDim.new(0, 8); tipc.Parent = tip
+	local tipName = mkLabel(tip, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 6), "", Color3.new(1, 1, 1), Enum.TextXAlignment.Left)
+	tipName.ZIndex = 31
+	local tipDesc = Instance.new("TextLabel")
+	tipDesc.Size = UDim2.new(1, -16, 0, 26); tipDesc.Position = UDim2.fromOffset(8, 28)
+	tipDesc.BackgroundTransparency = 1; tipDesc.TextColor3 = Color3.fromRGB(200, 210, 230)
+	tipDesc.Font = Enum.Font.Gotham; tipDesc.TextSize = 13; tipDesc.TextWrapped = true
+	tipDesc.TextXAlignment = Enum.TextXAlignment.Left; tipDesc.TextYAlignment = Enum.TextYAlignment.Top
+	tipDesc.ZIndex = 31; tipDesc.Parent = tip
+
+	local function showTip(inst, skillId, rank)
+		local sc = SkillConfig.nodes[skillId]
+		if not sc then
+			return
+		end
+		local cfg = nodes[skillId .. "#" .. rank]
+		local cost = (cfg and cfg.price and cfg.price.quantity) or 0
+		local sign = (sc.effect.perRank >= 0) and "+" or ""
+		tipName.Text = ("%s  (rank %d)"):format(sc.label or skillId, rank)
+		tipDesc.Text = ("%s%s %s/rank   •   %s %s"):format(
+			sign, tostring(sc.effect.perRank), STAT_LABEL[sc.effect.stat] or sc.effect.stat,
+			CUR_EMOJI[sc.currency] or "", fmt(cost)
+		)
+		local ap, asz = inst.AbsolutePosition, inst.AbsoluteSize
+		tip.Position = UDim2.fromOffset(ap.X + asz.X + 6, ap.Y)
+		tip.Visible = true
+	end
+
+	for _, inst in ipairs(mainFrame:GetDescendants()) do
+		local id = inst:GetAttribute("WR_NodeId")
+		if id and inst:IsA("GuiButton") then
+			local skillId, rank = parseNodeId(id)
+			if skillId and rank then
+				inst.MouseEnter:Connect(function()
+					showTip(inst, skillId, rank)
+				end)
+				inst.MouseLeave:Connect(function()
+					tip.Visible = false
+				end)
+			end
+		end
+	end
+
 	local panning = false
 	local lastMouse = Vector2.zero
 

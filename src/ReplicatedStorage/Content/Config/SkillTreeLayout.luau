@@ -112,6 +112,7 @@ for _, branch in ipairs(LAYOUT) do
 		icon = BRANCH_ICON[branch.id] or "",
 		text = branch.label,
 		inheritVisibility = true, -- pokaz zawsze gdy root widoczny
+		wrBranch = branch.id, -- pole nasze (pack ignoruje) -> kolor w controllerze
 	}
 
 	for _, entry in ipairs(branch.skills) do
@@ -129,6 +130,7 @@ for _, branch in ipairs(LAYOUT) do
 					headerText = (rank == 1) and node.label or nil,
 					price = { quantity = costFor(node, rank), currencyIcon = currencyIcon },
 					inheritVisibility = false, -- odkrywaj rank po ranku (po zakupie poprzedniego)
+					wrBranch = branch.id, -- pole nasze (pack ignoruje) -> kolor w controllerze
 				}
 			end
 		end
