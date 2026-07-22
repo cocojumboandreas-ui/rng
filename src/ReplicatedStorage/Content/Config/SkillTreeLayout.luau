@@ -102,7 +102,7 @@ end
 local Nodes = {}
 
 -- root wymagany przez pack
-Nodes["root"] = { icon = "", text = "DRZEWO" }
+Nodes["root"] = { icon = "", text = "DRZEWO\nUMIEJĘTNOŚCI" }
 
 for _, branch in ipairs(LAYOUT) do
 	local branchNodeId = "b:" .. branch.id

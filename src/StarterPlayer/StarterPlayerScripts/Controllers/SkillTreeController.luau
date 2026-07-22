@@ -119,6 +119,9 @@ function SkillTreeController.start()
 		if nodes[id] and not ownedIds[id] then
 			ownedIds[id] = true
 			NodeTreeClient.setIsNodeOwned(id, true)
+			if NodeTreeClient.refresh then
+				NodeTreeClient.refresh() -- odkryj nowe wezly (frontier wzrosl)
+			end
 			refreshHeader()
 			if restyle then
 				restyle()
@@ -178,12 +181,12 @@ function SkillTreeController.start()
 		end
 	end
 
-	-- salda na zywo
+	-- salda na zywo (+ odswiez pulsy: zmiana kasy moze wlaczyc/wylaczyc "stac cie")
 	Net.get("CoinsSync").OnClientEvent:Connect(function(p)
-		if p and p.balance ~= nil then coins = p.balance; refreshHeader() end
+		if p and p.balance ~= nil then coins = p.balance; refreshHeader(); if restyle then restyle() end end
 	end)
 	Net.get("RollsSync").OnClientEvent:Connect(function(p)
-		if p and p.spendableRolls ~= nil then rolls = p.spendableRolls; refreshHeader() end
+		if p and p.spendableRolls ~= nil then rolls = p.spendableRolls; refreshHeader(); if restyle then restyle() end end
 	end)
 
 	-- DEV wyczyscil skille -> wyczysc lokalny stan posiadania + przemaluj drzewko
@@ -230,18 +233,18 @@ function SkillTreeController.start()
 	local ntGui = playerGui:WaitForChild("NodeTreeGui")
 	local mainFrame = ntGui:WaitForChild("MainFrame")
 
-	-- ── kolory (bialy fill hex + tint per galaz), "?" zablokowane, tooltipy ──
+	-- ── kolory (szary=niekupione, niebieski=kupione), "?" zablokowane, pulsowanie, tooltip 3-sekcje ──
 	-- Mapowanie instancja->nodeId przez atrybut WR_NodeId (dodany w packu NodeTreeClient).
+	local TweenService = game:GetService("TweenService")
 	local SkillConfig = require(ReplicatedStorage.Content.Config:WaitForChild("SkillConfig"))
-	local FILL = "rbxassetid://72596611749182" -- bialy hex (playmakers) do tintowania
-	local BRANCH_COLOR = {
-		RNG = Color3.fromRGB(70, 205, 110),
-		Eco = Color3.fromRGB(240, 195, 60),
-		Combat = Color3.fromRGB(230, 75, 75),
-		Base = Color3.fromRGB(70, 140, 240),
-	}
-	local ROOT_COLOR = Color3.fromRGB(150, 100, 235)
-	local LOCK_COLOR = Color3.fromRGB(70, 74, 90)
+	local FILL = "rbxassetid://72596611749182" -- bialy hex; tlo + obramowka (wiekszy hex za wezlem = rabek)
+	local COL_OWNED = Color3.fromRGB(58, 120, 225) -- kupione = niebieskie
+	local COL_UNOWNED = Color3.fromRGB(78, 82, 96) -- niekupione (available/"?") = szare
+	local COL_BRANCH = Color3.fromRGB(80, 180, 90) -- galezie = zielone
+	local COL_ROOT = Color3.fromRGB(215, 70, 70) -- root = czerwony
+	local COL_PULSE = Color3.fromRGB(255, 240, 120) -- obramowka pulsu (stac cie)
+	local LOOKAHEAD = 3 -- widoczne: frontier + 1 odkryta + 2 "?"
+	local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII" }
 	local STAT_LABEL = {
 		luck = "szczescie", rollSpeed = "tempo rolki", mutChance = "szansa mutacji",
 		cellBudget = "budzet cel", dmgMult = "obrazenia", fireRateMult = "szybkostrzelnosc",
@@ -254,45 +257,95 @@ function SkillTreeController.start()
 		game:GetService("ContentProvider"):PreloadAsync({ FILL })
 	end)
 
-	-- tooltip (jeden, reuzywalny)
+	-- najwyzszy kupiony rank skilla (0 = nic)
+	local function frontier(skillId)
+		local sc = SkillConfig.nodes[skillId]
+		local mx = sc and sc.maxRank or 0
+		local f = 0
+		for k = 1, mx do
+			if ownedIds[skillId .. "#" .. k] then f = k else break end
+		end
+		return f
+	end
+	-- czy gracza stac na dany node (available)
+	local function affordable(skillId, id)
+		local sc = SkillConfig.nodes[skillId]
+		local cfg = nodes[id]
+		local cost = (cfg and cfg.price and cfg.price.quantity) or 0
+		local bal = (sc and sc.currency == "Rolls") and rolls or coins
+		return bal >= cost
+	end
+
+	-- ── tooltip 3-sekcyjny (nazwa / efekt / status) — wzor og.png ──
 	local tip = Instance.new("Frame")
-	tip.Size = UDim2.fromOffset(230, 58); tip.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
-	tip.BackgroundTransparency = 0.05; tip.BorderSizePixel = 0; tip.Visible = false
+	tip.Size = UDim2.fromOffset(248, 96); tip.BackgroundColor3 = Color3.fromRGB(214, 222, 236)
+	tip.BackgroundTransparency = 0.03; tip.BorderSizePixel = 0; tip.Visible = false
 	tip.ZIndex = 30; tip.Parent = gui
-	local tipc = Instance.new("UICorner"); tipc.CornerRadius = UDim.new(0, 8); tipc.Parent = tip
-	local tipName = mkLabel(tip, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 6), "", Color3.new(1, 1, 1), Enum.TextXAlignment.Left)
-	tipName.ZIndex = 31
-	local tipDesc = Instance.new("TextLabel")
-	tipDesc.Size = UDim2.new(1, -16, 0, 26); tipDesc.Position = UDim2.fromOffset(8, 28)
-	tipDesc.BackgroundTransparency = 1; tipDesc.TextColor3 = Color3.fromRGB(200, 210, 230)
-	tipDesc.Font = Enum.Font.Gotham; tipDesc.TextSize = 13; tipDesc.TextWrapped = true
-	tipDesc.TextXAlignment = Enum.TextXAlignment.Left; tipDesc.TextYAlignment = Enum.TextYAlignment.Top
-	tipDesc.ZIndex = 31; tipDesc.Parent = tip
+	local tipc = Instance.new("UICorner"); tipc.CornerRadius = UDim.new(0, 12); tipc.Parent = tip
+	local tipName = mkLabel(tip, UDim2.new(1, -16, 0, 28), UDim2.fromOffset(8, 8), "", Color3.fromRGB(22, 26, 38))
+	tipName.TextSize = 19; tipName.ZIndex = 31
+	local tipDesc = mkLabel(tip, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 38), "", Color3.fromRGB(45, 55, 75))
+	tipDesc.TextSize = 14; tipDesc.Font = Enum.Font.Gotham; tipDesc.ZIndex = 31
+	local tipStatus = mkLabel(tip, UDim2.new(1, -16, 0, 24), UDim2.fromOffset(8, 64), "", Color3.fromRGB(60, 165, 70))
+	tipStatus.TextSize = 16; tipStatus.ZIndex = 31
 
 	local function showTip(inst, skillId, rank)
 		local sc = SkillConfig.nodes[skillId]
 		if not sc then
 			return
 		end
+		local f = frontier(skillId)
 		local cfg = nodes[skillId .. "#" .. rank]
 		local cost = (cfg and cfg.price and cfg.price.quantity) or 0
 		local sign = (sc.effect.perRank >= 0) and "+" or ""
-		tipName.Text = ("%s  (rank %d)"):format(sc.label or skillId, rank)
-		tipDesc.Text = ("%s%s %s/rank   •   %s %s"):format(
-			sign, tostring(sc.effect.perRank), STAT_LABEL[sc.effect.stat] or sc.effect.stat,
-			CUR_EMOJI[sc.currency] or "", fmt(cost)
-		)
+		tipName.Text = ("%s %s"):format(sc.label or skillId, ROMAN[rank] or tostring(rank))
+		tipDesc.Text = ("%s%s %s / rank"):format(sign, tostring(sc.effect.perRank), STAT_LABEL[sc.effect.stat] or sc.effect.stat)
+		if rank <= f then
+			tipStatus.Text = "W POSIADANIU"
+			tipStatus.TextColor3 = Color3.fromRGB(55, 165, 70)
+		elseif rank == f + 1 then
+			local can = affordable(skillId, skillId .. "#" .. rank)
+			tipStatus.Text = ("%s %s%s"):format(CUR_EMOJI[sc.currency] or "", fmt(cost), can and "   ✓ stac cie" or "")
+			tipStatus.TextColor3 = can and Color3.fromRGB(55, 165, 70) or Color3.fromRGB(200, 85, 85)
+		else
+			tipStatus.Text = "ZABLOKOWANE"
+			tipStatus.TextColor3 = Color3.fromRGB(120, 125, 140)
+		end
 		local ap, asz = inst.AbsolutePosition, inst.AbsoluteSize
 		tip.Position = UDim2.fromOffset(ap.X + asz.X + 6, ap.Y)
 		tip.Visible = true
 	end
 
-	-- mapa instancja wezla po nodeId + podpiecie tooltipow
+	-- mapa instancji + pulsujaca obramowka (nakladka OBRYSU hexa = 6 katow) + napisy w hexie + tooltip
 	local instById = {}
+	local pulseTween = {}
 	for _, inst in ipairs(mainFrame:GetDescendants()) do
 		local id = inst:GetAttribute("WR_NodeId")
 		if id and inst:IsA("GuiButton") then
 			instById[id] = inst
+			local bg = inst:FindFirstChild("Background")
+			local bgIcon = bg and bg:FindFirstChild("Icon")
+			-- obramowka 6 katow = WIEKSZY hex tla ZA wezlem (tlo zakrywa srodek, wystaje tylko rabek)
+			if bg and bgIcon and not bg:FindFirstChild("WR_Pulse") then
+				local ol = Instance.new("ImageLabel")
+				ol.Name = "WR_Pulse"; ol.BackgroundTransparency = 1
+				ol.AnchorPoint = Vector2.new(0.5, 0.5); ol.Position = UDim2.fromScale(0.5, 0.5)
+				ol.Size = UDim2.fromScale(1.16, 1.16)
+				ol.Image = FILL; ol.ImageColor3 = COL_PULSE; ol.ImageTransparency = 1
+				ol.ZIndex = bgIcon.ZIndex - 1 -- ZA tlem wezla
+				ol.Parent = bg
+			end
+			-- napisy MUSZA miescic sie w hexie: pack daje width=1.5 (wychodzi poza) -> zwezamy + cap
+			local ptext = inst:FindFirstChild("PrimaryText")
+			if ptext then
+				ptext.Size = UDim2.new(0.7, 0, 0.3, 0)
+				ptext.TextWrapped = true
+				ptext.TextScaled = true
+				if not ptext:FindFirstChildOfClass("UITextSizeConstraint") then
+					local con = Instance.new("UITextSizeConstraint")
+					con.MaxTextSize = 20; con.MinTextSize = 6; con.Parent = ptext
+				end
+			end
 			local skillId, rank = parseNodeId(id)
 			if skillId and rank then
 				inst.MouseEnter:Connect(function()
@@ -305,45 +358,101 @@ function SkillTreeController.start()
 		end
 	end
 
-	-- wyglad jednego wezla: available = kolor galezi + tresc; locked = szary "?"
-	local function styleNode(inst, id, available)
+	-- pulsowanie obramowki (obrys hexa): on=true -> tween przezroczystosci w petli; false -> stop/ukryj
+	local function setPulse(id, on)
+		local inst = instById[id]
+		local bg = inst and inst:FindFirstChild("Background")
+		local ol = bg and bg:FindFirstChild("WR_Pulse")
+		if not ol then
+			return
+		end
+		if on then
+			if pulseTween[id] then
+				return
+			end
+			ol.ImageTransparency = 0.85
+			local tw = TweenService:Create(
+				ol,
+				TweenInfo.new(0.65, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+				{ ImageTransparency = 0.05 }
+			)
+			tw:Play()
+			pulseTween[id] = tw
+		else
+			if pulseTween[id] then
+				pulseTween[id]:Cancel()
+				pulseTween[id] = nil
+			end
+			ol.ImageTransparency = 1
+		end
+	end
+
+	-- wyglad + stan jednego wezla wg frontier (owned=niebieski / available=szary+cena+pulse / "?"=szary)
+	local function styleNode(inst, id)
 		local cfg = nodes[id]
 		local bg = inst:FindFirstChild("Background")
 		local bgIcon = bg and bg:FindFirstChild("Icon")
-		if bgIcon then
-			bgIcon.Image = FILL
-			bgIcon.ImageColor3 = available and ((cfg and cfg.wrBranch and BRANCH_COLOR[cfg.wrBranch]) or ROOT_COLOR) or LOCK_COLOR
-		end
 		local mainIcon = inst:FindFirstChild("Icon")
 		local ptext = inst:FindFirstChild("PrimaryText")
 		local price = inst:FindFirstChild("Price")
 		local hdr = inst:FindFirstChild("HeaderText")
-		if available then
-			if mainIcon then mainIcon.ImageTransparency = 0 end
-			if price then price.Visible = true end
-			if ptext then ptext.Text = (cfg and cfg.text) or "" end
-			if hdr and cfg and cfg.headerText then hdr.Visible = true end
+		local skillId, rank = parseNodeId(id)
+
+		local color, isQ, isOwned, isAvail = COL_UNOWNED, false, false, false
+		if not (skillId and rank) then
+			color = (id == "root") and COL_ROOT or COL_BRANCH -- root / galaz
 		else
+			local f = frontier(skillId)
+			if rank <= f then
+				color = COL_OWNED; isOwned = true
+			elseif rank == f + 1 then
+				isAvail = true -- odkryta, do kupienia
+			else
+				isQ = true -- "?"
+			end
+		end
+
+		if bgIcon then
+			bgIcon.Image = FILL
+			bgIcon.ImageColor3 = color
+		end
+		if hdr then
+			hdr.Visible = false -- nazwe pokazujemy w PrimaryText (jak og.png)
+		end
+		if isQ then
 			if mainIcon then mainIcon.ImageTransparency = 1 end
 			if price then price.Visible = false end
 			if ptext then ptext.Text = "?" end
-			if hdr then hdr.Visible = false end
+		else
+			if mainIcon then mainIcon.ImageTransparency = 0 end
+			if price then price.Visible = isAvail end -- cena tylko na odkrytej do kupienia
+			if ptext then
+				if skillId and rank then
+					local sc = SkillConfig.nodes[skillId]
+					ptext.Text = ("%s %s"):format((sc and sc.label) or skillId, ROMAN[rank] or tostring(rank))
+				else
+					ptext.Text = (cfg and cfg.text) or ""
+				end
+			end
+		end
+		setPulse(id, isAvail and skillId ~= nil and affordable(skillId, id))
+	end
+
+	restyle = function()
+		for id, inst in pairs(instById) do
+			styleNode(inst, id)
 		end
 	end
 
-	-- available = kupione LUB nastepne do kupienia (poprzedni rank kupiony / rank1 / galaz-root)
-	restyle = function()
-		for id, inst in pairs(instById) do
-			local skillId, rank = parseNodeId(id)
-			local available
-			if skillId and rank then
-				available = ownedIds[id] or rank == 1 or ownedIds[skillId .. "#" .. (rank - 1)] == true
-			else
-				available = true
-			end
-			styleNode(inst, id, available)
+	-- hook zasiegu odkrycia: root/galaz zawsze; rank do frontier+LOOKAHEAD (reszta ukryta)
+	NodeTreeClient.wrVisible = function(nodeId)
+		local skillId, rank = parseNodeId(nodeId)
+		if not (skillId and rank) then
+			return true
 		end
+		return rank <= frontier(skillId) + LOOKAHEAD
 	end
+	NodeTreeClient.refresh()
 	restyle()
 
 	local panning = false
