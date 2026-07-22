@@ -20,7 +20,9 @@ local GameConfig = require(
 )
 
 local PARK = CFrame.new(0, -500, 0)
-local PREWARM = 60 -- ile modeli podstawowego wroga prealokowac
+local PREWARM = 60 -- ile modeli podstawowego wroga (tier1) prealokowac synchronicznie
+local PREWARM_TIER = 10 -- ile modeli KAZDEGO innego typu tieru prealokowac (w tle)
+local PREWARM_BOSS = 2 -- ile modeli KAZDEGO bossa prealokowac (w tle)
 local BOSS_FOOT = 10 -- docelowy footprint bossa (study)
 local GRUNT_FOOT = 4 -- docelowy footprint zwyklego wroga
 local FX_POOL = 24 -- max jednoczesnych blyskow strzalow wrogow (hitscan)
@@ -190,8 +192,15 @@ local function buildEnemyModel(modelName, isBoss): Model?
 	return m
 end
 
+-- pule ROZDZIELONE boss/zwykly: ten sam model (Tank/Heli/Jet) jest i tierem (skala 4) i bossem
+-- (skala 10) -> osobne pule, inaczej boss wziąłby maly model z puli zwyklych.
+local function poolKeyFor(modelName, isBoss)
+	return isBoss and (modelName .. "#boss") or modelName
+end
+
 local function acquire(modelName, isBoss): Model?
-	local pool = _freeByModel[modelName]
+	local key = poolKeyFor(modelName, isBoss)
+	local pool = _freeByModel[key]
 	local m = pool and table.remove(pool)
 	if not m then
 		m = buildEnemyModel(modelName, isBoss)
@@ -199,11 +208,11 @@ local function acquire(modelName, isBoss): Model?
 	return m
 end
 
-local function release(model, modelName)
+local function release(model, poolKey)
 	if not model then return end
 	model:PivotTo(PARK)
-	_freeByModel[modelName] = _freeByModel[modelName] or {}
-	table.insert(_freeByModel[modelName], model)
+	_freeByModel[poolKey] = _freeByModel[poolKey] or {}
+	table.insert(_freeByModel[poolKey], model)
 end
 
 -- ── pula FX strzalow wrogow ─────────────────────────────────────────────────────
@@ -358,7 +367,7 @@ local function onEvents(payload)
 		local key = s.id % U16
 		local existing = _active[key]
 		if existing and existing.fullId ~= s.id then
-			release(existing.model, existing.modelName)
+			release(existing.model, existing.poolKey)
 			_active[key] = nil
 		end
 		if not _active[key] then
@@ -367,7 +376,7 @@ local function onEvents(payload)
 			if model then
 				local et = GameConfig.Wave.enemyTypes[s.typeId]
 				_active[key] = {
-					model = model, modelName = modelName, fullId = s.id, plotId = plotId, isBoss = s.isBoss or false,
+					model = model, modelName = modelName, poolKey = poolKeyFor(modelName, s.isBoss), fullId = s.id, plotId = plotId, isBoss = s.isBoss or false,
 					prevT = s.pathT, prevC = os.clock(), curT = s.pathT, curC = os.clock(),
 					dir = nil, halfH = model:GetAttribute("HalfH") or 2, shown = false,
 					weapon = _weaponByModel[model], -- {prof, part} rozpoznana bron
@@ -386,7 +395,7 @@ local function onEvents(payload)
 		local key = id % U16
 		local e = _active[key]
 		if e then
-			release(e.model, e.modelName)
+			release(e.model, e.poolKey)
 			_active[key] = nil
 		end
 	end
@@ -510,13 +519,36 @@ function EnemyRenderController.start()
 	_folder = Instance.new("Folder"); _folder.Name = "WR_EnemyRender"; _folder.Parent = Workspace
 	_fxFolder = Instance.new("Folder"); _fxFolder.Name = "WR_EnemyFX"; _fxFolder.Parent = Workspace
 	for _ = 1, FX_POOL do table.insert(_fxFree, buildFx()) end
-	-- prewarm modelu podstawowego wroga
+	-- prewarm bazowego wroga (tier1) synchronicznie — pojawia sie od fali 1
 	local baseModel = enemyModelName("grunt", false)
-	_freeByModel[baseModel] = {}
+	local baseKey = poolKeyFor(baseModel, false)
+	_freeByModel[baseKey] = {}
 	for _ = 1, PREWARM do
 		local m = buildEnemyModel(baseModel, false)
-		if m then table.insert(_freeByModel[baseModel], m) end
+		if m then table.insert(_freeByModel[baseKey], m) end
 	end
+	-- prewarm pozostalych modeli tierow + bossow W TLE (rozlozony na klatki), osobne pule boss/zwykly.
+	-- Zero Instance.new przy pierwszym pojawieniu Snipera/Heli/Jeta w fali (brak hitcha).
+	task.spawn(function()
+		local seen = { [baseKey] = true }
+		local built = 0
+		for _, et in pairs(GameConfig.Wave.enemyTypes) do
+			local isBoss = et.isBoss or false
+			local modelName = et.model or baseModel
+			local pk = poolKeyFor(modelName, isBoss)
+			if not seen[pk] then
+				seen[pk] = true
+				local count = isBoss and PREWARM_BOSS or PREWARM_TIER
+				_freeByModel[pk] = _freeByModel[pk] or {}
+				for _ = 1, count do
+					local m = buildEnemyModel(modelName, isBoss)
+					if m then table.insert(_freeByModel[pk], m) end
+					built += 1
+					if built % 8 == 0 then task.wait() end -- rozloz koszt klonowania na klatki
+				end
+			end
+		end
+	end)
 	buildNodes()
 	CollectionService:GetInstanceAddedSignal("WR_PathNode"):Connect(buildNodes)
 	task.spawn(function()
