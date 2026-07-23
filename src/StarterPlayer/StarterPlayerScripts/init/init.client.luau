@@ -36,8 +36,10 @@ CoreHealthController.start()
 local BuildController = require(Controllers:WaitForChild("BuildController"))
 BuildController.start()
 
-local HudController = require(Controllers:WaitForChild("HudController"))
-HudController.start()
+-- HUD ziomka (StarterGui.SideButtons) wpięty przez HudBindController; stary HudController wyłączony
+-- (tworzył własne guziki/pille = duplikat). Plik HudController.luau zostaje na dysku (revert).
+local HudBindController = require(Controllers:WaitForChild("HudBindController"))
+HudBindController.start()
 
 local DevController = require(Controllers:WaitForChild("DevController"))
 DevController.start()
