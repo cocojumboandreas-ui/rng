@@ -34,8 +34,9 @@ local _ghost, _ring = nil, nil
 local _cell = nil -- {x,z} aktualna kratka pod kursorem
 local _thumbCache = {}
 
--- UI refs
-local _panel, _grid, _counter, _tabBtns, _postawBtn, _delBtn, _hint = nil, nil, nil, nil, nil, nil, nil
+-- UI refs — designerowy BuildMode (StarterGui.BuildMode, place-owned) + male overlaye (WR_Build)
+local _bm, _list, _template = nil, nil, nil -- ScreenGui BuildMode / lista / karta-szablon
+local _counter, _tabBtns, _postawBtn, _delBtn = nil, nil, nil, nil
 local _activeTab = "weapon"
 
 -- ── geometria kratek ──
@@ -248,17 +249,16 @@ function BuildController._refreshCounter()
 end
 
 function BuildController._refreshPanel()
-	if not _grid then return end
-	for _, ch in ipairs(_grid:GetChildren()) do
-		if ch:IsA("GuiObject") then ch:Destroy() end
+	if not _list or not _template then return end
+	-- usun poprzednie karty (Template jest juz poza lista -> zostaja tylko klony)
+	for _, ch in ipairs(_list:GetChildren()) do
+		if ch:IsA("GuiButton") then ch:Destroy() end
 	end
-	-- posortuj klucze wg nazwy dla stabilnosci
 	local keys = {}
 	for k, n in pairs(_counts) do
 		if n > 0 then keys[#keys + 1] = k end
 	end
 	table.sort(keys)
-	local col, cw, ch, gap, i = 3, 96, 96, 6, 0
 	for _, key in ipairs(keys) do
 		local unitId = string.split(key, "#")[1]
 		local u = GameConfig.Units[unitId]
@@ -266,36 +266,52 @@ function BuildController._refreshPanel()
 			-- klasyfikacja: bron = ma combat, blok = nie ma combat
 			local want = (_activeTab == "weapon") and (u.combat ~= nil) or (_activeTab == "block") and (u.combat == nil)
 			if want then
-				local cx, cz = i % col, math.floor(i / col)
-				local card = Instance.new("TextButton")
-				card.Size = UDim2.fromOffset(cw, ch); card.Position = UDim2.fromOffset(cx * (cw + gap), cz * (ch + gap))
-				card.BackgroundColor3 = (_sel and _sel.key == key) and Color3.fromRGB(70, 110, 80) or Color3.fromRGB(40, 40, 52)
-				card.Text = ""; card.AutoButtonColor = true; card.Parent = _grid
-				local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 8); cc.Parent = card
-				local tv = thumb(unitId); tv.Size = UDim2.fromScale(1, 0.66); tv.Position = UDim2.fromScale(0, 0.02); tv.Parent = card
-				local nm = Instance.new("TextLabel"); nm.Size = UDim2.fromScale(1, 0.2); nm.Position = UDim2.fromScale(0, 0.66)
-				nm.BackgroundTransparency = 1; nm.TextColor3 = Color3.new(1, 1, 1); nm.Font = Enum.Font.Gotham; nm.TextScaled = true
-				nm.Text = u.displayName or unitId; nm.Parent = card
-				local cnt = Instance.new("TextLabel"); cnt.Size = UDim2.fromScale(1, 0.16); cnt.Position = UDim2.fromScale(0, 0.84)
-				cnt.BackgroundTransparency = 1; cnt.TextColor3 = Color3.fromRGB(255, 220, 120); cnt.Font = Enum.Font.GothamBold; cnt.TextScaled = true
-				cnt.Text = tostring(_counts[key]) .. "x"; cnt.Parent = card
+				local card = _template:Clone()
+				card.Name = "Card_" .. key
+				card.Visible = true
+				-- dwa labele "Text": licznik konczy sie na "x", reszta = nazwa
+				local nameL, countL
+				for _, l in ipairs(card:GetChildren()) do
+					if l:IsA("TextLabel") and l.Name == "Text" then
+						if tostring(l.Text):match("x%s*$") then countL = l else nameL = l end
+					end
+				end
+				if nameL then nameL.Text = u.displayName or unitId end
+				if countL then countL.Text = tostring(_counts[key]) .. "x" end
+				local stats = card:FindFirstChild("Stats")
+				local atkL = stats and stats:FindFirstChild("Attack") and stats.Attack:FindFirstChild("TextLabel")
+				local hpL = stats and stats:FindFirstChild("Health") and stats.Health:FindFirstChild("TextLabel")
+				if atkL then atkL.Text = u.combat and ("⚔️ " .. tostring(u.combat.dmg)) or "🧱 blok" end
+				if hpL then hpL.Text = "💘 " .. tostring(u.hp or 0) end
+				-- miniatura 3D w PetIcon (nasze modele nie maja assetId ikon)
+				local petIcon = card:FindFirstChild("PetIcon")
+				if petIcon then
+					petIcon.Image = ""
+					local tv = thumb(unitId); tv.Size = UDim2.fromScale(1, 1); tv.Position = UDim2.fromScale(0, 0); tv.Parent = petIcon
+				end
+				-- podswietl wybrana (UIStroke jesli szablon ma)
+				local st = card:FindFirstChildOfClass("UIStroke")
+				if st then st.Enabled = (_sel and _sel.key == key) or false end
 				card.MouseButton1Click:Connect(function()
 					_sel = { key = key, unitId = unitId, fp = u.footprint, isWeapon = u.combat ~= nil, range = u.combat and u.combat.range }
 					_mode = "place"
 					makeGhost()
 					BuildController._refreshPanel()
 				end)
-				i += 1
+				card.Parent = _list
 			end
 		end
 	end
-	_grid.CanvasSize = UDim2.fromOffset(0, math.ceil(i / col) * (ch + gap))
 end
 
 local function setTab(t)
 	_activeTab = t
 	for id, b in pairs(_tabBtns) do
-		b.BackgroundColor3 = (id == t) and Color3.fromRGB(70, 90, 120) or Color3.fromRGB(45, 45, 58)
+		if b then
+			local st = b:FindFirstChildOfClass("UIStroke")
+			if st then st.Enabled = (id == t) end
+			b.BackgroundTransparency = (id == t) and 0 or 0.4
+		end
 	end
 	BuildController._refreshPanel()
 end
@@ -307,7 +323,7 @@ local function openBuild()
 	if info then _plot = info end
 	local inv = Net.get("GetInventory"):InvokeServer()
 	if inv then _counts = inv end
-	_panel.Visible = true
+	if _bm then _bm.Enabled = true end
 	setTab(_activeTab)
 	BuildController._refreshCounter()
 end
@@ -317,7 +333,7 @@ local function closeBuild()
 	_sel = nil
 	if _ghost then _ghost:Destroy(); _ghost = nil end
 	if _ring then _ring:Destroy(); _ring = nil end
-	_panel.Visible = false
+	if _bm then _bm.Enabled = false end
 end
 
 function BuildController.start()
@@ -330,55 +346,40 @@ function BuildController.start()
 	openBtn.Size = UDim2.fromOffset(140, 54); openBtn.AnchorPoint = Vector2.new(1, 1)
 	openBtn.Position = UDim2.new(0.5, -130, 1, -32)
 	openBtn.BackgroundColor3 = Color3.fromRGB(70, 100, 60); openBtn.TextColor3 = Color3.new(1, 1, 1)
-	openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 16; openBtn.Text = "🔨 ZBUDUJ"; openBtn.Parent = gui
+	openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 16; openBtn.Text = " ZBUDUJ"; openBtn.Parent = gui
 	local oc = Instance.new("UICorner"); oc.CornerRadius = UDim.new(0, 10); oc.Parent = openBtn
 
-	-- panel budowania (lewa)
-	_panel = Instance.new("Frame")
-	_panel.Size = UDim2.fromOffset(330, 470); _panel.Position = UDim2.fromOffset(12, 60)
-	_panel.BackgroundColor3 = Color3.fromRGB(20, 20, 28); _panel.BorderSizePixel = 0; _panel.Visible = false; _panel.Parent = gui
-	local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 10); pc.Parent = _panel
-
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.fromOffset(220, 30); title.Position = UDim2.fromOffset(12, 8); title.BackgroundTransparency = 1
-	title.TextColor3 = Color3.new(1, 1, 1); title.Font = Enum.Font.GothamBold; title.TextSize = 18; title.TextXAlignment = Enum.TextXAlignment.Left
-	title.Text = "🔨 TRYB BUDOWANIA"; title.Parent = _panel
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromOffset(30, 30); closeBtn.Position = UDim2.new(1, -38, 0, 8)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(170, 45, 45); closeBtn.TextColor3 = Color3.new(1, 1, 1)
-	closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16; closeBtn.Text = "X"; closeBtn.Parent = _panel
-	closeBtn.MouseButton1Click:Connect(closeBuild)
-
-	-- zakladki
-	_tabBtns = {}
-	local tabs = { { "block", "BLOKI" }, { "weapon", "BROŃ" } }
-	for i, t in ipairs(tabs) do
-		local b = Instance.new("TextButton")
-		b.Size = UDim2.fromOffset(150, 34); b.Position = UDim2.fromOffset(12 + (i - 1) * 156, 46)
-		b.BackgroundColor3 = Color3.fromRGB(45, 45, 58); b.TextColor3 = Color3.new(1, 1, 1)
-		b.Font = Enum.Font.GothamBold; b.TextSize = 15; b.Text = t[2]; b.Parent = _panel
-		local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 8); bc.Parent = b
-		_tabBtns[t[1]] = b
-		b.MouseButton1Click:Connect(function() setTab(t[1]) end)
-	end
-
-	_grid = Instance.new("ScrollingFrame")
-	_grid.Size = UDim2.fromOffset(310, 320); _grid.Position = UDim2.fromOffset(12, 88)
-	_grid.BackgroundTransparency = 1; _grid.BorderSizePixel = 0; _grid.ScrollBarThickness = 5
-	_grid.CanvasSize = UDim2.new(); _grid.Parent = _panel
-
-	local clearBtn = Instance.new("TextButton")
-	clearBtn.Size = UDim2.fromOffset(150, 34); clearBtn.Position = UDim2.fromOffset(12, 420)
-	clearBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 50); clearBtn.TextColor3 = Color3.new(1, 1, 1)
-	clearBtn.Font = Enum.Font.GothamBold; clearBtn.TextSize = 14; clearBtn.Text = "Wyczyść działkę"; clearBtn.Parent = _panel
-	local clc = Instance.new("UICorner"); clc.CornerRadius = UDim.new(0, 8); clc.Parent = clearBtn
-	clearBtn.MouseButton1Click:Connect(clearPlot)
+		-- DESIGNEROWY panel budowania (StarterGui.BuildMode, place-owned)
+		local buildMode = LP:WaitForChild("PlayerGui"):WaitForChild("BuildMode", 15)
+		_bm = buildMode
+		if buildMode then
+			local root = buildMode:FindFirstChild("LeftCanvas") and buildMode.LeftCanvas:FindFirstChild("BuildMode")
+			local stroke = root and root:FindFirstChild("ContentStroke")
+			local content = stroke and stroke:FindFirstChild("Content")
+			_list = content and content:FindFirstChild("List")
+			local tmpl = _list and _list:FindFirstChild("Template")
+			if tmpl and content then
+				_template = tmpl
+				_template.Parent = content
+				_template.Visible = false
+			end
+			local btns = stroke and stroke:FindFirstChild("Buttons")
+			_tabBtns = { block = btns and btns:FindFirstChild("Blocks"), weapon = btns and btns:FindFirstChild("Weapons") }
+			if _tabBtns.block then _tabBtns.block.MouseButton1Click:Connect(function() setTab("block") end) end
+			if _tabBtns.weapon then _tabBtns.weapon.MouseButton1Click:Connect(function() setTab("weapon") end) end
+			local xBtn = root and root:FindFirstChild("X")
+			if xBtn then xBtn.MouseButton1Click:Connect(closeBuild) end
+			local clearB = root and root:FindFirstChild("ClearPlot")
+			if clearB then clearB.MouseButton1Click:Connect(clearPlot) end
+			buildMode.Enabled = false
+		else
+			warn("[BuildController] brak StarterGui.BuildMode")
+		end
 
 	_delBtn = Instance.new("TextButton")
-	_delBtn.Size = UDim2.fromOffset(140, 34); _delBtn.Position = UDim2.fromOffset(178, 420)
+	_delBtn.Size = UDim2.fromOffset(140, 34); _delBtn.AnchorPoint = Vector2.new(0.5, 1); _delBtn.Position = UDim2.new(0.5, -280, 1, -30)
 	_delBtn.BackgroundColor3 = Color3.fromRGB(90, 70, 40); _delBtn.TextColor3 = Color3.new(1, 1, 1)
-	_delBtn.Font = Enum.Font.GothamBold; _delBtn.TextSize = 14; _delBtn.Text = "🗑 Usuń"; _delBtn.Parent = _panel
+	_delBtn.Font = Enum.Font.GothamBold; _delBtn.TextSize = 14; _delBtn.Text = " Usuń"; _delBtn.Parent = gui
 	local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(0, 8); dc.Parent = _delBtn
 	_delBtn.MouseButton1Click:Connect(function()
 		_mode = (_mode == "delete") and "place" or "delete"
@@ -411,7 +412,7 @@ function BuildController.start()
 
 	-- licznik/postaw widoczne tylko w trybie
 	local function syncVis()
-		_counter.Visible = _on
+		_counter.Visible = _on; if _delBtn then _delBtn.Visible = _on end
 		if not _on then _postawBtn.Visible = false end
 	end
 
