@@ -33,6 +33,9 @@ UnitHealthController.start()
 local CoreHealthController = require(Controllers:WaitForChild("CoreHealthController"))
 CoreHealthController.start()
 
+local WeaponCameraGate = require(Controllers:WaitForChild("WeaponCameraGate"))
+WeaponCameraGate.start()
+
 local BuildController = require(Controllers:WaitForChild("BuildController"))
 BuildController.start()
 
