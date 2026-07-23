@@ -7,6 +7,7 @@ local SimConfig = {
 	-- BLOKOWANIE: wrog nie przenika przez bloki/jednostki — staje przed przeszkoda i niszczy ja.
 	blockAhead = 2.5, -- jak daleko przed wrogiem sprawdzamy przeszkode (study)
 	blockRadius = 4.0, -- promien zajetosci postawionej jednostki/bloku (study; ~pol kafla=6/2+margines)
+	playerShotDmg = 10, -- BALANS: ile HP zdejmuje 1 trafienie z broni FPS gracza (strzelanie w fali)
 }
 
 return SimConfig

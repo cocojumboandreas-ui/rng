@@ -193,7 +193,8 @@ local function buildEnemyModel(modelName, isBoss): Model?
 	if m.ScaleTo and factor < 0.999 then m:ScaleTo(factor) end
 	for _, d in ipairs(m:GetDescendants()) do
 		if d:IsA("BasePart") then
-			d.Anchored = true; d.CanCollide = false; d.CanQuery = false; d.CanTouch = false; d.CastShadow = false
+			-- CanQuery=true: raycast pocisku broni FPS gracza musi trafiac wroga (PlayerHitEnemy)
+			d.Anchored = true; d.CanCollide = false; d.CanQuery = true; d.CanTouch = false; d.CastShadow = false
 		end
 	end
 	local halfH = m:GetExtentsSize().Y * 0.5
@@ -245,6 +246,7 @@ end
 local function release(model, poolKey)
 	if not model then return end
 	model:PivotTo(PARK)
+	model:SetAttribute("WR_EnemyId", nil) -- sparkowany wrog nie moze byc trafiony przez bron FPS
 	local hb = _hpBarByModel[model]
 	if hb and hb.gui.Enabled then hb.gui.Enabled = false end
 	_freeByModel[poolKey] = _freeByModel[poolKey] or {}
@@ -446,6 +448,7 @@ local function onEvents(payload)
 			local modelName = enemyModelName(s.typeId, s.isBoss)
 			local model = acquire(modelName, s.isBoss)
 			if model then
+				model:SetAttribute("WR_EnemyId", s.id) -- do PlayerHitEnemy (bron FPS trafia ten model)
 				local et = GameConfig.Wave.enemyTypes[s.typeId]
 				_active[key] = {
 					model = model, modelName = modelName, poolKey = poolKeyFor(modelName, s.isBoss), fullId = s.id, plotId = plotId, isBoss = s.isBoss or false,

@@ -381,6 +381,23 @@ local function step(dt: number)
 	end
 end
 
+-- gracz trafil wroga z broni FPS (WeaponsSystem onHit -> Net.PlayerHitEnemy). -playerShotDmg HP.
+-- Gated: dziala TYLKO gdy wrog o tym id istnieje na plocie gracza (czyli w trakcie fali).
+function CombatService.PlayerHitEnemy(player, id)
+	if type(id) ~= "number" then return end
+	local enemies = _enemies[player]
+	local e = enemies and enemies[id]
+	if not e then return end -- brak wroga (poza fala / zly id / juz martwy) -> ignoruj (anti-cheat lekki)
+	local dmg = GameConfig.Sim.playerShotDmg or 10
+	_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, e.hp))
+	e.hp -= dmg
+	if e.hp <= 0 then
+		enemies[id] = nil
+		queueDeath(player, id)
+		CombatService.EnemyDied:Fire(player, e.typeId)
+	end
+end
+
 function CombatService.Init()
 	CombatService.EnemyDied = Signal.new() -- (player, enemyTypeId)
 	CombatService.EnemyReachedCore = Signal.new() -- (player, enemyTypeId)
@@ -395,6 +412,10 @@ function CombatService.Start()
 	_enemyEvents = Net.get("EnemyEvents")
 	_bossHP = Net.get("BossHP")
 	_unitHpNet = Net.get("UnitHp")
+
+	Net.get("PlayerHitEnemy").OnServerEvent:Connect(function(player, id)
+		CombatService.PlayerHitEnemy(player, tonumber(id))
+	end)
 
 	local dtStep = 1 / (GameConfig.Sim.simHz or 10)
 	RunService.Heartbeat:Connect(function(dt)

@@ -120,6 +120,18 @@ Bloki są **pasywne** (mają HP + `def`, blokują, ale NIE zadają dmg — obra�
 
 ---
 
+## 6b. Strzelanie gracza (bronie FPS)
+
+Gracz strzela do wrogów z broni (WeaponsSystem) w trakcie fali — każde trafienie zdejmuje HP.
+
+**Plik:** `Config/SimConfig.luau`
+- `playerShotDmg` — ile HP zdejmuje **1 trafienie** z broni gracza (teraz **10**)
+
+> Działa tylko gdy wróg istnieje (czyli w trakcie fali). Hook w `BulletWeapon.onHit` (place-owned,
+> w StarterPack) wysyła `Net.PlayerHitEnemy(id)`; serwer (`CombatService.PlayerHitEnemy`) zdejmuje HP.
+
+---
+
 ## 7. Wizual (NIE balans, ale gdyby trzeba)
 
 **Plik:** `Controllers/EnemyRenderController.luau` (góra):
