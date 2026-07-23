@@ -11,6 +11,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
 local Net = require(Framework:WaitForChild("Net"))
+local GameConfig = require(
+	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
+)
 
 local DevService = {}
 
@@ -66,6 +69,17 @@ local ACTIONS = {
 	rolls = function(player, data, amount)
 		data.spendableRolls += (amount or 100)
 		_economy.SyncRolls(player)
+	end,
+	-- daje N sztuk KAZDEJ jednostki/bloku/broni z UnitsConfig (test bez rolowania)
+	giveArsenal = function(player, data, amount)
+		local n = amount or 3
+		local inventory = data.inventory
+		if not inventory then inventory = {}; data.inventory = inventory end
+		for unitId in pairs(GameConfig.Units) do
+			local k = _inv.KeyFor(unitId, nil, "regular")
+			inventory[k] = (inventory[k] or 0) + n
+		end
+		if _inv then _inv.Changed:Fire(player) end -- jeden push InventorySync
 	end,
 	resetSkills = function(player, data)
 		resetSkills(player, data)

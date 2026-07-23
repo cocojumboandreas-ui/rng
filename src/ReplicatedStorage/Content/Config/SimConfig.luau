@@ -4,6 +4,9 @@
 local SimConfig = {
 	simHz = 10, -- tick symulacji na sekunde (jedna plaska petla dla wszystkich plotow)
 	spawnStagger = 0.03, -- odstep pathT miedzy kolejnymi wrogami przy spawnie (formacja-kolumna)
+	-- BLOKOWANIE: wrog nie przenika przez bloki/jednostki — staje przed przeszkoda i niszczy ja.
+	blockAhead = 2.5, -- jak daleko przed wrogiem sprawdzamy przeszkode (study)
+	blockRadius = 4.0, -- promien zajetosci postawionej jednostki/bloku (study; ~pol kafla=6/2+margines)
 }
 
 return SimConfig

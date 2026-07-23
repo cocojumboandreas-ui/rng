@@ -183,26 +183,49 @@ local function step(dt: number)
 			local fireRateMult = (stats and stats.fireRateMult) or 1
 			local rangeMult = (stats and stats.rangeMult) or 1
 
-			-- 1) ruch — wrog biegnie do bazy, ale ZATRZYMUJE sie w zasiegu broni (atkRange) od rdzenia
-			-- i stamtad go ostrzeliwuje (NIE wchodzi w rdzen). e.atCore = w zasiegu rdzenia (ostrzal).
+			-- placementy raz na krok: wieze + BLOKOWANIE ruchu + atak jednostek
+			local placements = (_grid and _grid.GetPlacements(player)) or {}
+			local placeWorld = {} -- swiatowe pozycje wszystkich postawionych (bloki+jednostki blokuja przejscie)
+			for _, pl in pairs(placements) do
+				placeWorld[#placeWorld + 1] = towerWorldPos(plot, pl.unitId, pl.x, pl.z)
+			end
+			local blockAhead = GameConfig.Sim.blockAhead or 2.5
+			local blockR2 = (GameConfig.Sim.blockRadius or 4) ^ 2
+
+			-- 1) ruch — wrog biegnie do bazy. STOP gdy: (a) w zasiegu broni od rdzenia (ostrzeliwuje rdzen),
+			-- (b) przed nim stoi blok/jednostka — NIE przenika, musi ja zniszczyc zeby isc dalej.
 			local corePos = plot.coreCFrame and plot.coreCFrame.Position
 			for _, e in pairs(enemies) do
 				local et = GameConfig.Wave.enemyTypes[e.typeId]
 				local range = (et and et.atkRange) or 12 -- zasieg ostrzalu rdzenia = zasieg broni (BALANS: WaveConfig atkRange)
+				local epos = enemyWorldPos(plot, e.pathT)
 				local atCore = false
 				if corePos then
-					local epos = enemyWorldPos(plot, e.pathT)
 					local dx, dz = epos.X - corePos.X, epos.Z - corePos.Z
 					if (dx * dx + dz * dz) <= range * range then atCore = true end
 				end
-				if not atCore and e.pathT < 1 then
+				-- przeszkoda tuz przed wrogiem (na sciezce) -> stop (przenikanie zabronione)
+				local blocked = false
+				if not atCore and e.pathT < 1 and #placeWorld > 0 then
+					local ahead = enemyWorldPos(plot, math.min(e.pathT + 0.02, 1))
+					local fx, fz = ahead.X - epos.X, ahead.Z - epos.Z
+					local flen = math.sqrt(fx * fx + fz * fz)
+					if flen > 1e-3 then
+						local px, pz = epos.X + (fx / flen) * blockAhead, epos.Z + (fz / flen) * blockAhead
+						for _, up in ipairs(placeWorld) do
+							local ddx, ddz = up.X - px, up.Z - pz
+							if ddx * ddx + ddz * ddz <= blockR2 then blocked = true; break end
+						end
+					end
+				end
+				if not atCore and not blocked and e.pathT < 1 then
 					e.pathT = math.min(1, e.pathT + e.speed * dt)
 				end
 				e.atCore = atCore
+				e.blocked = blocked
 			end
 
 			-- 2) wieze
-			local placements = (_grid and _grid.GetPlacements(player)) or {}
 			_towerCd[player] = _towerCd[player] or {}
 			local cds = _towerCd[player]
 			for pid, pl in pairs(placements) do
@@ -276,19 +299,22 @@ local function step(dt: number)
 							end
 							if best then
 								e.unitTimer = 1 / (et.atkRate or 1)
-								-- DEF: pancerz jednostki mityguje obrazenia; min 1 (zawsze chip damage).
-								-- e.atkDmg juz zeskalowany fala (waveAtkMult) na spawnie.
-								local dealt = math.max(1, (e.atkDmg or et.atkDmg) - (best.def or 0))
-								uhp[best.pid] = uhp[best.pid] - dealt
-								if uhp[best.pid] <= 0 then
-									uhp[best.pid] = nil
-									_unitHpSend[best.pid] = nil
-									if _build then _build.KillUnit(player, best.pid) end
-								elseif _unitHpNet then
-									local last = _unitHpSend[best.pid]
-									if not last or (os.clock() - last) >= 0.2 then
-										_unitHpSend[best.pid] = os.clock()
-										_unitHpNet:FireClient(player, { placementId = best.pid, hpPct = uhp[best.pid] / best.maxHp, hp = math.max(0, uhp[best.pid]), maxHp = best.maxHp })
+								-- DEF: pancerz W PELNI chroni — obrona >= dmg wroga => 0 obrazen (blok/jednostka NIE traci HP).
+								-- Slaby wrog nie zadraśnie dobrze opancerzonego bloku; dopiero silniejszy (wyzszy tier /
+								-- pozniejsza fala, atkDmg rosnie przez waveAtkMult) przebija obrone. e.atkDmg zamrozony na spawnie.
+								local dealt = math.max(0, (e.atkDmg or et.atkDmg) - (best.def or 0))
+								if dealt > 0 then
+									uhp[best.pid] = uhp[best.pid] - dealt
+									if uhp[best.pid] <= 0 then
+										uhp[best.pid] = nil
+										_unitHpSend[best.pid] = nil
+										if _build then _build.KillUnit(player, best.pid) end
+									elseif _unitHpNet then
+										local last = _unitHpSend[best.pid]
+										if not last or (os.clock() - last) >= 0.2 then
+											_unitHpSend[best.pid] = os.clock()
+											_unitHpNet:FireClient(player, { placementId = best.pid, hpPct = uhp[best.pid] / best.maxHp, hp = math.max(0, uhp[best.pid]), maxHp = best.maxHp })
+										end
 									end
 								end
 							end

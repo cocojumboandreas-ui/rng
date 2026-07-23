@@ -28,6 +28,7 @@ local BUTTONS = {
 	{ "💰 +100k monet", "coins", 100000, Color3.fromRGB(200, 165, 40) },
 	{ "🎲 +100 kosci", "rolls", 100, Color3.fromRGB(150, 110, 200) },
 	{ "🎲 +1000 kosci", "rolls", 1000, Color3.fromRGB(150, 110, 200) },
+	{ "📦 Caly arsenal x3", "giveArsenal", 3, Color3.fromRGB(60, 160, 120) },
 	{ "🌳 Reset skille", "resetSkills", nil, Color3.fromRGB(70, 120, 170) },
 	{ "🎒 Reset inventory", "resetInventory", nil, Color3.fromRGB(70, 120, 170) },
 	{ "📖 Reset kolekcja", "resetIndex", nil, Color3.fromRGB(70, 120, 170) },

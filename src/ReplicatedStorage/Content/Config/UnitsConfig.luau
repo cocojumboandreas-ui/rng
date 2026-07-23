@@ -73,8 +73,9 @@ local Units = {
 	-- ── TEST CONTENT (placeholder, nazwy do podmiany; ids/klucze zostaja EN) ──────
 	-- Modele budowane w RUNTIME przez UnitModelFactory (brak `model` -> placeholder z kodu).
 	-- BLOKI: kind=Block, footprint 1x1, brak combat (pasywne), hp w configu (StatProfile-spojne).
-	-- def = NIEWIDOCZNY pancerz bloku: obrazenia wroga = max(1, atkDmg - def) (mityguje CombatService).
-	-- Blok drewna def=10 vs wrog atkDmg=20 -> dostaje 10/cios; lepszy material = wyzszy def i hp.
+	-- def = pancerz bloku: obrazenia wroga = max(0, atkDmg - def). Obrona W PELNI chroni:
+	-- gdy def >= atkDmg wroga -> blok dostaje 0 (nie traci HP). Slaby wrog nie ruszy dobrego bloku;
+	-- dopiero silniejszy (wyzszy tier / pozniejsza fala) przebija. Lepszy material = wyzszy def i hp.
 	test_block_wood = {
 		kind = B, category = "block", rarityN = 5, footprint = { w = 1, d = 1 },
 		hp = 500, def = 10, displayName = "Blok drewna",

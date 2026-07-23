@@ -87,7 +87,7 @@ Każda jednostka (np. `soldier`, `tank`, `helicopter`, `jeep`, `sniper`, `swat`,
 | pole | co robi |
 |---|---|
 | `hp` | **HP jednostki** (ile wytrzyma ostrzał wrogów) |
-| `def` | **OBRONA** — obrażenia wroga = `max(1, atkDmg - def)` |
+| `def` | **OBRONA** — obrażenia wroga = `max(0, atkDmg - def)`. Gdy def ≥ dmg wroga → **0** (nie traci HP) |
 | `combat.dmg` | **DMG jednostki** na strzał |
 | `combat.fireRate` | strzały/s jednostki |
 | `combat.range` | zasięg jednostki |
@@ -95,7 +95,7 @@ Każda jednostka (np. `soldier`, `tank`, `helicopter`, `jeep`, `sniper`, `swat`,
 
 **Bloki (ściany):** wpisy `test_block_wood/stone/iron/rusty`:
 - `hp` — wytrzymałość bloku
-- `def` — **niewidoczny pancerz**: obrażenia wroga = `max(1, atkDmg - def)`
+- `def` — **niewidoczny pancerz**: obrażenia wroga = `max(0, atkDmg - def)` (def ≥ dmg → 0, blok nie traci HP)
 
 ---
 
@@ -107,7 +107,20 @@ Każda jednostka (np. `soldier`, `tank`, `helicopter`, `jeep`, `sniper`, `swat`,
 
 ---
 
-## 6. Wizual (NIE balans, ale gdyby trzeba)
+## 6. Blokowanie ruchu (wrogowie nie przenikają przez bloki/jednostki)
+
+Wrogowie **stają przed** każdym postawionym blokiem/jednostką na ścieżce i muszą go zniszczyć, żeby iść dalej.
+Bloki są **pasywne** (mają HP + `def`, blokują, ale NIE zadają dmg — obrażenia zadają dopiero pułapki).
+
+**Plik:** `Config/SimConfig.luau`
+- `blockAhead` — jak daleko przed wrogiem sprawdzana jest przeszkoda (teraz 2.5 studa)
+- `blockRadius` — promień zajętości jednostki/bloku (teraz 4.0; ~pół kafla 6/2 + margines)
+
+> HP/def bloków = §4 (`UnitsConfig.test_block_*`). Ile wróg zdejmuje blokowi = `max(0, atkDmg - def)` — gdy def ≥ dmg wroga, blok NIE traci HP (obrona w pełni chroni).
+
+---
+
+## 7. Wizual (NIE balans, ale gdyby trzeba)
 
 **Plik:** `Controllers/EnemyRenderController.luau` (góra):
 - `BOSS_FOOT = 10` / `GRUNT_FOOT = 4` — rozmiar modelu bossa vs zwykłego (study).
