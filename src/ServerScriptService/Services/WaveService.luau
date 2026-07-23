@@ -20,9 +20,10 @@ local GameConfig = require(
 local WaveService = {}
 
 local _combat, _core, _economy, _stat, _profile, _plot = nil, nil, nil, nil, nil, nil
-local _waveProgress, _waveEnded, _bossDefeated = nil, nil, nil
+local _waveProgress, _waveEnded, _bossDefeated, _runSummary = nil, nil, nil, nil
 local _phase: { [any]: string } = {} -- player -> RunPhase (domyslnie Building)
 local _run: { [any]: any } = {} -- player -> {kills, pool} podczas WaveActive
+local _runStats: { [any]: any } = {} -- player -> {maxWave, coins} — akumulatory RUNU (przez wiele fal, do podsumowania)
 
 local function isBossWave(waveNumber: number): boolean
 	local bw = GameConfig.Wave.bossWave
@@ -30,11 +31,14 @@ local function isBossWave(waveNumber: number): boolean
 end
 
 -- ── tiery wrogow (dane w WaveConfig; tu sam WZOR wyboru) ────────────────────────
--- najwyzszy odblokowany tier dla fali n (rosnie co tierEvery fal, do #tierTypes)
+-- najwyzszy odblokowany tier dla fali n. PRZEWIAZANE do fal bossow (co bossWave=20):
+-- tier startowy = tierBase (3) na falach 1-19; +1 po KAZDEJ fali bossa (20->4, 40->5, 60->6...),
+-- clamp do #tierTypes. Tak boss danej fali = najwyzszy nowy tier, a od nastepnej fali lata normalnie.
 local function maxTierFor(waveNumber: number): number
-	local every = GameConfig.Wave.tierEvery or 6
+	local bw = GameConfig.Wave.bossWave or 20
+	local base = GameConfig.Wave.tierBase or 3
 	local nTiers = #GameConfig.Wave.tierTypes
-	return math.clamp(1 + math.floor((waveNumber - 1) / every), 1, nTiers)
+	return math.clamp(base + math.floor(waveNumber / bw), 1, nTiers)
 end
 
 -- deterministyczny wybor wariantu wroga w tierze (salt = numer fali -> stabilne, ale zmienne miedzy falami)
@@ -142,29 +146,52 @@ function WaveService.StartWave(player)
 	pushProgress(player, waveNumber, 0, pool)
 end
 
+-- KONIEC CALEGO RUNU (baza padla / gracz przerwal recznie): podsumowanie max fala + max dmg + monety.
+-- Czyta obrazenia z CombatService PRZED ClearPlot (ClearPlot je zeruje), potem reset runu do fali 1.
+local function finishRun(player, reason: string)
+	local data = _profile and _profile.GetProfile(player)
+	local waveNumber = (data and data.waveNumber) or 1
+	local rs = _runStats[player] or { maxWave = 0, coins = 0 }
+	local maxWave = math.max(rs.maxWave or 0, waveNumber)
+	local damage = (_combat and _combat.GetRunDamage and _combat.GetRunDamage(player)) or 0
+
+	_combat.ClearPlot(player) -- czysci wrogow (i zeruje runDamage — dlatego czytamy damage wyzej)
+	_core.ResetHP(player)
+	if data then data.waveNumber = 1 end
+	_phase[player] = Enums.RunPhase.Building
+	_run[player] = nil
+	_runStats[player] = nil
+
+	local summary = { reason = reason, maxWave = maxWave, damage = math.floor(damage + 0.5), coins = math.floor((rs.coins or 0) + 0.5) }
+	WaveService.WaveEnded:Fire(player, reason, summary)
+	if _runSummary then
+		_runSummary:FireClient(player, summary)
+	end
+end
+
+-- KONIEC POJEDYNCZEJ FALI z wyczyszczeniem (Cleared) — run trwa dalej, akumuluje staty.
 local function endWave(player, reason)
+	if reason ~= Enums.WaveEndReason.Cleared then
+		finishRun(player, "core") -- CoreDestroyed -> koniec runu z podsumowaniem
+		return
+	end
 	local run = _run[player] or { kills = 0, pool = 0 }
 	local data = _profile and _profile.GetProfile(player)
 	local waveNumber = (data and data.waveNumber) or 1
-	local coinsEarned = 0
 
-	if reason == Enums.WaveEndReason.Cleared then
-		coinsEarned = _economy.AwardWave(player, waveNumber, run.kills) -- boss-fala: x bossRewardMult (Economy)
-		if isBossWave(waveNumber) then
-			WaveService.BossDefeated:Fire(player, waveNumber)
-			if _bossDefeated then
-				_bossDefeated:FireClient(player, { plotId = plotIdOf(player), waveNumber = waveNumber })
-			end
+	local coinsEarned = _economy.AwardWave(player, waveNumber, run.kills) -- boss-fala: x bossRewardMult (Economy)
+	local rs = _runStats[player] or { maxWave = 0, coins = 0 }
+	rs.coins = (rs.coins or 0) + coinsEarned
+	rs.maxWave = math.max(rs.maxWave or 0, waveNumber)
+	_runStats[player] = rs
+	if isBossWave(waveNumber) then
+		WaveService.BossDefeated:Fire(player, waveNumber)
+		if _bossDefeated then
+			_bossDefeated:FireClient(player, { plotId = plotIdOf(player), waveNumber = waveNumber })
 		end
-		if data then
-			data.waveNumber = waveNumber + 1
-		end
-	else -- CoreDestroyed: koniec runu
-		_combat.ClearPlot(player)
-		if data then
-			data.waveNumber = 1
-		end
-		_core.ResetHP(player)
+	end
+	if data then
+		data.waveNumber = waveNumber + 1
 	end
 
 	_phase[player] = Enums.RunPhase.Building
@@ -174,6 +201,15 @@ local function endWave(player, reason)
 	if _waveEnded then
 		_waveEnded:FireClient(player, { plotId = plotIdOf(player), reason = reason, summary = summary })
 	end
+end
+
+-- Gracz konczy run RECZNIE (przycisk „Zakończ falę") — w dowolnej fazie -> podsumowanie.
+function WaveService.StopWave(player)
+	local phase = WaveService.GetPhase(player)
+	if phase ~= Enums.RunPhase.WaveActive and phase ~= Enums.RunPhase.Building then
+		return
+	end
+	finishRun(player, "stopped")
 end
 
 local function onEnemyDied(player)
@@ -215,9 +251,13 @@ function WaveService.Start()
 	_waveProgress = Net.get("WaveProgress")
 	_waveEnded = Net.get("WaveEnded")
 	_bossDefeated = Net.get("BossDefeated")
+	_runSummary = Net.get("RunSummary")
 
 	Net.get("StartWave").OnServerEvent:Connect(function(player)
 		WaveService.StartWave(player)
+	end)
+	Net.get("StopWave").OnServerEvent:Connect(function(player)
+		WaveService.StopWave(player)
 	end)
 	_combat.EnemyDied:Connect(function(player)
 		onEnemyDied(player)
@@ -229,6 +269,7 @@ function WaveService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		_phase[player] = nil
 		_run[player] = nil
+		_runStats[player] = nil
 	end)
 end
 

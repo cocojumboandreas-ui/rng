@@ -97,7 +97,57 @@ function HudController.start()
 	end)
 
 	-- ── dol-prawo: zarobki offline / h (warstwa NAD rewealem — zostaje jasne w trakcie rolowania) ──
-	local offF = pill(guiOver, UDim2.fromOffset(210, 66), UDim2.new(1, -12, 1, -12), Vector2.new(1, 1))
+	local stopBtn = Instance.new("TextButton")
+		stopBtn.Size = UDim2.fromOffset(150, 40); stopBtn.AnchorPoint = Vector2.new(1, 0); stopBtn.Position = UDim2.new(1, -16, 0, 12)
+		stopBtn.BackgroundColor3 = Color3.fromRGB(200, 55, 55); stopBtn.TextColor3 = Color3.new(1, 1, 1)
+		stopBtn.Font = Enum.Font.GothamBold; stopBtn.TextSize = 16; stopBtn.Text = "⛔ Zakończ falę"; stopBtn.Parent = gui
+		local stc = Instance.new("UICorner"); stc.CornerRadius = UDim.new(0, 10); stc.Parent = stopBtn
+		stopBtn.MouseButton1Click:Connect(function()
+			Net.get("StopWave"):FireServer()
+		end)
+
+		local modalGui = Instance.new("ScreenGui")
+		modalGui.Name = "WR_RunSummary"; modalGui.ResetOnSpawn = false; modalGui.IgnoreGuiInset = true
+		modalGui.DisplayOrder = 80; modalGui.Enabled = false; modalGui.Parent = LP:WaitForChild("PlayerGui")
+		local dim = Instance.new("Frame")
+		dim.Size = UDim2.fromScale(1, 1); dim.BackgroundColor3 = Color3.new(0, 0, 0); dim.BackgroundTransparency = 0.4
+		dim.BorderSizePixel = 0; dim.Parent = modalGui
+		local panel = Instance.new("Frame")
+		panel.Size = UDim2.fromOffset(360, 300); panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
+		panel.BackgroundColor3 = Color3.fromRGB(28, 28, 38); panel.BorderSizePixel = 0; panel.Parent = modalGui
+		local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 16); pc.Parent = panel
+		local pst = Instance.new("UIStroke"); pst.Color = Color3.fromRGB(255, 215, 90); pst.Thickness = 2; pst.Transparency = 0.3; pst.Parent = panel
+		local title = label(panel, "KONIEC RUNU", 26, Color3.fromRGB(255, 215, 90))
+		title.Position = UDim2.fromOffset(0, 20); title.Size = UDim2.new(1, 0, 0, 40)
+		local subL = label(panel, "", 15, Color3.fromRGB(200, 200, 210))
+		subL.Position = UDim2.fromOffset(0, 58); subL.Size = UDim2.new(1, 0, 0, 20)
+		local function statRow(y, cap, color)
+			local capL = label(panel, cap, 16, Color3.fromRGB(180, 185, 200), Enum.TextXAlignment.Left)
+			capL.Position = UDim2.fromOffset(36, y); capL.Size = UDim2.new(1, -72, 0, 28)
+			local valL = label(panel, "0", 20, color or Color3.new(1, 1, 1), Enum.TextXAlignment.Right)
+			valL.Position = UDim2.fromOffset(36, y); valL.Size = UDim2.new(1, -72, 0, 28)
+			return valL
+		end
+		local waveVal = statRow(96, "🌊 Najdalsza fala", Color3.fromRGB(120, 200, 255))
+		local dmgVal = statRow(134, "⚔️ Zadane obrażenia", Color3.fromRGB(255, 150, 120))
+		local coinVal = statRow(172, "🪙 Zarobione monety", Color3.fromRGB(255, 215, 90))
+		local okBtn = Instance.new("TextButton")
+		okBtn.Size = UDim2.fromOffset(200, 46); okBtn.AnchorPoint = Vector2.new(0.5, 1); okBtn.Position = UDim2.new(0.5, 0, 1, -20)
+		okBtn.BackgroundColor3 = Color3.fromRGB(70, 170, 60); okBtn.TextColor3 = Color3.new(1, 1, 1)
+		okBtn.Font = Enum.Font.GothamBold; okBtn.TextSize = 18; okBtn.Text = "OK"; okBtn.Parent = panel
+		local okc = Instance.new("UICorner"); okc.CornerRadius = UDim.new(0, 10); okc.Parent = okBtn
+		okBtn.MouseButton1Click:Connect(function() modalGui.Enabled = false end)
+
+		Net.get("RunSummary").OnClientEvent:Connect(function(s)
+			if type(s) ~= "table" then return end
+			subL.Text = (s.reason == "core") and "Twoja baza zostala zniszczona" or "Przerwales fale"
+			waveVal.Text = fmt(s.maxWave or 0)
+			dmgVal.Text = fmt(s.damage or 0)
+			coinVal.Text = fmt(s.coins or 0)
+			modalGui.Enabled = true
+		end)
+
+		local offF = pill(guiOver, UDim2.fromOffset(210, 66), UDim2.new(1, -12, 1, -12), Vector2.new(1, 1))
 	local offTitle = label(offF, "Zarobki offline (na godzinę)", 13, Color3.fromRGB(150, 255, 150))
 	offTitle.Position = UDim2.fromOffset(0, 4); offTitle.Size = UDim2.new(1, 0, 0, 20)
 	local offVals = label(offF, "🪙 0   🎲 0", 16, Color3.new(1, 1, 1))

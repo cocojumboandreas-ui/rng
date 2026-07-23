@@ -1,4 +1,5 @@
 --!strict
+-- ⚙ BALANS: pelna mapa pokretel w /BALANCE.md (dla Olo). Tu: HP/DMG/zasieg/ilosc wrogow + bossy + skala.
 -- Content/Config/WaveConfig.luau — sklad fal. Wave [1] jawny; [n] z formuly `scaling`
 -- (WZOR w configu, nie w kodzie). enemyTypes: speed w pathT/s (0..1 na polilinii).
 --
@@ -50,8 +51,9 @@ local WaveConfig = {
 		[5] = { "t5_tank", "t5_heli" },
 		[6] = { "t6_jet" },
 	},
-	tierEvery = 6, -- co ile fal odblokowuje sie kolejny tier (maxTier = 1 + floor((n-1)/tierEvery))
-	tierWindow = 3, -- ile ostatnich (najwyzszych) tierow jest aktywnych w mixie fali
+	tierBase = 3, -- tier startowy (fale 1-19 mają maxTier=3); +1 po każdej fali bossa (patrz maxTierFor)
+	tierEvery = 6, -- (DEPRECATED — maxTier przewiązane teraz do bossWave, nie tierEvery)
+	tierWindow = 4, -- ile ostatnich (najwyzszych) tierow jest aktywnych w mixie fali (4 -> np. fala 21 = tier 1-4)
 	bossTiers = { "boss", "boss5", "boss6" }, -- k-ta boss-fala (20,40,60...) -> ten boss (k>#-> ostatni)
 	bossWave = 20, -- INTERWAL: co 20. fala = boss (20, 40, 60...)
 	bossRewardMult = 3, -- boss-fala daje x nagrody normalnej fali n

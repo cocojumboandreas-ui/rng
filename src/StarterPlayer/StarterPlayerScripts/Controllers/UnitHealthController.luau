@@ -14,7 +14,15 @@ local UnitHealthController = {}
 
 local RED = Color3.fromRGB(220, 60, 60)
 local GREEN = Color3.fromRGB(80, 220, 90)
-local _bars = {} -- placementId -> { gui, fill }
+local _bars = {} -- placementId -> { gui, fill, label }
+
+-- skrot liczby HP: 238 / 2.4K / 1.5M (jak na pasku)
+local function shortNum(n)
+	n = math.max(0, math.floor(n + 0.5))
+	if n >= 1e6 then return string.format("%.1fM", n / 1e6) end
+	if n >= 1000 then return string.format("%.1fK", n / 1000) end
+	return tostring(n)
+end
 
 local function findModel(pid)
 	local units = Workspace:FindFirstChild("WR_Units")
@@ -34,17 +42,23 @@ local function ensureBar(pid)
 	if not model or not model.PrimaryPart then return nil end
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "WR_HpBar"
-	gui.Size = UDim2.fromOffset(64, 9)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, model:GetExtentsSize().Y * 0.5 + 1.4, 0)
+	gui.Size = UDim2.fromOffset(70, 20)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, model:GetExtentsSize().Y * 0.5 + 1.6, 0)
 	gui.AlwaysOnTop = true
 	gui.Adornee = model.PrimaryPart
 	gui.Parent = model
 	local back = Instance.new("Frame")
-	back.Size = UDim2.fromScale(1, 1); back.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-	back.BorderSizePixel = 0; back.Parent = gui
+	back.Size = UDim2.new(1, 0, 0, 9); back.Position = UDim2.new(0, 0, 1, -9)
+	back.BackgroundColor3 = Color3.fromRGB(25, 25, 30); back.BorderSizePixel = 0; back.Parent = gui
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(1, 1); fill.BackgroundColor3 = GREEN; fill.BorderSizePixel = 0; fill.Parent = back
-	rec = { gui = gui, fill = fill }
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 0, 12); label.Position = UDim2.new(0, 0, 0, -1)
+	label.BackgroundTransparency = 1; label.Font = Enum.Font.GothamBold; label.TextScaled = false
+	label.TextSize = 12; label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextStrokeTransparency = 0.3; label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.Text = ""; label.Parent = gui
+	rec = { gui = gui, fill = fill, label = label }
 	_bars[pid] = rec
 	return rec
 end
@@ -76,6 +90,12 @@ function UnitHealthController.start()
 		local pct = math.clamp(p.hpPct or 1, 0, 1)
 		rec.fill.Size = UDim2.fromScale(pct, 1)
 		rec.fill.BackgroundColor3 = RED:Lerp(GREEN, pct)
+		local maxHp = p.maxHp or rec.maxHp
+		if maxHp then
+			rec.maxHp = maxHp
+			local cur = p.hp or (maxHp * pct)
+			rec.label.Text = shortNum(cur) .. "/" .. shortNum(maxHp)
+		end
 	end)
 
 	Net.get("UnitKilled").OnClientEvent:Connect(function(p)

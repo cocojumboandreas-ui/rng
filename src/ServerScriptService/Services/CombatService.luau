@@ -36,6 +36,7 @@ local _acc = 0
 local _synthPlotId: { [any]: number } = {} -- syntetyczny klucz -> plotId (harness bramki; puste w grze)
 local _lastStepMs = 0 -- czas ostatniego kroku symulacji [ms] (instrumentacja bramki)
 local _syncBytes = 0 -- bajty EnemySync od ostatniego odczytu (KB/s bramki)
+local _runDamage: { [any]: number } = {} -- player -> suma obrazen zadanych wrogom w runie (do podsumowania; overkill nieliczony)
 
 -- Rozwiazanie geometrii plotu: realny gracz -> GetPlot; klucz syntetyczny -> GetPlotById.
 local function resolvePlot(key)
@@ -120,7 +121,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 			atkDmg = atkDmg, -- atkDmg × waveAtkMult (zamrozony na spawnie, jak hp)
 			isBoss = isBoss, -- boss = zwykly wiersz z flaga (ta sama petla/pathing/core-dmg)
 		}
-		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss }
+		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss, maxHp = hp }
 	end
 	if _enemyEvents then
 		_enemyEvents:FireAllClients({ plotId = plotId, spawns = spawnList, deaths = {} })
@@ -156,6 +157,15 @@ function CombatService.ClearPlot(player)
 	_towerCd[player] = nil
 	_deaths[player] = nil
 	_unitHp[player] = nil
+	_runDamage[player] = nil
+end
+
+-- suma obrazen zadanych wrogom w biezacym runie (WaveService czyta do podsumowania PRZED ClearPlot)
+function CombatService.GetRunDamage(player): number
+	return _runDamage[player] or 0
+end
+function CombatService.ResetRunDamage(player)
+	_runDamage[player] = nil
 end
 
 -- ── tick ──────────────────────────────────────────────────────────────────────
@@ -173,9 +183,22 @@ local function step(dt: number)
 			local fireRateMult = (stats and stats.fireRateMult) or 1
 			local rangeMult = (stats and stats.rangeMult) or 1
 
-			-- 1) ruch
+			-- 1) ruch — wrog biegnie do bazy, ale ZATRZYMUJE sie w zasiegu broni (atkRange) od rdzenia
+			-- i stamtad go ostrzeliwuje (NIE wchodzi w rdzen). e.atCore = w zasiegu rdzenia (ostrzal).
+			local corePos = plot.coreCFrame and plot.coreCFrame.Position
 			for _, e in pairs(enemies) do
-				e.pathT += e.speed * dt
+				local et = GameConfig.Wave.enemyTypes[e.typeId]
+				local range = (et and et.atkRange) or 12 -- zasieg ostrzalu rdzenia = zasieg broni (BALANS: WaveConfig atkRange)
+				local atCore = false
+				if corePos then
+					local epos = enemyWorldPos(plot, e.pathT)
+					local dx, dz = epos.X - corePos.X, epos.Z - corePos.Z
+					if (dx * dx + dz * dz) <= range * range then atCore = true end
+				end
+				if not atCore and e.pathT < 1 then
+					e.pathT = math.min(1, e.pathT + e.speed * dt)
+				end
+				e.atCore = atCore
 			end
 
 			-- 2) wieze
@@ -201,7 +224,9 @@ local function step(dt: number)
 							end
 						end
 						if best then
-							best.hp -= u.combat.dmg * dmgMult
+							local dmg = u.combat.dmg * dmgMult
+							_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, best.hp)) -- licz efektywne (bez overkill)
+							best.hp -= dmg
 							cds[pid] = 1 / (u.combat.fireRate * fireRateMult)
 							if best.hp <= 0 then
 								enemies[best.id] = nil
@@ -220,8 +245,15 @@ local function step(dt: number)
 			for pid, pl in pairs(placements) do
 				local u = GameConfig.Units[pl.unitId]
 				if u then
-					if uhp[pid] == nil then uhp[pid] = u.hp or 100 end
-					unitList[#unitList + 1] = { pid = pid, pos = towerWorldPos(plot, pl.unitId, pl.x, pl.z), maxHp = u.hp or 100, def = u.def or 0 }
+					local maxHp = u.hp or 100
+					if uhp[pid] == nil then
+						uhp[pid] = maxHp
+						if _unitHpNet then -- pierwsze pojawienie: pokaz pasek od razu na pelnym HP (jawne HP jednostki)
+							_unitHpSend[pid] = os.clock()
+							_unitHpNet:FireClient(player, { placementId = pid, hpPct = 1, hp = maxHp, maxHp = maxHp })
+						end
+					end
+					unitList[#unitList + 1] = { pid = pid, pos = towerWorldPos(plot, pl.unitId, pl.x, pl.z), maxHp = maxHp, def = u.def or 0 }
 				end
 			end
 			for pid in pairs(uhp) do -- prune HP jednostek usunietych przez gracza
@@ -256,7 +288,7 @@ local function step(dt: number)
 									local last = _unitHpSend[best.pid]
 									if not last or (os.clock() - last) >= 0.2 then
 										_unitHpSend[best.pid] = os.clock()
-										_unitHpNet:FireClient(player, { placementId = best.pid, hpPct = uhp[best.pid] / best.maxHp })
+										_unitHpNet:FireClient(player, { placementId = best.pid, hpPct = uhp[best.pid] / best.maxHp, hp = math.max(0, uhp[best.pid]), maxHp = best.maxHp })
 									end
 								end
 							end
@@ -265,9 +297,9 @@ local function step(dt: number)
 				end
 			end
 
-			-- 3) atak rdzenia (wrog przy pathT>=1)
+			-- 3) atak rdzenia (wrog w zasiegu broni od rdzenia -> ostrzal na interwale, NIE wchodzi w rdzen)
 			for _, e in pairs(enemies) do
-				if e.pathT >= 1 then
+				if e.atCore then
 					e.coreTimer -= dt
 					if e.coreTimer <= 0 then
 						local et = GameConfig.Wave.enemyTypes[e.typeId]

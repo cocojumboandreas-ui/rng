@@ -36,12 +36,24 @@ local _freeByModel = {} -- modelName -> { Model, ... }
 local _active = {} -- key -> { model, modelName, plotId, isBoss, prevT, prevC, curT, curC, dir, halfH, nextFire, shown, weapon }
 local _nodesByPlot = {}
 local _plotCenters = {}
+local _corePosByPlot = {} -- plotId -> pozycja rdzenia (WR_CoreAnchor) — cel ostrzalu gdy brak jednostki
 local _focused = nil
 local _lodClock = 0
 local _fxFree = {} -- { {flash, tracer}, ... }
 local _weaponByModel = setmetatable({}, { __mode = "k" }) -- model -> { prof, part }  (bron rozpoznana raz)
 local _rigByModel = setmetatable({}, { __mode = "k" }) -- model -> { kind, prof, legs/spin }  (rig anim raz)
+local _hpBarByModel = setmetatable({}, { __mode = "k" }) -- model -> { gui, fill, label }  (pasek HP nad wrogiem, raz)
 local _heavy = 0 -- licznik aktywnych ciezkich FX (cap kosztu)
+
+-- pasek HP wroga (jawne HP): czerwony->zielony + liczba cur/max
+local HP_RED = Color3.fromRGB(230, 55, 55)
+local HP_GREEN = Color3.fromRGB(90, 225, 95)
+local function shortNum(n)
+	n = math.max(0, math.floor(n + 0.5))
+	if n >= 1e6 then return string.format("%.1fM", n / 1e6) end
+	if n >= 1000 then return string.format("%.1fK", n / 1000) end
+	return tostring(n)
+end
 
 -- stale animacji ruchu
 local WALK_FREQ = 9 -- czestotliwosc kroku (rad/s)
@@ -184,7 +196,29 @@ local function buildEnemyModel(modelName, isBoss): Model?
 			d.Anchored = true; d.CanCollide = false; d.CanQuery = false; d.CanTouch = false; d.CastShadow = false
 		end
 	end
-	m:SetAttribute("HalfH", m:GetExtentsSize().Y * 0.5)
+	local halfH = m:GetExtentsSize().Y * 0.5
+	m:SetAttribute("HalfH", halfH)
+	-- pasek HP nad wrogiem (raz na model, wylaczony w puli; wlaczany gdy wrog aktywny)
+	do
+		local w = isBoss and 120 or 56
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "WR_EHp"
+		gui.Size = UDim2.fromOffset(w, 22)
+		gui.StudsOffsetWorldSpace = Vector3.new(0, halfH + (isBoss and 3 or 1.6), 0)
+		gui.AlwaysOnTop = true; gui.Enabled = false; gui.Adornee = m.PrimaryPart; gui.Parent = m
+		local back = Instance.new("Frame")
+		back.Size = UDim2.new(1, 0, 0, isBoss and 12 or 8); back.Position = UDim2.new(0, 0, 1, isBoss and -12 or -8)
+		back.BackgroundColor3 = Color3.fromRGB(20, 20, 26); back.BorderSizePixel = 0; back.Parent = gui
+		local fill = Instance.new("Frame")
+		fill.Size = UDim2.fromScale(1, 1); fill.BackgroundColor3 = HP_GREEN; fill.BorderSizePixel = 0; fill.Parent = back
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 0, 12); label.Position = UDim2.new(0, 0, 0, -1)
+		label.BackgroundTransparency = 1; label.Font = Enum.Font.GothamBold
+		label.TextSize = isBoss and 15 or 12; label.TextColor3 = Color3.fromRGB(255, 255, 255)
+		label.TextStrokeTransparency = 0.3; label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.Text = ""; label.Parent = gui
+		_hpBarByModel[m] = { gui = gui, fill = fill, label = label }
+	end
 	_weaponByModel[m] = resolveWeapon(m, modelName) -- rozpoznaj bron raz (part przesuwa sie z modelem przez PivotTo)
 	_rigByModel[m] = resolveRig(m, modelName) -- rozpoznaj rig anim raz (nogi/kola/wirniki)
 	m:PivotTo(PARK)
@@ -211,6 +245,8 @@ end
 local function release(model, poolKey)
 	if not model then return end
 	model:PivotTo(PARK)
+	local hb = _hpBarByModel[model]
+	if hb and hb.gui.Enabled then hb.gui.Enabled = false end
 	_freeByModel[poolKey] = _freeByModel[poolKey] or {}
 	table.insert(_freeByModel[poolKey], model)
 end
@@ -332,8 +368,39 @@ local function nearestUnit(ox, oz, range)
 end
 
 -- ── geometria z tagow ────────────────────────────────────────────────────────────
+-- punkt SPAWNU przy bramie bazy wroga (WR_EnemyBase) — TA SAMA logika co PlotService (serwer),
+-- zeby sciezka renderu == sciezka symulacji. Wrogowie wychodza z drzwi, nie ze srodka pola.
+local function gateSpawnPoint(startPos)
+	local base, baseDX = nil, math.huge
+	for _, b in ipairs(CollectionService:GetTagged("WR_EnemyBase")) do
+		if b:IsDescendantOf(Workspace) then
+			local c = b:GetBoundingBox().Position
+			local dx = math.abs(c.X - startPos.X)
+			if dx < baseDX then baseDX = dx; base = b end
+		end
+	end
+	if not base then return nil end
+	local baseZ = base:GetBoundingBox().Position.Z
+	local sumX, sumZ, n = 0, 0, 0
+	for _, ch in ipairs(base:GetChildren()) do
+		if ch.Name:sub(1, 4) == "Door" then
+			local p = ch:IsA("BasePart") and ch.Position or ch:GetPivot().Position
+			if (startPos.Z < baseZ) == (p.Z < baseZ) then
+				sumX += p.X; sumZ += p.Z; n += 1
+			end
+		end
+	end
+	if n == 0 then return nil end
+	return Vector3.new(sumX / n, startPos.Y, sumZ / n)
+end
+
 local function buildNodes()
 	_nodesByPlot, _plotCenters = {}, {}
+	_corePosByPlot = {}
+	for _, c in ipairs(CollectionService:GetTagged("WR_CoreAnchor")) do
+		local pid = c:GetAttribute("PlotId")
+		if pid and c:IsA("BasePart") then _corePosByPlot[pid] = c.Position end
+	end
 	local tmp = {}
 	for _, n in ipairs(CollectionService:GetTagged("WR_PathNode")) do
 		local pid = n:GetAttribute("PlotId")
@@ -347,6 +414,11 @@ local function buildNodes()
 		local arr, sum = {}, Vector3.zero
 		for _, e in ipairs(list) do
 			arr[#arr + 1] = e.pos; sum += e.pos
+		end
+		-- dopnij punkt bramy jako start (spawn z drzwi) — spojne z serwerem (PlotService)
+		if arr[1] then
+			local gate = gateSpawnPoint(arr[1])
+			if gate then table.insert(arr, 1, gate); sum += gate end
 		end
 		_nodesByPlot[pid] = arr
 		_plotCenters[pid] = #arr > 0 and sum / #arr or Vector3.zero
@@ -379,10 +451,11 @@ local function onEvents(payload)
 					model = model, modelName = modelName, poolKey = poolKeyFor(modelName, s.isBoss), fullId = s.id, plotId = plotId, isBoss = s.isBoss or false,
 					prevT = s.pathT, prevC = os.clock(), curT = s.pathT, curC = os.clock(),
 					dir = nil, halfH = model:GetAttribute("HalfH") or 2, shown = false,
+						maxHp = s.maxHp or 0, hpPct = 1, -- jawne HP: cur = maxHp * hpPct (hpPct z bufora sync)
 					weapon = _weaponByModel[model], -- {prof, part} rozpoznana bron
 						rig = _rigByModel[model], -- rig anim ruchu (nogi/kola/wirniki)
-						lane = (((s.id) % 3) - 1) * 2.6, -- rozstaw w bok (3 kolumny) — nie gesiego
-						fwd = (((s.id) % 5) - 2) * 1.4, -- rozstaw w glab (stagger rzedow)
+						lane = (math.random() - 0.5) * (s.isBoss and 3 or 7.5), -- rozstaw w bok LOSOWO (chmara, nie kolumny)
+						fwd = (math.random() - 0.5) * (s.isBoss and 2 or 6), -- rozstaw w glab losowo (rozbiega szyk)
 						animPhase = math.random() * 6.28, -- desync animacji
 						atkRange = et and et.atkRange or 14,
 						atkInt = et and et.atkRate and (1 / et.atkRate) or 1.5,
@@ -409,10 +482,12 @@ local function onSync(_plotId, buf)
 		local off = i * 4
 		local id = buffer.readu16(buf, off)
 		local pathT = buffer.readu8(buf, off + 2) / 255
+		local hpPct = buffer.readu8(buf, off + 3) / 100 -- bajt 4 = % HP (0..100)
 		local e = _active[id]
 		if e then
 			e.prevT, e.prevC = e.curT, e.curC
 			e.curT, e.curC = pathT, now
+			e.hpPct = hpPct
 		end
 	end
 end
@@ -470,12 +545,25 @@ local function renderStep(dt)
 						baseY += math.abs(math.sin(e.animPhase * 11)) * rp.bob
 					end
 				end
+				-- rozstaw NARASTA od bramy: przy t~0 zwarci (wychodza z drzwi), w polu pelna chmara
+				local spread = math.clamp(t * 4.5, 0, 1)
 				local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ
-				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * e.lane + dir * e.fwd
+				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * (e.lane * spread) + dir * (e.fwd * spread)
 				local pivot = CFrame.lookAlong(wpos, dir)
 				if roll ~= 0 then pivot = pivot * CFrame.Angles(0, 0, roll) end
 				e.model:PivotTo(pivot)
 				e.shown = true
+
+				-- jawne HP: pasek nad wrogiem (pct z bufora sync, liczba cur/max)
+				local hb = _hpBarByModel[e.model]
+				if hb then
+					local pct = math.clamp(e.hpPct or 1, 0, 1)
+					if not hb.gui.Enabled then hb.gui.Enabled = true end
+					hb.fill.Size = UDim2.fromScale(pct, 1)
+					hb.fill.BackgroundColor3 = HP_RED:Lerp(HP_GREEN, pct)
+					local mx = e.maxHp or 0
+					hb.label.Text = shortNum(mx * pct) .. "/" .. shortNum(mx)
+				end
 
 				-- napedy: nogi (chod, przeciwfaza) / kola / wirniki
 				if rig then
@@ -491,11 +579,18 @@ local function renderStep(dt)
 					end
 				end
 
-				-- FAZA 4: wizualny ostrzal najblizszej jednostki gracza
+				-- wizualny ostrzal: najpierw najblizsza jednostka gracza; jak brak — RDZEN (gdy w zasiegu)
 				if now >= e.nextFire then
 					e.nextFire = now + e.atkInt * (0.8 + math.random() * 0.4)
-					local u = nearestUnit(pos.X, pos.Z, e.atkRange)
-					if u then
+					local target = nearestUnit(pos.X, pos.Z, e.atkRange)
+					if not target then
+						local cp = _corePosByPlot[e.plotId]
+						if cp then
+							local dx, dz = cp.X - pos.X, cp.Z - pos.Z
+							if dx * dx + dz * dz <= e.atkRange * e.atkRange then target = cp end
+						end
+					end
+					if target then
 						local wp = e.weapon and e.weapon.part
 						local muzzle
 						if wp and wp.Parent then
@@ -504,13 +599,15 @@ local function renderStep(dt)
 						else
 							muzzle = Vector3.new(pos.X, pos.Y + e.halfH * 1.2, pos.Z)
 						end
-						fireWeapon(e, muzzle, u + Vector3.new(0, 1.5, 0))
+						fireWeapon(e, muzzle, target + Vector3.new(0, 1.5, 0))
 					end
 				end
 			end
 		elseif e.shown then
 			e.model:PivotTo(PARK)
 			e.shown = false
+			local hb = _hpBarByModel[e.model]
+			if hb and hb.gui.Enabled then hb.gui.Enabled = false end
 		end
 	end
 end

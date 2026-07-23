@@ -89,6 +89,33 @@ local function deriveGrid(plotModel: Instance, plotId: number)
 	return gridOrigin, Vector2int16.new(width, depth), center
 end
 
+-- punkt SPAWNU przy bramie bazy wroga (WR_EnemyBase) po stronie Z wezla startowego plotu.
+-- Kontrakt = tagi (bez sztywnych sciezek). Wrogowie wychodza Z DRZWI, nie ze srodka pola.
+-- Ta sama logika po stronie klienta (EnemyRenderController) -> sciezka serwer==klient.
+local function gateSpawnPoint(startPos: Vector3): Vector3?
+	local base, baseDX = nil, math.huge
+	for _, b in ipairs(CollectionService:GetTagged("WR_EnemyBase")) do
+		if b:IsDescendantOf(Workspace) then
+			local c = b:GetBoundingBox().Position
+			local dx = math.abs(c.X - startPos.X)
+			if dx < baseDX then baseDX = dx; base = b end
+		end
+	end
+	if not base then return nil end
+	local baseZ = base:GetBoundingBox().Position.Z
+	local sumX, sumZ, n = 0, 0, 0
+	for _, ch in ipairs(base:GetChildren()) do
+		if ch.Name:sub(1, 4) == "Door" then
+			local p = ch:IsA("BasePart") and ch.Position or ch:GetPivot().Position
+			if (startPos.Z < baseZ) == (p.Z < baseZ) then -- ta sama strona bazy co spawn plotu
+				sumX += p.X; sumZ += p.Z; n += 1
+			end
+		end
+	end
+	if n == 0 then return nil end
+	return Vector3.new(sumX / n, startPos.Y, sumZ / n)
+end
+
 local function buildPlot(plotModel: Instance, plotId: number, coresById, nodesById)
 	local gridOrigin, gridSize, center = deriveGrid(plotModel, plotId)
 	if not gridOrigin then
@@ -126,6 +153,17 @@ local function buildPlot(plotModel: Instance, plotId: number, coresById, nodesBy
 		end
 	else
 		warn(("[PlotService] Plot %d: brak WR_PathNode — faceDirection domyslny."):format(plotId))
+	end
+
+	-- SPAWN Z DRZWI: dopnij punkt bramy jako nowy Order 0 (wrogowie wychodza z bazy, nie ze srodka pola).
+	-- faceDirection policzone WYZEJ z oryginalnego pathNode[1] -> orientacja budowania bez zmian.
+	if pathNodes[1] then
+		local gate = gateSpawnPoint(pathNodes[1].Position)
+		if gate then
+			table.insert(pathNodes, 1, CFrame.new(gate))
+		else
+			warn(("[PlotService] Plot %d: brak bramy WR_EnemyBase — spawn zostaje na pathNode[1]."):format(plotId))
+		end
 	end
 
 	return {
