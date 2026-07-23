@@ -6,6 +6,8 @@
 *.rbxlx.lock
 *.rbxm
 *.rbxmx
+# WYJATEK: backupy mapy/placu trzymamy w repo (place-owned, poza Rojo — jedyne wersjonowanie)
+!place_backup/*.rbxm
 build/
 sourcemap.json
 
