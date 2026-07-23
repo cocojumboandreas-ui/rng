@@ -402,9 +402,12 @@ function BuildController.start()
 	local pbc = Instance.new("UICorner"); pbc.CornerRadius = UDim.new(0, 10); pbc.Parent = _postawBtn
 	_postawBtn.MouseButton1Click:Connect(place)
 
-	openBtn.MouseButton1Click:Connect(function()
+	local function doToggle()
 		if _on then closeBuild() else openBuild() end
-	end)
+	end
+	BuildController.Toggle = doToggle -- HUD ziomka (SideButtons.Build) wola to
+	openBtn.Visible = false -- stary temp guzik ukryty; nasz panel budowania zostaje (Etap E: designerowy BuildMode)
+	openBtn.MouseButton1Click:Connect(doToggle)
 
 	-- licznik/postaw widoczne tylko w trybie
 	local function syncVis()

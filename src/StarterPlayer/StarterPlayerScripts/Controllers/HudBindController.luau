@@ -81,6 +81,35 @@ function HudBindController.start()
 	if stopBtn then bindPress(stopBtn); stopBtn.MouseButton1Click:Connect(function() Net.get("StopWave"):FireServer() end) end
 	if rollBtn then bindPress(rollBtn); rollBtn.MouseButton1Click:Connect(function() Net.get("RollRequest"):FireServer() end) end
 
+	-- ── guziki paneli -> istniejace kontrolery (startuja PRZED HudBind, wiec .Toggle/.Open juz sa) ──
+	local Controllers = script.Parent
+	local skillsBtn = resolve(sb, "BottomCanvas", "Buttons", "Skills")
+	local indexBtn = resolve(sb, "LeftCanvas", "Buttons", "Index")
+	local storeBtn = resolve(sb, "LeftCanvas", "Buttons", "Store")
+	local buildBtn = resolve(sb, "BottomCanvas", "Buttons", "Build")
+	if skillsBtn then
+		bindPress(skillsBtn)
+		skillsBtn.MouseButton1Click:Connect(function()
+			local ctrl = require(Controllers:FindFirstChild("SkillTreeController"))
+			if ctrl and ctrl.Toggle then ctrl.Toggle() end
+		end)
+	end
+	if indexBtn then
+		bindPress(indexBtn)
+		indexBtn.MouseButton1Click:Connect(function()
+			local ctrl = require(Controllers:FindFirstChild("IndexController"))
+			if ctrl and ctrl.Open then ctrl.Open() end
+		end)
+	end
+	if buildBtn then
+		bindPress(buildBtn)
+		buildBtn.MouseButton1Click:Connect(function()
+			local ctrl = require(Controllers:FindFirstChild("BuildController"))
+			if ctrl and ctrl.Toggle then ctrl.Toggle() end
+		end)
+	end
+	if storeBtn then bindPress(storeBtn) end -- Store: brak systemu sklepu w v1 (sam feedback wcisniecia)
+
 	-- ── waluty / rolki ──
 	Net.get("CoinsSync").OnClientEvent:Connect(function(p)
 		if p and p.balance ~= nil then setText(coinsL, fmt(p.balance)) end

@@ -292,6 +292,8 @@ function IndexController.start()
 	end
 	_activeCat = GameConfig.Index.categories[1].id
 
+	IndexController.Open = openPanel -- HUD ziomka (SideButtons.Index) wola to
+	openBtn.Visible = false -- stary temp guzik ukryty; panel zostaje
 	openBtn.MouseButton1Click:Connect(openPanel)
 
 	-- live: nowy wpis per-wariant + %/luck

@@ -206,13 +206,16 @@ function SkillTreeController.start()
 	closeBtn.Parent = gui
 	local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 10); cc.Parent = closeBtn
 
-	openBtn.MouseButton1Click:Connect(function()
+	local function doToggle()
 		local willOpen = not NodeTreeClient.isTreeVisible()
 		if willOpen then
 			syncOwned()
 		end
 		NodeTreeClient.setIsTreeVisible(willOpen)
-	end)
+	end
+	SkillTreeController.Toggle = doToggle -- HUD ziomka (SideButtons.Skills) wola to
+	openBtn.Visible = false -- stary temp guzik ukryty; logika drzewka zostaje
+	openBtn.MouseButton1Click:Connect(doToggle)
 	closeBtn.MouseButton1Click:Connect(function()
 		NodeTreeClient.setIsTreeVisible(false)
 	end)
