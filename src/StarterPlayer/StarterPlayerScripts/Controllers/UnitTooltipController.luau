@@ -1,10 +1,9 @@
 --!nonstrict
 -- StarterPlayerScripts/Controllers/UnitTooltipController.luau  (KLIENT)
--- KARTA INFO (ikona 3D + DMG/s + HP). Dwa zrodla:
---   (a) TRYB WOLNY: najedziesz na WLASNA jednostke na planszy -> mala karta NAD glowa (nie zaslania jej) + biala
---       OTOCZKA (Highlight, jak Start Wave). NIE podczas edycji budowania (tam BuildController ma wlasny hover),
---       NIE podczas fali.
---   (b) BUILD MODE: najedziesz na KARTE w panelu (Bron/Bloki) -> ta sama karta z HP + DMG/s (showForCard, _cardForced).
+-- KARTA INFO (ikona 3D + DMG/s + HP) + biala OTOCZKA gdy najedziesz na WLASNA jednostke na planszy.
+-- TYLKO w TRYBIE WOLNYM (nie w edycji budowania — tam BuildController ma wlasny hover + statystyki na karcie
+-- panelu — ani podczas fali). Pozycja karty: DUZA jednostka (blok/bron) -> na SRODKU jednostki; MALA/plaska
+-- (pulapka) -> NAD nia (nie zaslania). Otoczka = Highlight (bialy kontur, jak podswietlenie Start Wave).
 -- Wartosci na razie z configu (HP = hp, DMG/s = combat.dmg * combat.fireRate) — placeholder; docelowy system
 -- wartosci ogarniemy przy indexie (UI ziomka).
 local Players = game:GetService("Players")
@@ -28,7 +27,6 @@ local _iconCache = {}
 local _curUnit = nil -- aktualnie pokazywany unitId (zeby nie przebudowywac co klatke)
 local _hovered = nil -- Model z aktywna otoczka WR_TipHL
 local _waveActive = false -- fala trwa -> chowamy karte i otoczke
-local _cardForced = false -- karta panelu Build Mode wymusza dymek (priorytet nad petla swiata)
 
 -- 2.9K / 10.0K / 1.2M
 local function fmt(n)
@@ -150,19 +148,6 @@ local function showAt(unitId, sx, sy, anchor)
 	_gui.Enabled = true
 end
 
--- API dla panelu Build Mode: dymek na PRAWO od karty (panel przy lewej krawedzi), wysrodkowany w pionie
-function UnitTooltip.showForCard(unitId, cardGui)
-	_cardForced = true
-	local inset = GuiService:GetGuiInset()
-	local pos, size = cardGui.AbsolutePosition, cardGui.AbsoluteSize
-	showAt(unitId, pos.X + size.X + 8 + inset.X, pos.Y + size.Y * 0.5 + inset.Y, Vector2.new(0, 0.5))
-end
-
-function UnitTooltip.hideCard()
-	_cardForced = false
-	UnitTooltip.hide()
-end
-
 function UnitTooltip.hide()
 	if _gui then _gui.Enabled = false end
 	_curUnit = nil
@@ -241,22 +226,33 @@ function UnitTooltip.start()
 	end
 
 	RunService.RenderStepped:Connect(function()
-		if _cardForced then return end -- karta panelu (Build Mode) ma priorytet — nie ruszamy jej z petli
 		if _waveActive or inBuildMode() then -- karta swiata TYLKO w TRYBIE WOLNYM
 			hideAll()
 			return
 		end
 		local m = unitUnderCursor()
-		if m then
+		local cam = Workspace.CurrentCamera
+		if m and cam then
 			setOutline(m)
-			-- karta NAD glowa jednostki (wysrodkowana), nie zaslania jej: rzut wierzchu modelu world->ekran
-			local cam = Workspace.CurrentCamera
+			-- DUZA jednostka (blok/bron) -> karta na SRODKU jednostki; MALA/plaska (pulapka) -> karta NAD nia.
+			-- Decyzja po wysokosci jednostki na EKRANIE (uwzglednia perspektywe): wysoka -> srodek, niska -> nad.
 			local cf, size = m:GetBoundingBox()
-			local topWorld = Vector3.new(cf.Position.X, cf.Position.Y + size.Y * 0.5 + 1, cf.Position.Z)
 			local inset = GuiService:GetGuiInset()
-			if cam then
-				local sp = cam:WorldToViewportPoint(topWorld)
-				showAt(m:GetAttribute("UnitId"), sp.X + inset.X, sp.Y + inset.Y - 6, Vector2.new(0.5, 1))
+			local center = cf.Position
+			local topW = Vector3.new(center.X, center.Y + size.Y * 0.5, center.Z)
+			local botW = Vector3.new(center.X, center.Y - size.Y * 0.5, center.Z)
+			local spTop = cam:WorldToViewportPoint(topW)
+			local spBot = cam:WorldToViewportPoint(botW)
+			local unitScreenH = math.abs(spBot.Y - spTop.Y)
+			local cardH = 216 * 0.66
+			local uid = m:GetAttribute("UnitId")
+			if unitScreenH >= cardH * 0.7 then
+				-- karta wysrodkowana NA jednostce
+				local spC = cam:WorldToViewportPoint(center)
+				showAt(uid, spC.X + inset.X, spC.Y + inset.Y, Vector2.new(0.5, 0.5))
+			else
+				-- karta NAD jednostka (nie zaslania plaskiej pulapki)
+				showAt(uid, spTop.X + inset.X, spTop.Y + inset.Y - 6, Vector2.new(0.5, 1))
 			end
 		else
 			hideAll()

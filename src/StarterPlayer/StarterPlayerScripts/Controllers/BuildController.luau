@@ -24,7 +24,6 @@ local GridMath = require(Framework:WaitForChild("GridMath"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local UnitModelFactory = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UnitModelFactory"))
 local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
-local UnitTooltip = require(script.Parent:WaitForChild("UnitTooltipController"))
 
 local BuildController = {}
 
@@ -34,6 +33,14 @@ local RED = Color3.fromRGB(220, 70, 70)
 local WHITE = Color3.fromRGB(255, 255, 255) -- obrys jak przy najechaniu na Start Wave (bialy, swiecacy)
 local FIT_MARGIN = 0.8 -- MUSI zgadzac sie z BuildService.FIT_MARGIN (ghost == realny model)
 local LERP = 0.35 -- plynnosc dojazdu ghosta (0..1; wiecej = szybciej)
+
+-- 2.9K / 10.0K / 1.2M (statystyki na karcie przy najechaniu)
+local function fmtNum(n)
+	n = n or 0
+	if n >= 1e6 then return string.format("%.1fM", n / 1e6) end
+	if n >= 1e3 then return string.format("%.1fK", n / 1e3) end
+	return tostring(math.floor(n + 0.5))
+end
 
 -- ── stan ──
 local _on = false
@@ -611,11 +618,17 @@ function BuildController._refreshPanel()
 				end
 				if nameL then nameL.Text = u.displayName or unitId end
 				if countL then countL.Text = tostring(_counts[key]) .. "x" end
+				-- Stats = nakladka na karte (ziomek: Frame 1x1, domyslnie Visible=false) pokazywana PRZY NAJECHANIU.
+				-- Bron/pulapka: ⚔️ DMG/s + ❤️ HP. Blok: tylko ❤️ HP (wiersz Attack ukryty).
 				local stats = card:FindFirstChild("Stats")
-				local atkL = stats and stats:FindFirstChild("Attack") and stats.Attack:FindFirstChild("TextLabel")
+				local atkFrame = stats and stats:FindFirstChild("Attack")
+				local atkL = atkFrame and atkFrame:FindFirstChild("TextLabel")
 				local hpL = stats and stats:FindFirstChild("Health") and stats.Health:FindFirstChild("TextLabel")
-				if atkL then atkL.Text = u.combat and ("⚔️ " .. tostring(u.combat.dmg)) or "🧱 blok" end
-				if hpL then hpL.Text = "💘 " .. tostring(u.hp or 0) end
+				local dps = u.combat and (u.combat.dmg or 0) * (u.combat.fireRate or 1) or 0
+				if atkFrame then atkFrame.Visible = u.combat ~= nil end
+				if atkL then atkL.Text = "⚔️ " .. fmtNum(dps) .. "/s" end
+				if hpL then hpL.Text = "❤️ " .. fmtNum(u.hp or 0) end
+				if stats then stats.Visible = false end
 				local petIcon = card:FindFirstChild("PetIcon")
 				if petIcon then
 					petIcon.Image = ""
@@ -631,9 +644,11 @@ function BuildController._refreshPanel()
 					setPcControls(true); setCursor(true)
 					BuildController._refreshPanel()
 				end)
-				-- DYMEK z HP + DMG/s przy najechaniu na karte (Build Mode)
-				card.MouseEnter:Connect(function() UnitTooltip.showForCard(unitId, card) end)
-				card.MouseLeave:Connect(function() UnitTooltip.hideCard() end)
+				-- najechanie -> pokaz nakladke ze statystykami NA karcie (jak w grze-wzorze), zejscie -> schowaj
+				if stats then
+					card.MouseEnter:Connect(function() stats.Visible = true end)
+					card.MouseLeave:Connect(function() stats.Visible = false end)
+				end
 				card.Parent = _list
 			end
 		end
