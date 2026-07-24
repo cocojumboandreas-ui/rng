@@ -71,7 +71,7 @@ local function build()
 	frame.BackgroundColor3 = Color3.fromRGB(58, 62, 74); frame.BackgroundTransparency = 0.05
 	frame.BorderSizePixel = 0; frame.Parent = gui
 	-- mniejsza karta (nie zaslania calej jednostki) — UIScale skaluje ramke + calą zawartosc
-	local uscale = Instance.new("UIScale"); uscale.Scale = 0.66; uscale.Parent = frame
+	local uscale = Instance.new("UIScale"); uscale.Scale = 0.55; uscale.Parent = frame
 	local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 10); fc.Parent = frame
 	local fs = Instance.new("UIStroke"); fs.Color = Color3.fromRGB(20, 22, 28); fs.Thickness = 2; fs.Parent = frame
 	local pad = Instance.new("UIPadding")
@@ -139,8 +139,8 @@ local function showAt(unitId, sx, sy, anchor)
 	anchor = anchor or Vector2.new(0.5, 1)
 	_frame.AnchorPoint = anchor
 	-- realny rozmiar (juz po UIScale); fallback gdy pierwsza klatka nie przeliczyla
-	local w = _frame.AbsoluteSize.X; if w < 1 then w = 184 * 0.66 end
-	local h = _frame.AbsoluteSize.Y; if h < 1 then h = 216 * 0.66 end
+	local w = _frame.AbsoluteSize.X; if w < 1 then w = 184 * 0.55 end
+	local h = _frame.AbsoluteSize.Y; if h < 1 then h = 216 * 0.55 end
 	local vp = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(1280, 720)
 	local left = math.clamp(sx - anchor.X * w, 4, math.max(4, vp.X - w - 4))
 	local top = math.clamp(sy - anchor.Y * h, 4, math.max(4, vp.Y - h - 4))
@@ -246,9 +246,19 @@ function UnitTooltip.start()
 				local spC = cam:WorldToViewportPoint(cf.Position)
 				showAt(uid, spC.X + inset.X, spC.Y + inset.Y, Vector2.new(0.5, 0.5))
 			else
-				-- karta NAD jednostka (nie skacze, nie zaslania) — rzut wierzchu bbox na ekran
-				local spTop = cam:WorldToViewportPoint(Vector3.new(cf.Position.X, cf.Position.Y + size.Y * 0.5, cf.Position.Z))
-				showAt(uid, spTop.X + inset.X, spTop.Y + inset.Y - 6, Vector2.new(0.5, 1))
+				-- karta NAD jednostka. UWAGA: rigi maja efekty (WR_Tracer/WR_Muzzle) zaparkowane ~139 studow
+				-- dalej -> GetBoundingBox (srodek/wierzch) ODLATUJE w eter. Bierzemy PIVOT (X/Z = srodek kratki)
+				-- + wierzch tylko CZESCI CIALA (party blisko pivota), zeby karta stala nad glowa.
+				local piv = m:GetPivot().Position
+				local topY = piv.Y
+				for _, d in ipairs(m:GetDescendants()) do
+					if d:IsA("BasePart") and (d.Position - piv).Magnitude < 30 then
+						local t = d.Position.Y + d.Size.Y * 0.5
+						if t > topY then topY = t end
+					end
+				end
+				local sp = cam:WorldToViewportPoint(Vector3.new(piv.X, topY + 0.5, piv.Z))
+				showAt(uid, sp.X + inset.X, sp.Y + inset.Y - 6, Vector2.new(0.5, 1))
 			end
 		else
 			hideAll()
