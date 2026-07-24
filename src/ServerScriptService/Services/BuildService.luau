@@ -82,14 +82,14 @@ local function doPlace(player, itemId: string, cellX: number, cellZ: number, rot
 		return false, reason
 	end
 	local pid = HttpService:GenerateGUID(false)
-	_grid.Occupy(player, pid, unitId, cellX, cellZ)
+	local layer = _grid.Occupy(player, pid, unitId, cellX, cellZ) -- zwraca warstwe stosu
 	if not _inv.Consume(player, unitId, mutation, variant) then
 		_grid.Free(player, pid) -- rollback (nie powinno sie zdarzyc po ownership-check)
 		return false, "NotOwned"
 	end
 	local data = _profile.GetProfile(player)
 	if data then
-		data.placements[pid] = { itemId = unitId, x = cellX, z = cellZ, mut = mutId, variant = variant, rot = rot or 0 }
+		data.placements[pid] = { itemId = unitId, x = cellX, z = cellZ, mut = mutId, variant = variant, rot = rot or 0, layer = layer }
 	end
 	return true, pid
 end
@@ -106,6 +106,9 @@ local function doMove(player, placementId: string, cellX: number, cellZ: number,
 	if not p then
 		return false, "NoSuchPlacement"
 	end
+	if not _grid.CanRemove(player, placementId) then
+		return false, "HasOnTop" -- cos stoi na tej jednostce; najpierw zdejmij z gory
+	end
 	local unitId = p.itemId
 	local oldX, oldZ = p.x, p.z
 	_grid.Free(player, placementId)
@@ -114,8 +117,8 @@ local function doMove(player, placementId: string, cellX: number, cellZ: number,
 		_grid.Occupy(player, placementId, unitId, oldX, oldZ) -- rollback do starej pozycji
 		return false, reason
 	end
-	_grid.Occupy(player, placementId, unitId, cellX, cellZ)
-	p.x, p.z, p.rot = cellX, cellZ, rot or 0
+	local layer = _grid.Occupy(player, placementId, unitId, cellX, cellZ)
+	p.x, p.z, p.rot, p.layer = cellX, cellZ, rot or 0, layer
 	return true
 end
 
@@ -128,6 +131,9 @@ local function doRemove(player, placementId: string)
 	local p = data and data.placements[placementId]
 	if not p then
 		return false, "NoSuchPlacement"
+	end
+	if not _grid.CanRemove(player, placementId) then
+		return false, "HasOnTop" -- usuwanie tylko z gory (najpierw zdejmij to co stoi na tej jednostce)
 	end
 	_grid.Free(player, placementId)
 	_inv.Refund(player, p.itemId, mutObject(p.mut), p.variant or "regular")
@@ -151,6 +157,7 @@ local function ensureUnitsFolder(): Folder
 end
 
 local FIT_MARGIN = 0.8 -- odstep od krawedzi kratki (mniejszy = jednostka ciasniej wpasowana w obrys)
+local LAYER_H = GameConfig.Grid.cellSize -- wysokosc jednej warstwy stosu (bloki = kostki tej wysokosci)
 
 local function spawnModel(player, unitId: string, placementId: string, cellX: number, cellZ: number, rot: number?)
 	local plot = _plot.GetPlot(player)
@@ -164,7 +171,10 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 		warn(("[BuildService] UnitModelFactory nie zwrocil modelu dla '%s'"):format(tostring(unitId)))
 		return nil
 	end
-	local fp = GameConfig.Units[unitId].footprint
+	local ucfg = GameConfig.Units[unitId]
+	local fp = ucfg.footprint
+	local isBlock = ucfg.combat == nil -- blok/pulapka (bez combat) — pojedynczy Part robimy kostka do stackowania
+	local layer = (_grid and _grid.GetLayer(player, placementId)) or 0 -- warstwa stosu (0 = ziemia)
 	local model = template:Clone()
 
 	-- PrimaryPart: modele ze store czesto go nie maja -> ustaw (HumanoidRootPart albo najwieksza czesc)
@@ -194,28 +204,39 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 			* CFrame.Angles(0, math.rad(rot or 0), 0)
 	)
 
-	-- Fit-to-cell: przeskaluj tak, by footprint XZ zmiescil sie w kratkach (pojazdy male, piechota lekko);
-	-- NIE powiekszaj (cap 1). Margines 0.85 zostawia odstep od krawedzi kratki. ScaleTo skaluje wzgl. pivota.
-	local size = model:GetExtentsSize() -- juz w orientacji docelowej
+	-- Fit-to-cell / BLOK: pojedynczy Part bloku -> KOSTKA wypelniajaca kratke o STALEJ wysokosci LAYER_H
+	-- (czyste stackowanie: jednostka na 4 blokach siada rowno). Inne modele: skala do footprintu (margines).
 	local cellW = fp.w * GameConfig.Grid.cellSize
 	local cellD = fp.d * GameConfig.Grid.cellSize
-	local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
-	factor = math.min(factor, 1)
-	if factor < 0.999 and model.ScaleTo then
-		model:ScaleTo(factor)
+	local blockParts = {}
+	if isBlock then
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then blockParts[#blockParts + 1] = d end
+		end
 	end
-	-- GWARANCJA zmieszczenia (dlugie pojazdy typu czolg): domiar po skalowaniu, dociagnij jesli wystaje
-	if model.GetScale and model.ScaleTo then
-		local s2 = model:GetExtentsSize()
-		local over = math.max(s2.X / cellW, s2.Z / cellD)
-		if over > 1 then
-			model:ScaleTo(model:GetScale() / over * 0.98)
+	if isBlock and #blockParts == 1 then
+		blockParts[1].Size = Vector3.new(cellW * 0.95, LAYER_H, cellD * 0.95)
+	else
+		local size = model:GetExtentsSize() -- juz w orientacji docelowej
+		local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
+		factor = math.min(factor, 1)
+		if factor < 0.999 and model.ScaleTo then
+			model:ScaleTo(factor)
+		end
+		-- GWARANCJA zmieszczenia (dlugie pojazdy typu czolg): domiar po skalowaniu, dociagnij jesli wystaje
+		if model.GetScale and model.ScaleTo then
+			local s2 = model:GetExtentsSize()
+			local over = math.max(s2.X / cellW, s2.Z / cellD)
+			if over > 1 then
+				model:ScaleTo(model:GetScale() / over * 0.98)
+			end
 		end
 	end
 
-	-- PODSTAWA na ziemi (stopy na kaflach) — po skalowaniu
+	-- PODSTAWA na WIERZCHU stosu: ziemia + layer * wysokosc warstwy (layer 0 = na kaflach)
+	local surfaceY = groundY + layer * LAYER_H
 	local bbCf, bbSize = model:GetBoundingBox()
-	local lift = groundY - (bbCf.Position.Y - bbSize.Y * 0.5)
+	local lift = surfaceY - (bbCf.Position.Y - bbSize.Y * 0.5)
 	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
 
 	-- RECENTER XZ: STOPY (HumanoidRootPart) w SRODEK kratki — nie pistolet/bbox (dla blokow/pojazdow: srodek bbox).
@@ -225,7 +246,6 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	model:PivotTo(model:GetPivot() + Vector3.new(center.X - aPos.X, 0, center.Z - aPos.Z))
 
 	-- KIEROWCA (np. Jeep): dokomponuj model kierowcy w fotel przod-lewo (kompozycja przed kotwiczeniem)
-	local ucfg = GameConfig.Units[unitId]
 	if ucfg.driver then
 		local assets = ReplicatedStorage:FindFirstChild("Assets")
 		local uf = assets and assets:FindFirstChild("Units")
@@ -264,6 +284,7 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	model:SetAttribute("CellX", cellX) -- tryb budowania: klient liczy zajetosc kratek wlasnego plotu
 	model:SetAttribute("CellZ", cellZ)
 	model:SetAttribute("Rot", rot or 0) -- reczny obrot (klient odczytuje przy podniesieniu jednostki do przeniesienia)
+	model:SetAttribute("Layer", layer) -- warstwa stosu (klient liczy wysokosc ghosta + walidacje stackowania)
 	model:SetAttribute("FpW", fp.w)
 	model:SetAttribute("FpD", fp.d)
 	model.Parent = ensureUnitsFolder()
@@ -288,9 +309,17 @@ function BuildService.RestorePlot(player)
 	if not data or not data.placements then
 		return
 	end
+	-- STACKING: odtwarzaj od DOLU (warstwa 0 pierwsza), zeby stosy zbudowaly sie w poprawnej kolejnosci.
+	local order = {}
 	for pid, p in pairs(data.placements) do
-		_grid.Occupy(player, pid, p.itemId, p.x, p.z)
-		spawnModel(player, p.itemId, pid, p.x, p.z, p.rot)
+		order[#order + 1] = { pid = pid, p = p }
+	end
+	table.sort(order, function(a, b)
+		return (a.p.layer or 0) < (b.p.layer or 0)
+	end)
+	for _, e in ipairs(order) do
+		_grid.Occupy(player, e.pid, e.p.itemId, e.p.x, e.p.z)
+		spawnModel(player, e.p.itemId, e.pid, e.p.x, e.p.z, e.p.rot)
 	end
 	BuildService.PlacementChanged:Fire(player)
 end

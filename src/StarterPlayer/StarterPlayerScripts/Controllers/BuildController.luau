@@ -92,6 +92,61 @@ local function occupancy(ignorePid)
 	return occ, used
 end
 
+-- PLATFORMA = blok (nie bron, nie pulapka) -> mozna na niej stawiac kolejne rzeczy
+local function isPlatform(unitId)
+	local u = unitId and GameConfig.Units[unitId]
+	return u ~= nil and u.combat == nil and u.category ~= "trap"
+end
+
+-- STOSY: dla kazdej kratki -> { height, topUnitId }. height = liczba warstw, topUnitId = jednostka na wierzchu.
+-- Czytane z WR_Units (atrybut Layer). Opcjonalnie pomijamy przenoszona jednostke.
+local function cellStacks(ignorePid)
+	local out = {}
+	local units = Workspace:FindFirstChild("WR_Units")
+	if units then
+		for _, m in ipairs(units:GetChildren()) do
+			if m:IsA("Model") and m:GetAttribute("OwnerUserId") == LP.UserId then
+				if not (ignorePid and m:GetAttribute("PlacementId") == ignorePid) then
+					local x, z = m:GetAttribute("CellX"), m:GetAttribute("CellZ")
+					local w, d = m:GetAttribute("FpW") or 1, m:GetAttribute("FpD") or 1
+					local layer = m:GetAttribute("Layer") or 0
+					local uid = m:GetAttribute("UnitId")
+					if x and z then
+						for _, c in ipairs(GridMath.footprintCells(x, z, { w = w, d = d })) do
+							local k = cellKey(c.x, c.z)
+							local cur = out[k]
+							if not cur or (layer + 1) > cur.height then
+								out[k] = { height = layer + 1, topUnitId = uid }
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- wspolna wysokosc (warstwa) pod anchor-kratka — do pozycji Y ghosta (siada na wierzchu stosu)
+local function heightAt(x, z)
+	local st = cellStacks(_moving)[cellKey(x, z)]
+	return st and st.height or 0
+end
+
+-- czy jednostka jest NA WIERZCHU swoich kratek (nic na niej nie stoi) -> mozna ja podniesc/usunac
+local function isTopUnit(m)
+	local x, z = m:GetAttribute("CellX"), m:GetAttribute("CellZ")
+	local w, d = m:GetAttribute("FpW") or 1, m:GetAttribute("FpD") or 1
+	local layer = m:GetAttribute("Layer") or 0
+	if not (x and z) then return true end
+	local stacks = cellStacks() -- WSZYSTKO (nie pomijamy nic)
+	for _, c in ipairs(GridMath.footprintCells(x, z, { w = w, d = d })) do
+		local st = stacks[cellKey(c.x, c.z)]
+		if not st or st.height ~= layer + 1 then return false end -- cos stoi nad ta jednostka
+	end
+	return true
+end
+
 -- punkt na plaszczyznie siatki pod kursorem -> kratka (x,z), clamp do siatki
 local function cursorCell()
 	if not _plot then return nil end
@@ -120,12 +175,29 @@ end
 local function validAt(x, z)
 	if not _sel then return false end
 	local fp = _sel.fp
-	local occ, used = occupancy(_moving)
-	for _, c in ipairs(GridMath.footprintCells(x, z, fp)) do
+	local cells = GridMath.footprintCells(x, z, fp)
+	local stacks = cellStacks(_moving)
+	-- granice + rdzen
+	for _, c in ipairs(cells) do
 		if c.x < 1 or c.x > _plot.width or c.z < 1 or c.z > _plot.depth then return false end
 		if _coreSet[cellKey(c.x, c.z)] then return false end -- kratka rdzenia
-		if occ[cellKey(c.x, c.z)] then return false end
 	end
+	-- STOS: rowna wysokosc na wszystkich kratkach footprintu
+	local H = nil
+	for _, c in ipairs(cells) do
+		local st = stacks[cellKey(c.x, c.z)]
+		local h = st and st.height or 0
+		if H == nil then H = h elseif h ~= H then return false end -- nierowny stos (brak podparcia)
+	end
+	-- jesli stoimy na czyms, wierzch KAZDEJ kratki musi byc platforma (blok, nie bron/pulapka)
+	if H and H > 0 then
+		for _, c in ipairs(cells) do
+			local st = stacks[cellKey(c.x, c.z)]
+			if not (st and isPlatform(st.topUnitId)) then return false end
+		end
+	end
+	-- budzet
+	local _, used = occupancy(_moving)
 	if used + fp.w * fp.d > _budget then return false end
 	return true
 end
@@ -156,14 +228,23 @@ local function makeGhost()
 	local cellW, cellD = _sel.fp.w * cs, _sel.fp.d * cs
 	-- orientacja jak na serwerze (mierzymy footprint po obrocie)
 	g:PivotTo(CFrame.lookAlong(Vector3.zero, _plot.faceDir) * CFrame.Angles(0, math.rad(_rot), 0))
-	local size = g:GetExtentsSize()
-	local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
-	factor = math.min(factor, 1)
-	if factor < 0.999 and g.ScaleTo then g:ScaleTo(factor) end
-	if g.GetScale and g.ScaleTo then -- gwarancja zmieszczenia (dlugie pojazdy)
-		local s2 = g:GetExtentsSize()
-		local over = math.max(s2.X / cellW, s2.Z / cellD)
-		if over > 1 then g:ScaleTo(g:GetScale() / over * 0.98) end
+	-- BLOK (bez broni): pojedynczy Part -> KOSTKA wypelniajaca kratke o wysokosci warstwy (cs), jak na serwerze.
+	local blockParts = {}
+	if not _sel.isWeapon then
+		for _, d in ipairs(g:GetDescendants()) do if d:IsA("BasePart") then blockParts[#blockParts + 1] = d end end
+	end
+	if not _sel.isWeapon and #blockParts == 1 then
+		blockParts[1].Size = Vector3.new(cellW * 0.95, cs, cellD * 0.95)
+	else
+		local size = g:GetExtentsSize()
+		local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
+		factor = math.min(factor, 1)
+		if factor < 0.999 and g.ScaleTo then g:ScaleTo(factor) end
+		if g.GetScale and g.ScaleTo then -- gwarancja zmieszczenia (dlugie pojazdy)
+			local s2 = g:GetExtentsSize()
+			local over = math.max(s2.X / cellW, s2.Z / cellD)
+			if over > 1 then g:ScaleTo(g:GetScale() / over * 0.98) end
+		end
 	end
 	for _, d in ipairs(g:GetDescendants()) do
 		if d:IsA("BasePart") then d.Anchored = true; d.CanCollide = false; d.CanQuery = false end
@@ -205,12 +286,13 @@ local function updateGhost()
 	_ghost.Parent = Workspace
 	local center = GridMath.cellToWorld(_plot.gridOrigin, _plot.cellSize, _cell.x, _cell.z, _sel.fp).Position
 	local groundY = _plot.gridOrigin.Position.Y
+	local surfaceY = groundY + heightAt(_cell.x, _cell.z) * _plot.cellSize -- STACK: siada na wierzchu stosu
 	local targetPos = Vector3.new(center.X, groundY, center.Z)
 	_ghostPos = _ghostPos and _ghostPos:Lerp(targetPos, LERP) or targetPos
-	-- pozycja (plynnie) + orientacja (natychmiast, wg _rot), potem posadz na ziemi
+	-- pozycja (plynnie) + orientacja (natychmiast, wg _rot), potem posadz na WIERZCHU stosu (surfaceY)
 	_ghost:PivotTo(orientAt(_ghostPos, groundY))
 	local bbCf, bbSize = _ghost:GetBoundingBox()
-	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, groundY - (bbCf.Position.Y - bbSize.Y * 0.5), 0))
+	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, surfaceY - (bbCf.Position.Y - bbSize.Y * 0.5), 0))
 	-- RECENTER XZ: STOPY (HumanoidRootPart) w srodek kratki — nie pistolet/bbox. Dla blokow/pojazdow: srodek bbox.
 	local anchor = _ghost:FindFirstChild("HumanoidRootPart", true)
 	local aPos = (anchor and anchor:IsA("BasePart")) and anchor.Position or (select(1, _ghost:GetBoundingBox())).Position
@@ -224,7 +306,7 @@ local function updateGhost()
 	end
 	if _ring then
 		_ring.Parent = Workspace
-		_ring.CFrame = CFrame.new(_ghostPos.X, groundY + 0.3, _ghostPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+		_ring.CFrame = CFrame.new(_ghostPos.X, surfaceY + 0.3, _ghostPos.Z) * CFrame.Angles(0, 0, math.rad(90))
 		_ring.Color = ok and GREEN or RED
 	end
 end
@@ -392,6 +474,7 @@ local function pickup(m)
 	local unitId = m:GetAttribute("UnitId")
 	local u = unitId and GameConfig.Units[unitId]
 	if not u then return end
+	if not isTopUnit(m) then return end -- nie podnosimy jednostki, na ktorej cos stoi (edycja tylko z gory)
 	clearHover() -- zdejmij podswietlenie hover (zaraz schowamy oryginal i zrobimy ghosta)
 	_moving = m:GetAttribute("PlacementId")
 	_movingModel = m
