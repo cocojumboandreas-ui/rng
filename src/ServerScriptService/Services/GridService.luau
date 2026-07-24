@@ -65,19 +65,35 @@ local function cellHeight(s, k): number
 	return maxL + 1
 end
 
--- wpis na wierzchu kratki (najwyzsza warstwa) albo nil
-local function cellTop(s, k)
-	local stack = s.stacks[k]
-	if not stack then
-		return nil
+-- NAJNIZSZA warstwa L, na ktora zmiesci sie caly footprint (wypelnia DZIURY od dolu, potem wierzch):
+-- wszystkie kratki WOLNE na L, i (L==0 albo pod kazda kratka na L-1 stoi PLATFORMA). nil = brak miejsca/podparcia.
+local function placementLayer(s, cells)
+	local maxH = 0
+	for _, c in ipairs(cells) do
+		local h = cellHeight(s, GridMath.key(c.x, c.z))
+		if h > maxH then maxH = h end
 	end
-	local maxL, top = -1, nil
-	for layer, ent in pairs(stack) do
-		if layer > maxL then
-			maxL, top = layer, ent
+	for L = 0, maxH do
+		local ok = true
+		for _, c in ipairs(cells) do
+			local stack = s.stacks[GridMath.key(c.x, c.z)]
+			if stack and stack[L] ~= nil then
+				ok = false
+				break
+			end
+			if L > 0 then
+				local below = stack and stack[L - 1]
+				if not (below and isPlatform(below.unitId)) then
+					ok = false
+					break
+				end
+			end
+		end
+		if ok then
+			return L
 		end
 	end
-	return top
+	return nil
 end
 
 local function reservedCells(player)
@@ -112,23 +128,9 @@ function GridService.CanPlace(player, unitId: string, cellX: number, cellZ: numb
 		end
 	end
 
-	-- B) STOS: rowna wysokosc na wszystkich kratkach; jesli > 0, wierzch = platforma
-	local H = nil
-	for _, c in ipairs(cells) do
-		local h = cellHeight(s, GridMath.key(c.x, c.z))
-		if H == nil then
-			H = h
-		elseif h ~= H then
-			return false, "NoSupport" -- nierowna wysokosc pod footprintem (brak podparcia)
-		end
-	end
-	if H and H > 0 then
-		for _, c in ipairs(cells) do
-			local top = cellTop(s, GridMath.key(c.x, c.z))
-			if not (top and isPlatform(top.unitId)) then
-				return false, "CantStack" -- na wierzchu bron/pulapka -> nie mozna stawiac
-			end
-		end
+	-- B) STOS: musi istniec warstwa gdzie footprint sie zmiesci (wypelnia dziury od dolu, z podparciem platforma)
+	if placementLayer(s, cells) == nil then
+		return false, "NoSupport"
 	end
 
 	-- C) budzet kratek
@@ -148,7 +150,10 @@ function GridService.Occupy(player, placementId: string, unitId: string, cellX: 
 	end
 	local s = stateOf(player)
 	local cells = GridMath.footprintCells(cellX, cellZ, fp)
-	local layer = forcedLayer or cellHeight(s, GridMath.key(cells[1].x, cells[1].z))
+	local layer = forcedLayer
+	if layer == nil then
+		layer = placementLayer(s, cells) or 0 -- najnizsza wolna warstwa (wypelnia dziury)
+	end
 	for _, c in ipairs(cells) do
 		local k = GridMath.key(c.x, c.z)
 		s.stacks[k] = s.stacks[k] or {}

@@ -98,9 +98,8 @@ local function isPlatform(unitId)
 	return u ~= nil and u.combat == nil and u.category ~= "trap"
 end
 
--- STOSY: dla kazdej kratki -> { height, topUnitId }. height = liczba warstw, topUnitId = jednostka na wierzchu.
--- Czytane z WR_Units (atrybut Layer). Opcjonalnie pomijamy przenoszona jednostke.
-local function cellStacks(ignorePid)
+-- mapy warstw per-kratka: cellKey -> { [layer] = unitId } (z WR_Units, atrybut Layer). Opcjonalnie pomija _moving.
+local function cellLayerMaps(ignorePid)
 	local out = {}
 	local units = Workspace:FindFirstChild("WR_Units")
 	if units then
@@ -114,10 +113,8 @@ local function cellStacks(ignorePid)
 					if x and z then
 						for _, c in ipairs(GridMath.footprintCells(x, z, { w = w, d = d })) do
 							local k = cellKey(c.x, c.z)
-							local cur = out[k]
-							if not cur or (layer + 1) > cur.height then
-								out[k] = { height = layer + 1, topUnitId = uid }
-							end
+							out[k] = out[k] or {}
+							out[k][layer] = uid
 						end
 					end
 				end
@@ -127,24 +124,34 @@ local function cellStacks(ignorePid)
 	return out
 end
 
--- wspolna wysokosc (warstwa) pod anchor-kratka — do pozycji Y ghosta (siada na wierzchu stosu)
-local function heightAt(x, z)
-	local st = cellStacks(_moving)[cellKey(x, z)]
-	return st and st.height or 0
+-- NAJNIZSZA warstwa L gdzie footprint sie zmiesci (wypelnia DZIURY od dolu): wszystkie kratki wolne na L,
+-- i (L==0 albo pod kazda kratka na L-1 stoi platforma). nil = brak miejsca. Zgodne z serwerem (GridService).
+local function placementLayer(maps, cells)
+	local maxH = 0
+	for _, c in ipairs(cells) do
+		local m = maps[cellKey(c.x, c.z)]
+		if m then for l in pairs(m) do if l + 1 > maxH then maxH = l + 1 end end end
+	end
+	for L = 0, maxH do
+		local ok = true
+		for _, c in ipairs(cells) do
+			local m = maps[cellKey(c.x, c.z)]
+			if m and m[L] ~= nil then ok = false; break end
+			if L > 0 then
+				local below = m and m[L - 1]
+				if not (below and isPlatform(below)) then ok = false; break end
+			end
+		end
+		if ok then return L end
+	end
+	return nil
 end
 
--- czy jednostka jest NA WIERZCHU swoich kratek (nic na niej nie stoi) -> mozna ja podniesc/usunac
-local function isTopUnit(m)
-	local x, z = m:GetAttribute("CellX"), m:GetAttribute("CellZ")
-	local w, d = m:GetAttribute("FpW") or 1, m:GetAttribute("FpD") or 1
-	local layer = m:GetAttribute("Layer") or 0
-	if not (x and z) then return true end
-	local stacks = cellStacks() -- WSZYSTKO (nie pomijamy nic)
-	for _, c in ipairs(GridMath.footprintCells(x, z, { w = w, d = d })) do
-		local st = stacks[cellKey(c.x, c.z)]
-		if not st or st.height ~= layer + 1 then return false end -- cos stoi nad ta jednostka
-	end
-	return true
+-- warstwa, na ktora TRAFI wybrana jednostka pod (x,z) — do pozycji Y ghosta (moze wypelnic dziure!)
+local function heightAt(x, z)
+	if not _sel then return 0 end
+	local L = placementLayer(cellLayerMaps(_moving), GridMath.footprintCells(x, z, _sel.fp))
+	return L or 0
 end
 
 -- punkt na plaszczyznie siatki pod kursorem -> kratka (x,z), clamp do siatki
@@ -176,26 +183,13 @@ local function validAt(x, z)
 	if not _sel then return false end
 	local fp = _sel.fp
 	local cells = GridMath.footprintCells(x, z, fp)
-	local stacks = cellStacks(_moving)
 	-- granice + rdzen
 	for _, c in ipairs(cells) do
 		if c.x < 1 or c.x > _plot.width or c.z < 1 or c.z > _plot.depth then return false end
 		if _coreSet[cellKey(c.x, c.z)] then return false end -- kratka rdzenia
 	end
-	-- STOS: rowna wysokosc na wszystkich kratkach footprintu
-	local H = nil
-	for _, c in ipairs(cells) do
-		local st = stacks[cellKey(c.x, c.z)]
-		local h = st and st.height or 0
-		if H == nil then H = h elseif h ~= H then return false end -- nierowny stos (brak podparcia)
-	end
-	-- jesli stoimy na czyms, wierzch KAZDEJ kratki musi byc platforma (blok, nie bron/pulapka)
-	if H and H > 0 then
-		for _, c in ipairs(cells) do
-			local st = stacks[cellKey(c.x, c.z)]
-			if not (st and isPlatform(st.topUnitId)) then return false end
-		end
-	end
+	-- STOS: musi istniec warstwa (wypelnia dziury od dolu, z podparciem platforma)
+	if placementLayer(cellLayerMaps(_moving), cells) == nil then return false end
 	-- budzet
 	local _, used = occupancy(_moving)
 	if used + fp.w * fp.d > _budget then return false end
