@@ -1,14 +1,12 @@
 --!nonstrict
 -- StarterPlayerScripts/Controllers/UnitTooltipController.luau  (KLIENT)
 -- DYMEK z podgladem jednostki (ikona 3D + DMG/s + HP) przy najechaniu myszka — jak w grze-wzorze (qw.png).
--- Dwa zrodla:
---   (a) KARTA w panelu Build Mode (Bloki/Bron) — BuildController wola UnitTooltip.showForCard(unitId, gui).
---   (b) POSTAWIONA jednostka pod kursorem (raycast) — dziala tez podczas wolnej gry i edycji (poza stawianiem).
+-- WYLACZNIE karty panelu Build Mode (Bron/Bloki): BuildController wola UnitTooltip.showForCard(unitId, gui).
+-- NIE pokazujemy dymka na POSTAWIONYCH jednostkach swiata (ani w wolnej grze, ani w fali, ani w edycji) —
+-- tylko na kartach w panelu, dokladnie jak na screenach (na karcie weapons/blocks widnieje HP i DMG/s).
 -- Wartosci na razie z configu (HP = hp, DMG/s = combat.dmg * combat.fireRate) — placeholder; docelowy system
 -- wartosci ogarniemy przy indexie (UI ziomka).
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -152,7 +150,7 @@ end
 
 function UnitTooltip.hideCard()
 	_cardForced = false
-	UnitTooltip.hide() -- petla renderu i tak pokaze ponownie jesli kursor jest nad jednostka swiata
+	UnitTooltip.hide()
 end
 
 function UnitTooltip.hide()
@@ -160,48 +158,10 @@ function UnitTooltip.hide()
 	_curUnit = nil
 end
 
--- raycast do WLASNEJ postawionej jednostki pod kursorem (jak w BuildController) -> Model albo nil
-local function unitUnderCursor()
-	local cam = Workspace.CurrentCamera
-	if not cam then return nil end
-	local units = Workspace:FindFirstChild("WR_Units")
-	if not units then return nil end
-	local mp = UserInputService:GetMouseLocation()
-	local ray = cam:ViewportPointToRay(mp.X, mp.Y)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	params.FilterDescendantsInstances = { units }
-	local hit = Workspace:Raycast(ray.Origin, ray.Direction * 800, params)
-	if not hit then return nil end
-	local m = hit.Instance
-	while m and m:GetAttribute("PlacementId") == nil do m = m.Parent end
-	if m and m:GetAttribute("OwnerUserId") == LP.UserId then return m end
-	return nil
-end
-
+-- Tylko budujemy GUI. Dymek pokazuja WYLACZNIE karty panelu (MouseEnter -> showForCard).
+-- Zadnego raycastu swiata: postawione jednostki NIE maja dymka (wolna gra / fala / edycja).
 function UnitTooltip.start()
 	build()
-	-- lazy ref do BuildController (zeby nie pokazywac dymka swiata podczas STAWIANIA ghosta)
-	local BuildController
-	local function isPlacing()
-		if not BuildController then
-			local c = script.Parent:FindFirstChild("BuildController")
-			if c then BuildController = require(c) end
-		end
-		return BuildController and BuildController.HasSelection and BuildController.HasSelection() or false
-	end
-
-	RunService.RenderStepped:Connect(function()
-		if _cardForced then return end -- karta panelu ma priorytet
-		if isPlacing() then UnitTooltip.hide(); return end -- podczas stawiania bez dymka swiata
-		local m = unitUnderCursor()
-		if m then
-			local mp = UserInputService:GetMouseLocation()
-			showAt(m:GetAttribute("UnitId"), mp.X, mp.Y)
-		else
-			UnitTooltip.hide()
-		end
-	end)
 end
 
 return UnitTooltip
