@@ -26,6 +26,10 @@ local PREWARM_TIER = 10 -- ile modeli KAZDEGO innego typu tieru prealokowac (w t
 local PREWARM_BOSS = 2 -- ile modeli KAZDEGO bossa prealokowac (w tle)
 local BOSS_FOOT = 10 -- docelowy footprint bossa (study)
 local GRUNT_FOOT = 4 -- docelowy footprint zwyklego wroga
+-- FORMACJA (render-only): wrogowie wychodza z bramy GESIEGO/prosto, dopiero po chwili rozchodza sie na plac.
+local LANE_SCALE = 0.5 -- ZWEZENIE rozstawu bocznego (mniejsze odleglosci miedzy wrogami; 1 = pelna szerokosc placu)
+local SPREAD_START = 0.16 -- do tego t (od bramy) ida PROSTO, gesiego (jeszcze bez rozejscia)
+local SPREAD_RAMP = 0.26 -- odcinek t na ktorym narasta pelny rozstaw (t: START -> START+RAMP)
 local FX_POOL = 24 -- max jednoczesnych blyskow strzalow wrogow (hitscan)
 local HEAVY_CAP = 10 -- max jednoczesnych ciezkich FX (rakiety, wybuchy, ogien)
 
@@ -448,8 +452,8 @@ local function laneForSpawn(isBoss: boolean): number
 	_colSeq += 1
 	local col = (_colSeq * 4) % BASE_COLS -- 0..8 rozproszone, rowno pokrywa wszystkie 9 kolumn
 	local center = (BASE_COLS - 1) / 2 -- 4
-	local jitter = (math.random() - 0.5) * cs * 0.5 -- lekki rozrzut w kolumnie (brak idealnego nakladania)
-	return (col - center) * cs + jitter
+	local jitter = (math.random() - 0.5) * cs * 0.3 -- lekki rozrzut w kolumnie (brak idealnego nakladania)
+	return (col - center) * cs * LANE_SCALE + jitter -- LANE_SCALE zwezenie -> mniejsze odleglosci
 end
 
 local function onEvents(payload)
@@ -476,7 +480,7 @@ local function onEvents(payload)
 					weapon = _weaponByModel[model], -- {prof, part} rozpoznana bron
 						rig = _rigByModel[model], -- rig anim ruchu (nogi/kola/wirniki)
 						lane = laneForSpawn(s.isBoss), -- rozstaw na 9 KOLUMN placu (wachlarz, nie gesiego)
-						fwd = (math.random() - 0.5) * (s.isBoss and 2 or 4), -- lekki rozstaw w glab (desync szyku)
+						fwd = (math.random() - 0.5) * (s.isBoss and 1.5 or 2.5), -- lekki rozstaw w glab (desync szyku, zwezony)
 						animPhase = math.random() * 6.28, -- desync animacji
 						atkRange = et and et.atkRange or 14,
 						atkInt = et and et.atkRate and (1 / et.atkRate) or 1.5,
@@ -572,8 +576,8 @@ local function renderStep(dt)
 						baseY += math.abs(math.sin(e.animPhase * 11)) * rp.bob
 					end
 				end
-				-- rozstaw NARASTA od bramy: przy t~0 zwarci (wychodza z drzwi), w polu pelna chmara
-				local spread = math.clamp(t * 4.5, 0, 1)
+				-- rozstaw NARASTA od bramy: do SPREAD_START ida PROSTO/gesiego, potem rozchodza sie na plac
+				local spread = math.clamp((t - SPREAD_START) / SPREAD_RAMP, 0, 1)
 				local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ
 				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * (e.lane * spread) + dir * (e.fwd * spread)
 				local pivot = CFrame.lookAlong(wpos, dir)
