@@ -106,15 +106,13 @@ local function doMove(player, placementId: string, cellX: number, cellZ: number,
 	if not p then
 		return false, "NoSuchPlacement"
 	end
-	if not _grid.CanRemove(player, placementId) then
-		return false, "HasOnTop" -- cos stoi na tej jednostce; najpierw zdejmij z gory
-	end
+	-- EDYCJA dowolnej warstwy: przenosimy nawet dolny blok; to co bylo na nim zostaje "w powietrzu".
 	local unitId = p.itemId
-	local oldX, oldZ = p.x, p.z
+	local oldX, oldZ, oldLayer = p.x, p.z, p.layer
 	_grid.Free(player, placementId)
 	local canOK, reason = _grid.CanPlace(player, unitId, cellX, cellZ)
 	if not canOK then
-		_grid.Occupy(player, placementId, unitId, oldX, oldZ) -- rollback do starej pozycji
+		_grid.Occupy(player, placementId, unitId, oldX, oldZ, oldLayer) -- rollback na starą warstwe
 		return false, reason
 	end
 	local layer = _grid.Occupy(player, placementId, unitId, cellX, cellZ)
@@ -132,9 +130,7 @@ local function doRemove(player, placementId: string)
 	if not p then
 		return false, "NoSuchPlacement"
 	end
-	if not _grid.CanRemove(player, placementId) then
-		return false, "HasOnTop" -- usuwanie tylko z gory (najpierw zdejmij to co stoi na tej jednostce)
-	end
+	-- EDYCJA dowolnej warstwy: usuwamy nawet dolny blok; to co bylo na nim zostaje "w powietrzu".
 	_grid.Free(player, placementId)
 	_inv.Refund(player, p.itemId, mutObject(p.mut), p.variant or "regular")
 	data.placements[placementId] = nil
@@ -318,7 +314,7 @@ function BuildService.RestorePlot(player)
 		return (a.p.layer or 0) < (b.p.layer or 0)
 	end)
 	for _, e in ipairs(order) do
-		_grid.Occupy(player, e.pid, e.p.itemId, e.p.x, e.p.z)
+		_grid.Occupy(player, e.pid, e.p.itemId, e.p.x, e.p.z, e.p.layer) -- dokladna warstwa (zachowuje "latajace")
 		spawnModel(player, e.p.itemId, e.pid, e.p.x, e.p.z, e.p.rot)
 	end
 	BuildService.PlacementChanged:Fire(player)

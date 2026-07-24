@@ -474,7 +474,7 @@ local function pickup(m)
 	local unitId = m:GetAttribute("UnitId")
 	local u = unitId and GameConfig.Units[unitId]
 	if not u then return end
-	if not isTopUnit(m) then return end -- nie podnosimy jednostki, na ktorej cos stoi (edycja tylko z gory)
+	-- EDYCJA dowolnej jednostki (tez dolnego bloku) — to co na niej stalo zostanie "w powietrzu".
 	clearHover() -- zdejmij podswietlenie hover (zaraz schowamy oryginal i zrobimy ghosta)
 	_moving = m:GetAttribute("PlacementId")
 	_movingModel = m
