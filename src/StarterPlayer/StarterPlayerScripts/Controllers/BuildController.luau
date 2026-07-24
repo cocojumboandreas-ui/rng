@@ -49,9 +49,8 @@ local _cell = nil -- {x,z} aktualna kratka pod kursorem
 local _thumbCache = {}
 
 -- UI refs — designerowy BuildMode (place-owned)
-local _bm, _list, _template, _content = nil, nil, nil, nil
+local _bm, _list, _template = nil, nil, nil
 local _counter, _tabBtns = nil, nil
-local fitListRows -- forward-decl (uzywane w _refreshPanel, definiowane nizej)
 local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
 local _pcControls = nil -- BottomRightCanvas.PcControls (Place/Rotate/Cancel — pokaz tylko gdy stawiamy)
 local _activeTab = "weapon"
@@ -474,31 +473,6 @@ function BuildController._refreshPanel()
 			end
 		end
 	end
-	-- po zbudowaniu kart dopasuj wysokosc listy do calych rzedow (po klatce, gdy layout policzy rozmiary)
-	task.defer(function()
-		RunService.Heartbeat:Wait()
-		fitListRows()
-	end)
-end
-
--- Dopasuj wysokosc listy do CALEJ liczby rzedow (kart wrap 3-w-rzedzie) -> zaden rzed nie "wystaje"
--- podglada spod obrysu panelu. Reszta miejsca = czyste tlo. Liczone z realnego rozmiaru karty (skala-odporne).
-function fitListRows()
-	if not (_list and _content) then return end
-	local layout, card
-	for _, c in ipairs(_list:GetChildren()) do
-		if c:IsA("UIListLayout") then layout = c end
-		if not card and c:IsA("GuiButton") then card = c end
-	end
-	if not (layout and card) then return end
-	local cardH = card.AbsoluteSize.Y
-	if cardH < 1 then return end
-	local padY = layout.Padding.Offset
-	local pitch = cardH + padY
-	local avail = _content.AbsoluteSize.Y
-	local rows = math.max(1, math.floor((avail + padY) / pitch + 1e-3))
-	local wholeH = rows * cardH + (rows - 1) * padY
-	_list.Size = UDim2.new(_list.Size.X.Scale, _list.Size.X.Offset, 0, math.floor(wholeH + 0.5))
 end
 
 local function setTab(t)
@@ -555,20 +529,17 @@ function BuildController.start()
 		local stroke = root and root:FindFirstChild("ContentStroke")
 		local content = stroke and stroke:FindFirstChild("Content")
 		_list = content and content:FindFirstChild("List")
-		_content = content
-		-- TRZYMAJ WSZYSTKO W OBRYSIE panelu: karty/liczniki (x8 itd.) nie wychodza poza ramke, nadmiar = scroll.
+		-- SZEROKOSC i uklad kart ZOSTAJA jak u ziomka (nic nie ruszamy przy rozmiarach). Tylko:
+		-- (1) klip do obrysu panelu -> nic nie wychodzi poza ramke, (2) pionowy scroll przy duzej ilosci
+		-- jednostek. ScrollBarThickness=0 -> pasek nie zweza kanwy, wiec karty dalej wypelniaja calą szerokosc
+		-- (scroll kolkiem myszy). Nadmiar rzedow chowa sie pod obrys i mozna do niego zjechac.
 		if stroke then stroke.ClipsDescendants = true end
-		if content then
-			content.ClipsDescendants = true
-			local cl = content:FindFirstChildOfClass("UIListLayout")
-			if cl then cl.VerticalAlignment = Enum.VerticalAlignment.Top end -- lista kart trzyma sie GORY (nie centruje po skroceniu)
-			content:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitListRows) -- rekalkulacja przy zmianie rozdzielczosci
-		end
+		if content then content.ClipsDescendants = true end
 		if _list then
 			_list.ClipsDescendants = true
 			_list.AutomaticCanvasSize = Enum.AutomaticSize.Y
 			_list.ScrollingEnabled = true
-			if _list.ScrollBarThickness < 4 then _list.ScrollBarThickness = 6 end
+			_list.ScrollBarThickness = 0
 		end
 		local tmpl = _list and _list:FindFirstChild("Template")
 		if tmpl and content then
