@@ -2,8 +2,8 @@
 -- StarterPlayerScripts/Controllers/UnitTooltipController.luau  (KLIENT)
 -- KARTA INFO (ikona 3D + DMG/s + HP) + biala OTOCZKA gdy najedziesz na WLASNA jednostke na planszy.
 -- TYLKO w TRYBIE WOLNYM (nie w edycji budowania — tam BuildController ma wlasny hover + statystyki na karcie
--- panelu — ani podczas fali). Pozycja karty: DUZA jednostka (blok/bron) -> na SRODKU jednostki; MALA/plaska
--- (pulapka) -> NAD nia (nie zaslania). Otoczka = Highlight (bialy kontur, jak podswietlenie Start Wave).
+-- panelu — ani podczas fali). Pozycja karty: statyczny BLOK -> na SRODKU jednostki; reszta (bron/soldier/
+-- pulapka) -> NAD glowa (nie skacze, nie zaslania). Otoczka = Highlight (bialy kontur, jak Start Wave).
 -- Wartosci na razie z configu (HP = hp, DMG/s = combat.dmg * combat.fireRate) — placeholder; docelowy system
 -- wartosci ogarniemy przy indexie (UI ziomka).
 local Players = game:GetService("Players")
@@ -234,21 +234,21 @@ function UnitTooltip.start()
 		local cam = Workspace.CurrentCamera
 		if m and cam then
 			setOutline(m)
-			-- BLOK/BRON (bryla) -> karta na SRODKU jednostki; PULAPKA/plaska (niska) -> karta NAD nia (nie zaslania).
-			-- Decyzja po TYPIE + wysokosci SWIATA (nie ekranu — niezalezna od odleglosci kamery).
+			-- Tylko statyczny BLOK -> karta na SRODKU (aa1). Reszta (bron/soldier/pulapka) -> karta NAD glowa:
+			-- soldiery to animowane rigi — wysrodkowana karta skakalaby (bbox pelza z animacja), wiec dajemy NAD.
 			local cf, size = m:GetBoundingBox()
 			local inset = GuiService:GetGuiInset()
 			local uid = m:GetAttribute("UnitId")
 			local u = GameConfig.Units[uid]
-			local flat = (u and u.category == "trap") or size.Y < 2 -- pulapka albo bardzo niski model
-			if flat then
-				-- karta NAD jednostka (plaska pulapka — nie zaslaniamy)
-				local spTop = cam:WorldToViewportPoint(Vector3.new(cf.Position.X, cf.Position.Y + size.Y * 0.5, cf.Position.Z))
-				showAt(uid, spTop.X + inset.X, spTop.Y + inset.Y - 6, Vector2.new(0.5, 1))
-			else
-				-- karta wysrodkowana NA jednostce (blok/bron)
+			local isBlock = u ~= nil and u.combat == nil and u.category ~= "trap"
+			if isBlock then
+				-- karta wysrodkowana NA bloku (statyczna bryla)
 				local spC = cam:WorldToViewportPoint(cf.Position)
 				showAt(uid, spC.X + inset.X, spC.Y + inset.Y, Vector2.new(0.5, 0.5))
+			else
+				-- karta NAD jednostka (nie skacze, nie zaslania) — rzut wierzchu bbox na ekran
+				local spTop = cam:WorldToViewportPoint(Vector3.new(cf.Position.X, cf.Position.Y + size.Y * 0.5, cf.Position.Z))
+				showAt(uid, spTop.X + inset.X, spTop.Y + inset.Y - 6, Vector2.new(0.5, 1))
 			end
 		else
 			hideAll()
