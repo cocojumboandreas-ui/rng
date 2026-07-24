@@ -182,6 +182,7 @@ local function renderUnitCategory(cat)
 			q.TextXAlignment = Enum.TextXAlignment.Center
 		end
 	end
+	_grid.CanvasSize = UDim2.fromOffset(0, math.ceil(#_unitOrder / 3) * 80) -- 3 kolumny, wiersz 72+8
 end
 
 local function renderEnemyCategory(cat)
@@ -195,6 +196,7 @@ local function renderEnemyCategory(cat)
 	local note = mkLabel(_grid, UDim2.new(1, 0, 0, 40), UDim2.fromOffset(0, math.ceil(cat.total / 3) * 80 + 8),
 		"Bestiariusz wrogow — wkrotce (etap 5)", 13, Color3.fromRGB(200, 150, 150))
 	note.TextXAlignment = Enum.TextXAlignment.Left
+	_grid.CanvasSize = UDim2.fromOffset(0, math.ceil(cat.total / 3) * 80 + 52) -- + miejsce na notke
 end
 
 local function renderCategory(catId)
@@ -313,10 +315,13 @@ function IndexController.start()
 	tabCol.BackgroundTransparency = 1; tabCol.Parent = _panel
 	_tabBtns = {}
 
-	-- srodkowa siatka
-	_grid = Instance.new("Frame")
-	_grid.Name = "Grid"; _grid.Size = UDim2.fromOffset(324, 320); _grid.Position = UDim2.fromOffset(156, 48)
-	_grid.BackgroundTransparency = 1; _grid.Parent = _panel
+	-- srodkowa siatka (ScrollingFrame: 19+ typow nie miesci sie -> clip + pionowy scroll)
+	_grid = Instance.new("ScrollingFrame")
+	_grid.Name = "Grid"; _grid.Size = UDim2.fromOffset(330, 320); _grid.Position = UDim2.fromOffset(156, 48)
+	_grid.BackgroundTransparency = 1; _grid.BorderSizePixel = 0
+	_grid.ScrollBarThickness = 6; _grid.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 110)
+	_grid.ScrollingDirection = Enum.ScrollingDirection.Y; _grid.CanvasSize = UDim2.new()
+	_grid.Parent = _panel
 
 	-- prawy panel detali
 	local detailFrame = Instance.new("Frame")
