@@ -637,20 +637,9 @@ end
 -- Nadmiar rzedow chowa sie i mozna do niego zjechac (scroll). Skala-odporne (liczone z realnych rozmiarow).
 function fitListRows()
 	if not (_list and _content) then return end
-	local layout, card
-	for _, c in ipairs(_list:GetChildren()) do
-		if c:IsA("UIListLayout") then layout = c end
-		if not card and c:IsA("GuiButton") then card = c end
-	end
-	if not (layout and card) then return end
-	local cardH = card.AbsoluteSize.Y
-	if cardH < 1 then return end
-	local padY = layout.Padding.Offset
-	local pitch = cardH + padY
-	local avail = _content.AbsoluteSize.Y
-	local rows = math.max(1, math.floor((avail + padY) / pitch + 1e-3))
-	local wholeH = rows * cardH + (rows - 1) * padY
-	_list.Size = UDim2.new(_list.Size.X.Scale, _list.Size.X.Offset, 0, math.floor(wholeH + 0.5))
+	-- Wypelnij CALA wysokosc panelu (nie zostawiaj pustego miejsca u dolu — wykorzystaj przestrzen do konca).
+	-- Nadmiar rzedow = scroll kolkiem; dolny rzad przyciety OBRYSEM (ClipsDescendants) -> nic nie wychodzi poza ramke.
+	_list.Size = UDim2.new(_list.Size.X.Scale, _list.Size.X.Offset, 1, 0)
 end
 
 local function setTab(t)
