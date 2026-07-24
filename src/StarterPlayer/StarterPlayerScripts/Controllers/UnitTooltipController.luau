@@ -234,25 +234,21 @@ function UnitTooltip.start()
 		local cam = Workspace.CurrentCamera
 		if m and cam then
 			setOutline(m)
-			-- DUZA jednostka (blok/bron) -> karta na SRODKU jednostki; MALA/plaska (pulapka) -> karta NAD nia.
-			-- Decyzja po wysokosci jednostki na EKRANIE (uwzglednia perspektywe): wysoka -> srodek, niska -> nad.
+			-- BLOK/BRON (bryla) -> karta na SRODKU jednostki; PULAPKA/plaska (niska) -> karta NAD nia (nie zaslania).
+			-- Decyzja po TYPIE + wysokosci SWIATA (nie ekranu — niezalezna od odleglosci kamery).
 			local cf, size = m:GetBoundingBox()
 			local inset = GuiService:GetGuiInset()
-			local center = cf.Position
-			local topW = Vector3.new(center.X, center.Y + size.Y * 0.5, center.Z)
-			local botW = Vector3.new(center.X, center.Y - size.Y * 0.5, center.Z)
-			local spTop = cam:WorldToViewportPoint(topW)
-			local spBot = cam:WorldToViewportPoint(botW)
-			local unitScreenH = math.abs(spBot.Y - spTop.Y)
-			local cardH = 216 * 0.66
 			local uid = m:GetAttribute("UnitId")
-			if unitScreenH >= cardH * 0.7 then
-				-- karta wysrodkowana NA jednostce
-				local spC = cam:WorldToViewportPoint(center)
-				showAt(uid, spC.X + inset.X, spC.Y + inset.Y, Vector2.new(0.5, 0.5))
-			else
-				-- karta NAD jednostka (nie zaslania plaskiej pulapki)
+			local u = GameConfig.Units[uid]
+			local flat = (u and u.category == "trap") or size.Y < 2 -- pulapka albo bardzo niski model
+			if flat then
+				-- karta NAD jednostka (plaska pulapka — nie zaslaniamy)
+				local spTop = cam:WorldToViewportPoint(Vector3.new(cf.Position.X, cf.Position.Y + size.Y * 0.5, cf.Position.Z))
 				showAt(uid, spTop.X + inset.X, spTop.Y + inset.Y - 6, Vector2.new(0.5, 1))
+			else
+				-- karta wysrodkowana NA jednostce (blok/bron)
+				local spC = cam:WorldToViewportPoint(cf.Position)
+				showAt(uid, spC.X + inset.X, spC.Y + inset.Y, Vector2.new(0.5, 0.5))
 			end
 		else
 			hideAll()
