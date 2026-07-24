@@ -14,6 +14,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -198,6 +199,10 @@ local function updateGhost()
 	_ghost:PivotTo(orientAt(_ghostPos, groundY))
 	local bbCf, bbSize = _ghost:GetBoundingBox()
 	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, groundY - (bbCf.Position.Y - bbSize.Y * 0.5), 0))
+	-- RECENTER XZ: STOPY (HumanoidRootPart) w srodek kratki — nie pistolet/bbox. Dla blokow/pojazdow: srodek bbox.
+	local anchor = _ghost:FindFirstChild("HumanoidRootPart", true)
+	local aPos = (anchor and anchor:IsA("BasePart")) and anchor.Position or (select(1, _ghost:GetBoundingBox())).Position
+	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(_ghostPos.X - aPos.X, 0, _ghostPos.Z - aPos.Z))
 	local ok = validAt(c.x, c.z)
 	local hl = _ghost:FindFirstChildOfClass("Highlight")
 	if hl then
@@ -524,6 +529,15 @@ function BuildController.start()
 		local stroke = root and root:FindFirstChild("ContentStroke")
 		local content = stroke and stroke:FindFirstChild("Content")
 		_list = content and content:FindFirstChild("List")
+		-- TRZYMAJ WSZYSTKO W OBRYSIE panelu: karty/liczniki (x8 itd.) nie wychodza poza ramke, nadmiar = scroll.
+		if stroke then stroke.ClipsDescendants = true end
+		if content then content.ClipsDescendants = true end
+		if _list then
+			_list.ClipsDescendants = true
+			_list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			_list.ScrollingEnabled = true
+			if _list.ScrollBarThickness < 4 then _list.ScrollBarThickness = 6 end
+		end
 		local tmpl = _list and _list:FindFirstChild("Template")
 		if tmpl and content then
 			_template = tmpl
@@ -611,10 +625,20 @@ function BuildController.start()
 		if _mode == "place" and _sel and _ghost then
 			updateGhost()
 		end
-		-- celownik
+		-- celownik: siedzi DOKLADNIE na srodku kratki (rzut world->ekran), a poza siatka — pod myszka.
+		-- gui ma IgnoreGuiInset=true, wiec dodajemy GetGuiInset (WorldToViewportPoint/GetMouseLocation sa bez topbara).
 		if _sel then
-			local mp = UserInputService:GetMouseLocation()
-			_reticle.Position = UDim2.fromOffset(mp.X, mp.Y)
+			local inset = GuiService:GetGuiInset()
+			local cam = Workspace.CurrentCamera
+			local sx, sy
+			if _cell and _ghostPos and cam then
+				local sp = cam:WorldToViewportPoint(Vector3.new(_ghostPos.X, _plot.gridOrigin.Position.Y, _ghostPos.Z))
+				sx, sy = sp.X, sp.Y
+			else
+				local mp = UserInputService:GetMouseLocation()
+				sx, sy = mp.X, mp.Y
+			end
+			_reticle.Position = UDim2.fromOffset(sx + inset.X, sy + inset.Y)
 			_reticle.Rotation = (_reticle.Rotation + dt * 45) % 360 -- powolny obrot (efekt)
 			local ok = _cell ~= nil and validAt(_cell.x, _cell.z)
 			tintCursor(ok and GREEN or Color3.new(1, 1, 1))

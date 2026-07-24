@@ -218,6 +218,12 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	local lift = groundY - (bbCf.Position.Y - bbSize.Y * 0.5)
 	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
 
+	-- RECENTER XZ: STOPY (HumanoidRootPart) w SRODEK kratki — nie pistolet/bbox (dla blokow/pojazdow: srodek bbox).
+	-- Musi zgadzac sie z ghostem po stronie klienta (BuildController.updateGhost).
+	local anchor = model:FindFirstChild("HumanoidRootPart", true)
+	local aPos = (anchor and anchor:IsA("BasePart")) and anchor.Position or (select(1, model:GetBoundingBox())).Position
+	model:PivotTo(model:GetPivot() + Vector3.new(center.X - aPos.X, 0, center.Z - aPos.Z))
+
 	-- KIEROWCA (np. Jeep): dokomponuj model kierowcy w fotel przod-lewo (kompozycja przed kotwiczeniem)
 	local ucfg = GameConfig.Units[unitId]
 	if ucfg.driver then
