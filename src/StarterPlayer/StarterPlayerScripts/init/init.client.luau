@@ -51,6 +51,10 @@ HudBindController.start()
 local DevController = require(Controllers:WaitForChild("DevController"))
 DevController.start()
 
+-- TYMCZASOWY panel lewelowania jednostek (Etap 3; do re-hooku w pelny indeks Etap 2 = 1 linia)
+local LevelPanelController = require(Controllers:WaitForChild("LevelPanelController"))
+LevelPanelController.start()
+
 -- Panel ustawien wydajnosci (przycisk ⚙): przelaczniki animacji/FX/HP-barek/cudzych plotow
 local SettingsPanelController = require(Controllers:WaitForChild("SettingsPanelController"))
 SettingsPanelController.start()

@@ -23,7 +23,7 @@ local GameConfig = require(
 
 local CombatService = {}
 
-local _plot, _stat, _grid, _build = nil, nil, nil, nil
+local _plot, _stat, _grid, _build, _level = nil, nil, nil, nil, nil
 local _enemySync, _enemyEvents, _bossHP, _unitHpNet = nil, nil, nil, nil
 local _unitHp: { [any]: { [string]: number } } = {} -- player -> {placementId -> hp} (faza 5)
 local _unitHpSend: { [string]: number } = {} -- placementId -> os.clock ostatniego pushu HP (throttle)
@@ -183,6 +183,22 @@ local function step(dt: number)
 			local fireRateMult = (stats and stats.fireRateMult) or 1
 			local rangeMult = (stats and stats.rangeMult) or 1
 
+			-- LEWELOWANIE (Etap 3): mnoznik efektu TYPU = growthPerLevel^level. Odczyt unitLevels JEDEN raz/gracza
+			-- (NIE per-wieza), mnoznik liczony inline z LevelConfig.growthPerLevel i memoizowany per unitId
+			-- (perf: brak pow ani call serwisu per-tick per-wieza). weapon -> dmg, block -> hp.
+			local levels = (_level and _level.GetLevels(player)) or nil
+			local levelGrowth = GameConfig.Level.growthPerLevel
+			local levelMultMemo = {}
+			local function levelMult(unitId: string): number
+				local m = levelMultMemo[unitId]
+				if m == nil then
+					local lv = (levels and levels[unitId]) or 0
+					m = (lv > 0) and (levelGrowth ^ lv) or 1
+					levelMultMemo[unitId] = m
+				end
+				return m
+			end
+
 			-- placementy raz na krok: wieze + BLOKOWANIE ruchu + atak jednostek
 			local placements = (_grid and _grid.GetPlacements(player)) or {}
 			local placeWorld = {} -- swiatowe pozycje wszystkich postawionych (bloki+jednostki blokuja przejscie)
@@ -247,7 +263,7 @@ local function step(dt: number)
 							end
 						end
 						if best then
-							local dmg = u.combat.dmg * dmgMult
+							local dmg = u.combat.dmg * dmgMult * levelMult(pl.unitId) -- level TYPU buffuje dmg broni
 							_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, best.hp)) -- licz efektywne (bez overkill)
 							best.hp -= dmg
 							cds[pid] = 1 / (u.combat.fireRate * fireRateMult)
@@ -269,6 +285,7 @@ local function step(dt: number)
 				local u = GameConfig.Units[pl.unitId]
 				if u then
 					local maxHp = u.hp or 100
+					if u.combat == nil then maxHp = maxHp * levelMult(pl.unitId) end -- BLOK: level TYPU buffuje HP
 					if uhp[pid] == nil then
 						uhp[pid] = maxHp
 						if _unitHpNet then -- pierwsze pojawienie: pokaz pasek od razu na pelnym HP (jawne HP jednostki)
@@ -408,6 +425,7 @@ function CombatService.Start()
 	_stat = ServiceRegistry.get("StatProfileService")
 	_grid = ServiceRegistry.get("GridService")
 	_build = ServiceRegistry.get("BuildService")
+	_level = ServiceRegistry.get("LevelService") -- lewelowanie TYPU (mnoznik dmg/hp) — odczyt per-krok, nie per-wieza
 	_enemySync = Net.get("EnemySync")
 	_enemyEvents = Net.get("EnemyEvents")
 	_bossHP = Net.get("BossHP")

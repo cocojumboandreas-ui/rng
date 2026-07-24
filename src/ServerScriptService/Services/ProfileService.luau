@@ -24,6 +24,7 @@ local PROFILE_TEMPLATE = {
 	placements = {}, -- { [placementId]: {itemId, x, z, mut} } — BEZ rot (auto-face)
 	skills = {}, -- { [nodeId]: rank }
 	index = {}, -- { [unitId.."#"..variant]: true } (ETAP 2: per-wariant; migracja starych unitId-only)
+	unitLevels = {}, -- { [unitId]: level } — poziom TYPU jednostki (ETAP 3; wariant-niezalezny). Writer: LevelService. Migracja: Reconcile() dolewa {}.
 	waveNumber = 1,
 	offlineTs = 0, -- os.time() zapisywany w ProfileReleasing
 	purchaseLog = {}, -- idempotencja ProcessReceipt

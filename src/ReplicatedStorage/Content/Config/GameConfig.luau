@@ -17,6 +17,7 @@ local GameConfig = {
 	Sim = require(Config:WaitForChild("SimConfig")), -- parametry symulacji (simHz, spawnStagger)
 	Index = require(Config:WaitForChild("IndexConfig")), -- progi %kolekcji -> bonus luck (§3.13)
 	Variant = require(Config:WaitForChild("VariantConfig")), -- trzecia os rolla: finish (regular/shiny/galaxy)
+	Level = require(Config:WaitForChild("LevelConfig")), -- lewelowanie TYPOW jednostek (Etap 3 indeksu: coin sink)
 }
 
 return GameConfig

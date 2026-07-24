@@ -10,7 +10,7 @@ local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
 local Services = ServerScriptService:WaitForChild("Services")
 
 -- Sekcja 2: ProfileService -> StatProfileService -> PlotService -> EconomyService ->
--- InventoryService -> IndexService -> RollService -> GridService -> BuildService ->
+-- InventoryService -> LevelService -> IndexService -> RollService -> GridService -> BuildService ->
 -- CoreService -> CombatService -> WaveService -> BaseDoorService -> SkillService -> PurchaseService.
 local ORDER = {
 	"ProfileService",
@@ -18,6 +18,7 @@ local ORDER = {
 	"PlotService",
 	"EconomyService",
 	"InventoryService",
+	"LevelService",
 	"IndexService",
 	"RollService",
 	"GridService",

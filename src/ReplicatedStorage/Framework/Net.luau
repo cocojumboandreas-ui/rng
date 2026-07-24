@@ -41,6 +41,8 @@ local REMOTES: { [string]: string } = {
 	UnitKilled = "RemoteEvent", -- S->C {placementId} (faza 5: jednostka zginela -> poof + zdejmij pasek)
 	GetPlotInfo = "RemoteFunction", -- C->S () -> {plotId, gridOrigin(CFrame), width, depth, cellSize, faceDir} (tryb budowania)
 	GetInventory = "RemoteFunction", -- C->S () -> { [invKey]=count } (poczatkowy stan panelu budowania)
+	LevelUpUnit = "RemoteFunction", -- C->S (unitId) -> {ok, newLevel?, reason?} — kup +1 poziom TYPU jednostki (coin sink, Etap 3)
+	GetUnitLevels = "RemoteFunction", -- C->S () -> { [unitId]=level } (stan poczatkowy panelu lewelowania)
 	InventorySync = "RemoteEvent", -- S->C { [invKey]=count } (live liczby w panelu; push na Changed/ProfileLoaded)
 	DevAction = "RemoteFunction", -- C->S {action, amount?} -> {ok, msg?} (panel DEV; serwer gated isDev)
 	SkillTreeReset = "RemoteEvent", -- S->C () — DEV wyczyscil skille -> klient czysci drzewko
