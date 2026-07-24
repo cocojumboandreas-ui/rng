@@ -30,6 +30,7 @@ local BuildController = {}
 local LP = Players.LocalPlayer
 local GREEN = Color3.fromRGB(80, 220, 100)
 local RED = Color3.fromRGB(220, 70, 70)
+local WHITE = Color3.fromRGB(255, 255, 255) -- obrys jak przy najechaniu na Start Wave (bialy, swiecacy)
 local FIT_MARGIN = 0.8 -- MUSI zgadzac sie z BuildService.FIT_MARGIN (ghost == realny model)
 local LERP = 0.35 -- plynnosc dojazdu ghosta (0..1; wiecej = szybciej)
 
@@ -49,8 +50,9 @@ local _cell = nil -- {x,z} aktualna kratka pod kursorem
 local _thumbCache = {}
 
 -- UI refs — designerowy BuildMode (place-owned)
-local _bm, _list, _template = nil, nil, nil
+local _bm, _list, _template, _content = nil, nil, nil, nil
 local _counter, _tabBtns = nil, nil
+local fitListRows -- forward-decl (uzywane w _refreshPanel, definiowane nizej)
 local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
 local _pcControls = nil -- BottomRightCanvas.PcControls (Place/Rotate/Cancel — pokaz tylko gdy stawiamy)
 local _activeTab = "weapon"
@@ -160,13 +162,14 @@ local function makeGhost()
 	end
 	g.Parent = Workspace
 	_ghost = g
-	-- OBRYS jak przy najechaniu na Start Wave: Highlight z jasnym konturem (pulsuje w petli renderu)
+	-- OBRYS jak przy najechaniu na Start Wave: Highlight obrysowuje DOKLADNY ksztalt modelu bialym,
+	-- swiecacym konturem (pulsuje w petli renderu). Wypelnienie ledwo widoczne — liczy sie kontur.
 	local hl = Instance.new("Highlight")
 	hl.Adornee = g
 	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	hl.FillColor = GREEN
-	hl.FillTransparency = 0.6
-	hl.OutlineColor = GREEN
+	hl.FillTransparency = 0.8
+	hl.OutlineColor = WHITE
 	hl.OutlineTransparency = 0
 	hl.Parent = g
 	if _sel.isWeapon and _sel.range then
@@ -206,8 +209,9 @@ local function updateGhost()
 	local ok = validAt(c.x, c.z)
 	local hl = _ghost:FindFirstChildOfClass("Highlight")
 	if hl then
+		-- OK = bialy obrys (jak Start Wave), zle miejsce = czerwony
 		hl.FillColor = ok and GREEN or RED
-		hl.OutlineColor = ok and GREEN or RED
+		hl.OutlineColor = ok and WHITE or RED
 	end
 	if _ring then
 		_ring.Parent = Workspace
@@ -473,6 +477,33 @@ function BuildController._refreshPanel()
 			end
 		end
 	end
+	-- po zbudowaniu kart: przytnij widok listy do CALYCH rzedow (zaden napis nie jest przeciety obrysem)
+	task.defer(function()
+		RunService.Heartbeat:Wait()
+		fitListRows()
+	end)
+end
+
+-- Dopasuj WYSOKOSC widoku listy do calej liczby rzedow (karty wrap 3-w-rzedzie). Karty sa kwadratowe i
+-- skalowane od SZEROKOSCI (UIAspectRatioConstraint, dominant=Width), wiec zmiana wysokosci NIE rusza ich
+-- rozmiaru — tylko ucina widok na granicy rzedu, zeby zaden napis (x8/nazwa) nie byl przeciety obrysem.
+-- Nadmiar rzedow chowa sie i mozna do niego zjechac (scroll). Skala-odporne (liczone z realnych rozmiarow).
+function fitListRows()
+	if not (_list and _content) then return end
+	local layout, card
+	for _, c in ipairs(_list:GetChildren()) do
+		if c:IsA("UIListLayout") then layout = c end
+		if not card and c:IsA("GuiButton") then card = c end
+	end
+	if not (layout and card) then return end
+	local cardH = card.AbsoluteSize.Y
+	if cardH < 1 then return end
+	local padY = layout.Padding.Offset
+	local pitch = cardH + padY
+	local avail = _content.AbsoluteSize.Y
+	local rows = math.max(1, math.floor((avail + padY) / pitch + 1e-3))
+	local wholeH = rows * cardH + (rows - 1) * padY
+	_list.Size = UDim2.new(_list.Size.X.Scale, _list.Size.X.Offset, 0, math.floor(wholeH + 0.5))
 end
 
 local function setTab(t)
@@ -529,12 +560,18 @@ function BuildController.start()
 		local stroke = root and root:FindFirstChild("ContentStroke")
 		local content = stroke and stroke:FindFirstChild("Content")
 		_list = content and content:FindFirstChild("List")
-		-- SZEROKOSC i uklad kart ZOSTAJA jak u ziomka (nic nie ruszamy przy rozmiarach). Tylko:
-		-- (1) klip do obrysu panelu -> nic nie wychodzi poza ramke, (2) pionowy scroll przy duzej ilosci
-		-- jednostek. ScrollBarThickness=0 -> pasek nie zweza kanwy, wiec karty dalej wypelniaja calą szerokosc
-		-- (scroll kolkiem myszy). Nadmiar rzedow chowa sie pod obrys i mozna do niego zjechac.
+		_content = content
+		-- SZEROKOSC i uklad kart ZOSTAJA jak u ziomka (karty skalowane od szerokosci - nie ruszamy). Robimy:
+		-- (1) klip do obrysu panelu, (2) widok listy przyciety do CALYCH rzedow (fitListRows) -> zaden napis
+		-- nie jest przeciety obrysem, (3) pionowy scroll przy duzej ilosci jednostek. ScrollBarThickness=0 ->
+		-- pasek nie zweza kanwy, karty dalej pelna szerokosc (scroll kolkiem myszy).
 		if stroke then stroke.ClipsDescendants = true end
-		if content then content.ClipsDescendants = true end
+		if content then
+			content.ClipsDescendants = true
+			local cl = content:FindFirstChildOfClass("UIListLayout")
+			if cl then cl.VerticalAlignment = Enum.VerticalAlignment.Top end -- lista trzyma sie GORY po skroceniu widoku
+			content:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitListRows) -- rekalkulacja przy zmianie rozdzielczosci
+		end
 		if _list then
 			_list.ClipsDescendants = true
 			_list.AutomaticCanvasSize = Enum.AutomaticSize.Y
