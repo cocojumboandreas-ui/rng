@@ -326,11 +326,11 @@ local function unitUnderCursor()
 	params.FilterDescendantsInstances = { units }
 	local hit = Workspace:Raycast(ray.Origin, ray.Direction * 800, params)
 	if not hit then return nil end
-	-- wejdz w GORE do MODELU jednostki (ma PlacementId). Pomija zagniezdzone modele (np. kierowca Jeepa =
-	-- WR_Driver z wlasnym HumanoidRootPart) — FindFirstAncestorWhichIsA("Model") zwracalby kierowce (bez
-	-- OwnerUserId/PlacementId), przez co hover/pickup/delete NIE dzialaly na pojazdach z kierowca.
+	-- wejdz w GORE do jednostki po atrybucie PlacementId (ma go KAZDY postawiony block i weapon — ustawiany
+	-- w BuildService.spawnModel). Dziala uniwersalnie: piechota, bloki, dziala/mozdzierze, pojazdy. Przeskakuje
+	-- zagniezdzone modele (np. kierowca Jeepa = WR_Driver bez PlacementId), na ktore FindFirstAncestor by trafial.
 	local m = hit.Instance
-	while m and not (m:IsA("Model") and m:GetAttribute("PlacementId")) do
+	while m and m:GetAttribute("PlacementId") == nil do
 		m = m.Parent
 	end
 	if m and m:GetAttribute("OwnerUserId") == LP.UserId then
