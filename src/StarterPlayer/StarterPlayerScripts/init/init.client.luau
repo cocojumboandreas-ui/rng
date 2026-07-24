@@ -39,6 +39,10 @@ WeaponCameraGate.start()
 local BuildController = require(Controllers:WaitForChild("BuildController"))
 BuildController.start()
 
+-- Dymek podgladu jednostki (ikona + DMG/s + HP) przy najechaniu na karte panelu lub na postawiona jednostke
+local UnitTooltipController = require(Controllers:WaitForChild("UnitTooltipController"))
+UnitTooltipController.start()
+
 -- HUD ziomka (StarterGui.SideButtons) wpięty przez HudBindController; stary HudController wyłączony
 -- (tworzył własne guziki/pille = duplikat). Plik HudController.luau zostaje na dysku (revert).
 local HudBindController = require(Controllers:WaitForChild("HudBindController"))

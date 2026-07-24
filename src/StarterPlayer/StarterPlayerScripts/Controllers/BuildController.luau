@@ -24,6 +24,7 @@ local GridMath = require(Framework:WaitForChild("GridMath"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local UnitModelFactory = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UnitModelFactory"))
 local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
+local UnitTooltip = require(script.Parent:WaitForChild("UnitTooltipController"))
 
 local BuildController = {}
 
@@ -65,6 +66,11 @@ local _cursorGui, _reticle, _cursorTint = nil, nil, {}
 -- clear-plot 2-krok
 local _clearBtn, _clearLbl, _clearArmed, _clearToken = nil, nil, false, 0
 local _clearOrigText = "Wyczyść działkę!" -- oryginalny napis przycisku (przywracany po confirm)
+
+-- czy gracz cos aktualnie stawia (ghost aktywny) — UnitTooltip pyta, by nie pokazywac dymka swiata podczas stawiania
+function BuildController.HasSelection()
+	return _sel ~= nil
+end
 
 -- ── geometria kratek ──
 local function cellKey(x, z) return x .. "," .. z end
@@ -620,6 +626,9 @@ function BuildController._refreshPanel()
 					setPcControls(true); setCursor(true)
 					BuildController._refreshPanel()
 				end)
+				-- DYMEK z podgladem (ikona + DMG/s + HP) przy najechaniu na karte
+				card.MouseEnter:Connect(function() UnitTooltip.showForCard(unitId, card) end)
+				card.MouseLeave:Connect(function() UnitTooltip.hideCard() end)
 				card.Parent = _list
 			end
 		end
