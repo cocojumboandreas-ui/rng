@@ -4,7 +4,7 @@
 -- panel detali (staty EFEKTYWNE wg poziomu + POZIOM + przycisk Ulepsz), dolny pasek bonusu luck.
 -- Wrogowie = STUB (sloty puste, tresc etap 5). Stan: GetIndexState (RF; discovered per-wariant + levels +
 -- luck) na otwarcie; IndexUpdated (S->C) live (nowy wpis per-wariant + %/luck). Ulepsz -> LevelUpUnit RF
--- (server-auth spend, Etap 3). BEZ ODBIERZ luck (etap 4) i BEZ bestiariusza staty (etap 5).
+-- (server-auth spend, Etap 3). ODBIERZ bonus luck per prog (Etap 4, ClaimIndexLuck RF). Bestiariusz = etap 5.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -26,6 +26,8 @@ local _activeCat = nil
 local _unitOrder = {} -- unitId po rarityN rosnaco (stabilne)
 local _levels = {} -- unitId -> poziom (z GetIndexState; update po LevelUpUnit) — ETAP 3
 local _coins = 0 -- saldo (CoinsSync) do koloru przycisku Ulepsz (stac/nie stac)
+local _claimed = {} -- {[pct]=true} odebrane progi bonusu luck (ETAP 4)
+local _claimBtns = {} -- pct -> TextButton ODBIERZ
 local _panel, _grid, _luckLabel, _toast, _tabBtns = nil, nil, nil, nil, {}
 local _detail = {} -- {frame, name, rarity, stats, level, upBtn, selUnit, selVariant}
 
@@ -219,8 +221,28 @@ end
 
 local function refreshLuck()
 	if _luckLabel then
-		_luckLabel.Text = ("Mnoznik szczescia indeksu: +%.2f    (%d%%  %d/%d)"):format(
+		_luckLabel.Text = ("Szczescie indeksu: +%.2f   (%d%%  %d/%d odkryte)"):format(
 			_luckBonus, math.floor(_overall.percent + 0.5), _overall.count, _overall.total)
+	end
+end
+
+-- ETAP 4: przyciski ODBIERZ per prog. claimed=✓(szary), reached&!claimed=ODBIERZ(zielony), inaczej=zablokowany.
+local function renderClaims()
+	local percent = _overall.percent or 0
+	for _, t in ipairs(GameConfig.Index.luckThresholds) do
+		local btn = _claimBtns[t.pct]
+		if btn then
+			if _claimed[t.pct] then
+				btn.Text = ("✓ %d%%  +%.1f"):format(t.pct, t.luck)
+				btn.BackgroundColor3 = Color3.fromRGB(55, 85, 60); btn.AutoButtonColor = false
+			elseif percent >= t.pct then
+				btn.Text = ("ODBIERZ  +%.1f"):format(t.luck)
+				btn.BackgroundColor3 = Color3.fromRGB(80, 170, 90); btn.AutoButtonColor = true
+			else
+				btn.Text = ("%d%%  +%.1f"):format(t.pct, t.luck)
+				btn.BackgroundColor3 = Color3.fromRGB(48, 48, 60); btn.AutoButtonColor = false
+			end
+		end
 	end
 end
 
@@ -235,7 +257,12 @@ local function applyState(state)
 	_overall = state.overall or _overall
 	_luckBonus = state.luckBonus or 0
 	_levels = state.levels or {} -- poziomy typow (ETAP 3) do detail panelu
+	_claimed = {}
+	for _, t in ipairs(state.thresholds or {}) do -- ETAP 4: stan odebranych progow
+		_claimed[t.pct] = t.claimed == true
+	end
 	refreshLuck()
+	renderClaims()
 	renderCategory(_activeCat or _catOrder[1])
 end
 
@@ -294,7 +321,7 @@ function IndexController.start()
 	local ibCorner = Instance.new("UICorner"); ibCorner.CornerRadius = UDim.new(0, 10); ibCorner.Parent = openBtn
 
 	_panel = Instance.new("Frame")
-	_panel.Size = UDim2.fromOffset(660, 430); _panel.Position = UDim2.fromScale(0.5, 0.5)
+	_panel.Size = UDim2.fromOffset(660, 470); _panel.Position = UDim2.fromScale(0.5, 0.5)
 	_panel.AnchorPoint = Vector2.new(0.5, 0.5)
 	_panel.BackgroundColor3 = Color3.fromRGB(22, 22, 30); _panel.BorderSizePixel = 0
 	_panel.Visible = false; _panel.Parent = gui
@@ -377,11 +404,37 @@ function IndexController.start()
 		end
 	end)
 
-	-- dolny pasek bonusu luck (bez ODBIERZ — etap 4)
-	_luckLabel = mkLabel(_panel, UDim2.new(1, -32, 0, 24), UDim2.new(0, 16, 1, -54),
-		"Mnoznik szczescia indeksu: +0.00", 15, Color3.fromRGB(255, 220, 120))
-	_luckLabel.TextXAlignment = Enum.TextXAlignment.Left
-	_toast = mkLabel(_panel, UDim2.new(1, -32, 0, 22), UDim2.new(0, 16, 1, -28), "", 14,
+	-- dolny pasek: suma bonusu luck + przyciski ODBIERZ per prog (ETAP 4)
+	_luckLabel = mkLabel(_panel, UDim2.new(1, -32, 0, 22), UDim2.new(0, 16, 1, -92),
+		"Szczescie indeksu: +0.00", 15, Color3.fromRGB(255, 220, 120))
+	_luckLabel.Font = Enum.Font.GothamBold; _luckLabel.TextXAlignment = Enum.TextXAlignment.Left
+	do
+		local thr = GameConfig.Index.luckThresholds
+		local n = #thr
+		local gap, marginX = 10, 16
+		local bw = math.floor((660 - marginX * 2 - gap * (n - 1)) / n)
+		for i, t in ipairs(thr) do
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.fromOffset(bw, 34)
+			btn.Position = UDim2.new(0, marginX + (i - 1) * (bw + gap), 1, -64)
+			btn.BackgroundColor3 = Color3.fromRGB(48, 48, 60); btn.BorderSizePixel = 0
+			btn.Font = Enum.Font.GothamBold; btn.TextSize = 14; btn.TextColor3 = Color3.new(1, 1, 1)
+			btn.Text = ("%d%%  +%.1f"):format(t.pct, t.luck); btn.AutoButtonColor = false
+			btn.Parent = _panel
+			local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 6); c.Parent = btn
+			_claimBtns[t.pct] = btn
+			btn.MouseButton1Click:Connect(function()
+				if _claimed[t.pct] or (_overall.percent or 0) < t.pct then return end -- tylko reached & !claimed
+				local res = Net.get("ClaimIndexLuck"):InvokeServer(t.pct)
+				if type(res) == "table" and res.ok then
+					_claimed[t.pct] = true
+					_luckBonus = res.luckBonus or _luckBonus
+					refreshLuck(); renderClaims()
+				end
+			end)
+		end
+	end
+	_toast = mkLabel(_panel, UDim2.new(1, -32, 0, 20), UDim2.new(0, 16, 1, -26), "", 13,
 		Color3.fromRGB(120, 255, 150))
 	_toast.TextXAlignment = Enum.TextXAlignment.Left; _toast.Visible = false
 
@@ -417,6 +470,7 @@ function IndexController.start()
 		_overall.percent = p.percent or _overall.percent
 		_luckBonus = p.luckBonus or _luckBonus
 		refreshLuck()
+		renderClaims() -- ETAP 4: nowy % moze odblokowac przycisk ODBIERZ
 		if _panel.Visible and p.category == _activeCat then
 			renderCategory(_activeCat)
 		end

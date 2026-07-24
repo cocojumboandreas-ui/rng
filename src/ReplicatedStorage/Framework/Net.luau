@@ -36,6 +36,7 @@ local REMOTES: { [string]: string } = {
 	GetSkillState = "RemoteFunction", -- C->S () -> {ranks, coins, spendableRolls} (stan poczatkowy UI)
 	GetIndexState = "RemoteFunction", -- C->S () -> {categories[], overall{count,total,percent}, luckBonus} (§3.13, ETAP2)
 	IndexUpdated = "RemoteEvent", -- S->C {unitId, variant, category, percent, luckBonus} (live wpis per-wariant)
+	ClaimIndexLuck = "RemoteFunction", -- C->S (pct) -> {ok, luckBonus?, reason?} — odbierz (claim) prog bonusu luck (ETAP 4)
 	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
 	UnitHp = "RemoteEvent", -- S->C {placementId, hpPct, hp, maxHp} (pasek HP jednostki: pct + liczby cur/max)
 	UnitKilled = "RemoteEvent", -- S->C {placementId} (faza 5: jednostka zginela -> poof + zdejmij pasek)

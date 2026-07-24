@@ -26,6 +26,7 @@ local IndexService = {}
 
 local _profileService = nil
 local _level = nil -- LevelService (poziomy typow do GetIndexState -> detail panel)
+local _stat = nil -- StatProfileService (Recompute po odebraniu progu luck — ETAP 4)
 local _netIndexUpdated = nil -- cache remote (guard nil w tescie)
 
 -- klucz wpisu = unitId .. "#" .. variant (variant domyslnie "regular")
@@ -141,10 +142,60 @@ function IndexService.GetCompletion(player)
 	return cats, count, total, percent
 end
 
+-- ETAP 4: luck = NAJWYZSZY ODEBRANY (claimed) prog. Samo osiagniecie % juz NIE daje luck — trzeba ODBIERZ.
 function IndexService.GetLuckBonus(player): number
 	local data = _profileService and _profileService.GetProfile(player)
+	local claims = (data and data.indexClaims) or {}
+	local best = 0
+	for _, t in ipairs(GameConfig.Index.luckThresholds) do
+		if claims[t.pct] and t.luck > best then
+			best = t.luck
+		end
+	end
+	return best
+end
+
+-- Stan progow luck do UI (ETAP 4): reached (percent>=pct) + claimed (odebrany).
+local function thresholdStates(data)
 	local _, _, _, percent = computeCategories(data)
-	return luckForPercent(percent)
+	local claims = (data and data.indexClaims) or {}
+	local out = {}
+	for _, t in ipairs(GameConfig.Index.luckThresholds) do
+		out[#out + 1] = { pct = t.pct, luck = t.luck, reached = percent >= t.pct, claimed = claims[t.pct] == true }
+	end
+	return out
+end
+
+-- ETAP 4: odbierz (claim) prog. Warunek: osiagniety (percent>=pct) i nieodebrany. Serwer-autorytatywny.
+-- Zwraca (ok, luckBonus?, reason?). reason: NoProfile|UnknownThreshold|AlreadyClaimed|NotReached.
+function IndexService.ClaimLuck(player, pct: number)
+	local data = _profileService and _profileService.GetProfile(player)
+	if not data then
+		return false, nil, "NoProfile"
+	end
+	local thr
+	for _, t in ipairs(GameConfig.Index.luckThresholds) do
+		if t.pct == pct then
+			thr = t
+			break
+		end
+	end
+	if not thr then
+		return false, nil, "UnknownThreshold"
+	end
+	data.indexClaims = data.indexClaims or {}
+	if data.indexClaims[pct] then
+		return false, nil, "AlreadyClaimed"
+	end
+	local _, _, _, percent = computeCategories(data)
+	if percent < pct then
+		return false, nil, "NotReached"
+	end
+	data.indexClaims[pct] = true -- JEDYNY zapis profile.indexClaims
+	if _stat then
+		_stat.Recompute(player) -- luck sie zmienil (GetLuckBonus czyta claims) -> przelicz Stats + StatsSync
+	end
+	return true, IndexService.GetLuckBonus(player), nil
 end
 
 -- Zapis odkrycia (idempotentny) dla pary (unitId, variant). true = nowy wpis.
@@ -161,7 +212,7 @@ function IndexService.Discover(player, unitId: string, variant): boolean
 	end
 	data.index[key] = true
 	local _, _, _, percent = computeCategories(data)
-	local luckBonus = luckForPercent(percent)
+	local luckBonus = IndexService.GetLuckBonus(player) -- ETAP 4: odkrycie nie daje luck (trzeba ODBIERZ); zwracamy aktualny claimed
 	local category = categoryForVariant(variant)
 	IndexService.IndexUpdated:Fire(player, unitId, variant, percent, luckBonus) -- serwer (StatProfile subskrybuje)
 	if _netIndexUpdated then
@@ -180,6 +231,7 @@ end
 function IndexService.Start()
 	_profileService = ServiceRegistry.get("ProfileService")
 	_level = ServiceRegistry.get("LevelService")
+	_stat = ServiceRegistry.get("StatProfileService")
 	_netIndexUpdated = Net.get("IndexUpdated")
 
 	-- migracja starego indeksu (unitId-only -> unitId#regular) przy zaladowaniu profilu
@@ -190,6 +242,15 @@ function IndexService.Start()
 		end
 	end)
 
+	-- Net.ClaimIndexLuck (RF, C->S) -> odbierz prog bonusu luck (ETAP 4)
+	Net.get("ClaimIndexLuck").OnServerInvoke = function(player, pct)
+		if type(pct) ~= "number" then
+			return { ok = false, reason = "BadArg" }
+		end
+		local ok, luckBonus, reason = IndexService.ClaimLuck(player, pct)
+		return { ok = ok, luckBonus = luckBonus, reason = reason }
+	end
+
 	-- Net.GetIndexState (RF, C->S) -> stan poczatkowy UI kolekcji (per kategoria)
 	Net.get("GetIndexState").OnServerInvoke = function(player)
 		local data = _profileService.GetProfile(player)
@@ -197,7 +258,8 @@ function IndexService.Start()
 		return {
 			categories = cats, -- [{id,label,kind,variant,discovered,count,total,percent}]
 			overall = { count = count, total = total, percent = percent },
-			luckBonus = luckForPercent(percent),
+			luckBonus = IndexService.GetLuckBonus(player), -- ETAP 4: odebrany (claimed) luck, nie reached
+			thresholds = thresholdStates(data), -- [{pct,luck,reached,claimed}] do przyciskow ODBIERZ
 			levels = (_level and _level.GetLevels(player)) or {}, -- { [unitId]=level } (ETAP 3, detail panel)
 		}
 	end
