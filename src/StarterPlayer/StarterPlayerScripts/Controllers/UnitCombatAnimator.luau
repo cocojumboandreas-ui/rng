@@ -305,8 +305,8 @@ local function setupFx(model, prof, st, sx, sy, sz)
 		end
 	end
 
-	-- heli: wirniki ktore zawsze sie krecą
-	if prof.spin then
+	-- heli: wirniki ktore zawsze sie krecą (spin = LISTA rotorow; UWAGA: minigun uzywa spin=LICZBA jako predkosc lufy)
+	if type(prof.spin) == "table" then
 		st.spinParts = {}
 		for _, spec in ipairs(prof.spin) do
 			local part = model:FindFirstChild(spec.name, true)
