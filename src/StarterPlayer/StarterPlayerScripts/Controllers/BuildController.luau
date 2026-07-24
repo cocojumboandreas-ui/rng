@@ -48,6 +48,7 @@ local _ghost, _ring = nil, nil
 local _ghostPos = nil -- Vector3 lerpowanej pozycji ghosta
 local _cell = nil -- {x,z} aktualna kratka pod kursorem
 local _hovered = nil -- WLASNA jednostka pod kursorem (podswietlona do edycji, gdy nic nie stawiamy)
+local _coreSet = {} -- kratki rdzenia (nie mozna tam stawiac) — z GetPlotInfo.coreCells
 local _thumbCache = {}
 
 -- UI refs — designerowy BuildMode (place-owned)
@@ -122,6 +123,7 @@ local function validAt(x, z)
 	local occ, used = occupancy(_moving)
 	for _, c in ipairs(GridMath.footprintCells(x, z, fp)) do
 		if c.x < 1 or c.x > _plot.width or c.z < 1 or c.z > _plot.depth then return false end
+		if _coreSet[cellKey(c.x, c.z)] then return false end -- kratka rdzenia
 		if occ[cellKey(c.x, c.z)] then return false end
 	end
 	if used + fp.w * fp.d > _budget then return false end
@@ -571,6 +573,10 @@ local function openBuild()
 	UserInputService.MouseIconEnabled = true -- myszka zawsze domyslna w budowaniu (na wypadek starego stanu)
 	local info = Net.get("GetPlotInfo"):InvokeServer()
 	if info then _plot = info end
+	_coreSet = {} -- kratki rdzenia -> ghost czerwony, klik nie postawi
+	if _plot and _plot.coreCells then
+		for _, cc in ipairs(_plot.coreCells) do _coreSet[cellKey(cc.x, cc.z)] = true end
+	end
 	local inv = Net.get("GetInventory"):InvokeServer()
 	if inv then _counts = inv end
 	if _bm then _bm.Enabled = true end

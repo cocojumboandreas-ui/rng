@@ -17,6 +17,7 @@ local GameConfig = require(
 local GridService = {}
 
 local _stat = nil
+local _plot = nil -- PlotService (kratki rdzenia = rezerwacja, nie stawiamy tam)
 -- stan per gracz
 local _state: { [any]: any } = {} -- player -> {occupancy={key=placementId}, usedCells=n, placements={pid={unitId,x,z}}}
 
@@ -53,10 +54,22 @@ function GridService.CanPlace(player, unitId: string, cellX: number, cellZ: numb
 	local s = stateOf(player)
 	local width, depth = GameConfig.Grid.width, GameConfig.Grid.depth
 
-	-- A) bounds + kolizja
+	-- rezerwacja rdzenia: kratki zajete przez bryle rdzenia -> nie stawiamy tam
+	local reserved = {}
+	local plot = _plot and _plot.GetPlot(player)
+	if plot and plot.coreCells then
+		for _, cc in ipairs(plot.coreCells) do
+			reserved[GridMath.key(cc.x, cc.z)] = true
+		end
+	end
+
+	-- A) bounds + kolizja + rdzen
 	for _, c in ipairs(GridMath.footprintCells(cellX, cellZ, fp)) do
 		if c.x < 1 or c.x > width or c.z < 1 or c.z > depth then
 			return false, "OutOfBounds"
+		end
+		if reserved[GridMath.key(c.x, c.z)] then
+			return false, "Core"
 		end
 		if s.occupancy[GridMath.key(c.x, c.z)] ~= nil then
 			return false, "Occupied"
@@ -120,6 +133,7 @@ function GridService.Init() end
 
 function GridService.Start()
 	_stat = ServiceRegistry.get("StatProfileService")
+	_plot = ServiceRegistry.get("PlotService")
 	local Players = game:GetService("Players")
 	Players.PlayerRemoving:Connect(function(player)
 		_state[player] = nil

@@ -122,11 +122,40 @@ local function buildPlot(plotModel: Instance, plotId: number, coresById, nodesBy
 		return nil
 	end
 
-	-- rdzen
+	-- rdzen: CFrame + KRATKI ZAJETE (rezerwacja placementu) + KOLIZJA (gracz nie przechodzi, moze wskoczyc)
 	local coreCFrame = nil
+	local coreCells = {}
 	local cores = coresById[plotId]
-	if cores and cores[1] then
-		coreCFrame = cores[1]:IsA("BasePart") and cores[1].CFrame or cores[1]:GetPivot()
+	local coreInst = cores and cores[1]
+	if coreInst then
+		local cf, sz
+		if coreInst:IsA("BasePart") then
+			cf, sz = coreInst.CFrame, coreInst.Size
+		else
+			cf, sz = coreInst:GetBoundingBox()
+		end
+		coreCFrame = cf
+		-- kratki na ktore nachodzi bryla rdzenia -> tam NIE mozna stawiac jednostek
+		local cs = GameConfig.Grid.cellSize
+		local go = gridOrigin.Position
+		local x0 = math.max(1, math.floor((cf.Position.X - sz.X * 0.5 - go.X) / cs) + 1)
+		local x1 = math.min(GameConfig.Grid.width, math.floor((cf.Position.X + sz.X * 0.5 - go.X - 1e-3) / cs) + 1)
+		local z0 = math.max(1, math.floor((cf.Position.Z - sz.Z * 0.5 - go.Z) / cs) + 1)
+		local z1 = math.min(GameConfig.Grid.depth, math.floor((cf.Position.Z + sz.Z * 0.5 - go.Z - 1e-3) / cs) + 1)
+		for x = x0, x1 do
+			for z = z0, z1 do
+				coreCells[#coreCells + 1] = { x = x, z = z }
+			end
+		end
+		-- kolizja rdzenia (nieprzechodny)
+		if coreInst:IsA("BasePart") then
+			coreInst.CanCollide = true
+		end
+		for _, d in ipairs(coreInst:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.CanCollide = true
+			end
+		end
 	else
 		warn(("[PlotService] Plot %d: brak WR_CoreAnchor."):format(plotId))
 	end
@@ -171,6 +200,7 @@ local function buildPlot(plotModel: Instance, plotId: number, coresById, nodesBy
 		gridOrigin = gridOrigin,
 		gridSize = gridSize,
 		coreCFrame = coreCFrame,
+		coreCells = coreCells,
 		pathNodes = pathNodes,
 		faceDirection = faceDirection,
 	}
@@ -326,6 +356,7 @@ function PlotService.Start()
 			depth = GameConfig.Grid.depth,
 			cellSize = GameConfig.Grid.cellSize,
 			faceDir = p.faceDirection, -- Vector3 (jednostki auto-obracaja sie w te strone)
+			coreCells = p.coreCells, -- {{x,z}...} kratki rdzenia (nie stawiaj tam)
 		}
 	end
 

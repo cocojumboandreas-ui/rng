@@ -248,11 +248,12 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 
 	-- Statyczny render: zakotwicz WSZYSTKIE czesci (zero fizyki/ragdoll), animacja = kosmetyka klienta.
 	-- CanQuery = true: KLUCZOWE dla trybu budowania — klient raycastuje jednostki (hover/pickup/delete).
-	-- Modele ze store czesto maja CanQuery=false, przez co raycast ich NIE widzial (hover nie dzialal).
+	-- CanCollide = true: jednostki sa NIEPRZECHODNE — gracz nie przechodzi przez nie, moze na nie wskoczyc.
+	--   Wrogowie chodza po pathT (CFrame, bez fizyki), wiec kolizja jednostek ich nie blokuje.
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
 			d.Anchored = true
-			d.CanCollide = false
+			d.CanCollide = true
 			d.CanQuery = true
 		end
 	end
