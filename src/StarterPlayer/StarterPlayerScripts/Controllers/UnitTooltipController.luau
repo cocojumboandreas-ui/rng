@@ -1,8 +1,10 @@
 --!nonstrict
 -- StarterPlayerScripts/Controllers/UnitTooltipController.luau  (KLIENT)
--- KARTA INFO (ikona 3D + DMG/s + HP) + biala OTOCZKA gdy najedziesz na WLASNA jednostke (weapon/block) na planszy.
--- Pokazuje sie WYLACZNIE w TRYBIE WOLNYM (normalne chodzenie). NIE w edycji budowania (tam BuildController ma
--- wlasny hover), NIE podczas fali. Otoczka = Highlight (bialy kontur, jak podswietlenie Start Wave).
+-- KARTA INFO (ikona 3D + DMG/s + HP). Dwa zrodla:
+--   (a) TRYB WOLNY: najedziesz na WLASNA jednostke na planszy -> mala karta NAD glowa (nie zaslania jej) + biala
+--       OTOCZKA (Highlight, jak Start Wave). NIE podczas edycji budowania (tam BuildController ma wlasny hover),
+--       NIE podczas fali.
+--   (b) BUILD MODE: najedziesz na KARTE w panelu (Bron/Bloki) -> ta sama karta z HP + DMG/s (showForCard, _cardForced).
 -- Wartosci na razie z configu (HP = hp, DMG/s = combat.dmg * combat.fireRate) — placeholder; docelowy system
 -- wartosci ogarniemy przy indexie (UI ziomka).
 local Players = game:GetService("Players")
@@ -26,6 +28,7 @@ local _iconCache = {}
 local _curUnit = nil -- aktualnie pokazywany unitId (zeby nie przebudowywac co klatke)
 local _hovered = nil -- Model z aktywna otoczka WR_TipHL
 local _waveActive = false -- fala trwa -> chowamy karte i otoczke
+local _cardForced = false -- karta panelu Build Mode wymusza dymek (priorytet nad petla swiata)
 
 -- 2.9K / 10.0K / 1.2M
 local function fmt(n)
@@ -69,6 +72,8 @@ local function build()
 	frame.Name = "Card"; frame.Size = UDim2.fromOffset(184, 216); frame.AnchorPoint = Vector2.new(0.5, 1)
 	frame.BackgroundColor3 = Color3.fromRGB(58, 62, 74); frame.BackgroundTransparency = 0.05
 	frame.BorderSizePixel = 0; frame.Parent = gui
+	-- mniejsza karta (nie zaslania calej jednostki) — UIScale skaluje ramke + calą zawartosc
+	local uscale = Instance.new("UIScale"); uscale.Scale = 0.66; uscale.Parent = frame
 	local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 10); fc.Parent = frame
 	local fs = Instance.new("UIStroke"); fs.Color = Color3.fromRGB(20, 22, 28); fs.Thickness = 2; fs.Parent = frame
 	local pad = Instance.new("UIPadding")
@@ -118,8 +123,8 @@ local function build()
 	_gui, _frame, _title, _iconHolder = gui, frame, title, box
 end
 
--- pokaz karte dla unitId przy kursorze (sx,sy). Klamruje na ekran (nie ucieka za krawedz).
-local function showAt(unitId, sx, sy)
+-- pokaz karte dla unitId; (sx,sy) = punkt zaczepienia (juz z GuiInset), anchor = kotwica frame. Klamruje na ekran.
+local function showAt(unitId, sx, sy, anchor)
 	local st = statsOf(unitId)
 	if not st then UnitTooltip.hide(); return end
 	if _curUnit ~= unitId then
@@ -133,16 +138,29 @@ local function showAt(unitId, sx, sy)
 		_dmgLbl.Text = "⚔️ " .. fmt(st.dps) .. "/s"
 		_hpLbl.Text = "❤️ " .. fmt(st.hp)
 	end
-	local anchor = Vector2.new(0.5, 1) -- karta NAD kursorem
+	anchor = anchor or Vector2.new(0.5, 1)
 	_frame.AnchorPoint = anchor
-	local inset = GuiService:GetGuiInset()
-	local w = math.max(_frame.AbsoluteSize.X, 184)
-	local h = math.max(_frame.AbsoluteSize.Y, 216)
+	-- realny rozmiar (juz po UIScale); fallback gdy pierwsza klatka nie przeliczyla
+	local w = _frame.AbsoluteSize.X; if w < 1 then w = 184 * 0.66 end
+	local h = _frame.AbsoluteSize.Y; if h < 1 then h = 216 * 0.66 end
 	local vp = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(1280, 720)
-	local left = math.clamp((sx + inset.X) - anchor.X * w, 4, math.max(4, vp.X + inset.X - w - 4))
-	local top = math.clamp((sy + inset.Y - 18) - anchor.Y * h, inset.Y + 4, math.max(inset.Y + 4, vp.Y + inset.Y - h - 4))
+	local left = math.clamp(sx - anchor.X * w, 4, math.max(4, vp.X - w - 4))
+	local top = math.clamp(sy - anchor.Y * h, 4, math.max(4, vp.Y - h - 4))
 	_frame.Position = UDim2.fromOffset(left + anchor.X * w, top + anchor.Y * h)
 	_gui.Enabled = true
+end
+
+-- API dla panelu Build Mode: dymek na PRAWO od karty (panel przy lewej krawedzi), wysrodkowany w pionie
+function UnitTooltip.showForCard(unitId, cardGui)
+	_cardForced = true
+	local inset = GuiService:GetGuiInset()
+	local pos, size = cardGui.AbsolutePosition, cardGui.AbsoluteSize
+	showAt(unitId, pos.X + size.X + 8 + inset.X, pos.Y + size.Y * 0.5 + inset.Y, Vector2.new(0, 0.5))
+end
+
+function UnitTooltip.hideCard()
+	_cardForced = false
+	UnitTooltip.hide()
 end
 
 function UnitTooltip.hide()
@@ -223,15 +241,23 @@ function UnitTooltip.start()
 	end
 
 	RunService.RenderStepped:Connect(function()
-		if _waveActive or inBuildMode() then -- tylko TRYB WOLNY
+		if _cardForced then return end -- karta panelu (Build Mode) ma priorytet — nie ruszamy jej z petli
+		if _waveActive or inBuildMode() then -- karta swiata TYLKO w TRYBIE WOLNYM
 			hideAll()
 			return
 		end
 		local m = unitUnderCursor()
 		if m then
 			setOutline(m)
-			local mp = UserInputService:GetMouseLocation()
-			showAt(m:GetAttribute("UnitId"), mp.X, mp.Y)
+			-- karta NAD glowa jednostki (wysrodkowana), nie zaslania jej: rzut wierzchu modelu world->ekran
+			local cam = Workspace.CurrentCamera
+			local cf, size = m:GetBoundingBox()
+			local topWorld = Vector3.new(cf.Position.X, cf.Position.Y + size.Y * 0.5 + 1, cf.Position.Z)
+			local inset = GuiService:GetGuiInset()
+			if cam then
+				local sp = cam:WorldToViewportPoint(topWorld)
+				showAt(m:GetAttribute("UnitId"), sp.X + inset.X, sp.Y + inset.Y - 6, Vector2.new(0.5, 1))
+			end
 		else
 			hideAll()
 		end
