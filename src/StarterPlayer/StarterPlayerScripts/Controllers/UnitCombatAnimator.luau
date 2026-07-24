@@ -66,11 +66,13 @@ local function nearestEnemy(ox, oz, range)
 	end
 	if not _folder then return nil end
 	local best, bestD = nil, range * range
-	for _, p in ipairs(_folder:GetChildren()) do
-		if p:IsA("BasePart") and p.Transparency == 0 then
-			local dx, dz = p.Position.X - ox, p.Position.Z - oz
+	-- wrogowie to MODELE (WR_EnemyId ustawiony gdy zywy, wyczyszczony przy parkowaniu do puli).
+	for _, m in ipairs(_folder:GetChildren()) do
+		if m:IsA("Model") and m:GetAttribute("WR_EnemyId") ~= nil then
+			local pos = m:GetPivot().Position
+			local dx, dz = pos.X - ox, pos.Z - oz
 			local d2 = dx * dx + dz * dz
-			if d2 <= bestD then bestD = d2; best = p.Position end
+			if d2 <= bestD then bestD = d2; best = pos end
 		end
 	end
 	return best
@@ -355,7 +357,7 @@ local function track(model)
 	local _, sz = model:GetBoundingBox()
 	local st = {
 		model = model, prof = prof,
-		range = combat.range, interval = 1 / math.max(combat.fireRate, 0.05),
+		range = combat.range * (GameConfig.Sim.unitRangeMult or 1), interval = 1 / math.max(combat.fireRate, 0.05),
 		acc = math.random() * 0.4,
 		baseCF = model:GetPivot(),
 		scale = math.clamp(sz.Y / 5.5, 0.35, 1.4),

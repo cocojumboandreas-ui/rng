@@ -18,6 +18,7 @@ local REMOTES: { [string]: string } = {
 	StartWave = "RemoteEvent", -- C->S ()
 	StopWave = "RemoteEvent", -- C->S () — gracz konczy run recznie -> podsumowanie
 	PlayerHitEnemy = "RemoteEvent", -- C->S (enemyId) — gracz trafil wroga z broni FPS -> -playerShotDmg HP (tylko WaveActive)
+	SetShootMode = "RemoteEvent", -- C->S (on:bool) — gracz wlacza/wylacza tryb strzelania (klawisz U, tylko w fali) -> daj/zabierz bronie
 	WaveProgress = "RemoteEvent", -- S->C {plotId, waveNumber, killed, pool}
 	WaveEnded = "RemoteEvent", -- S->C {plotId, reason, summary}
 	RunSummary = "RemoteEvent", -- S->C {reason, maxWave, damage, coins} — koniec runu (baza padla / recznie)

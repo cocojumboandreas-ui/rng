@@ -16,6 +16,7 @@ local Net = require(Framework:WaitForChild("Net"))
 local GridMath = require(Framework:WaitForChild("GridMath"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local UnitModelFactory = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UnitModelFactory"))
+local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
 
 local BuildController = {}
 
@@ -36,7 +37,8 @@ local _thumbCache = {}
 
 -- UI refs — designerowy BuildMode (StarterGui.BuildMode, place-owned) + male overlaye (WR_Build)
 local _bm, _list, _template = nil, nil, nil -- ScreenGui BuildMode / lista / karta-szablon
-local _counter, _tabBtns, _postawBtn, _delBtn = nil, nil, nil, nil
+local _counter, _tabBtns, _postawBtn, _delBtn, _exitBtn = nil, nil, nil, nil, nil
+local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
 local _activeTab = "weapon"
 
 -- ── geometria kratek ──
@@ -243,9 +245,15 @@ local function thumb(unitId)
 end
 
 function BuildController._refreshCounter()
-	if not _counter then return end
 	local _, used = occupancy()
-	_counter.Text = ("%d / %d"):format(used, _budget)
+	local txt = ("%d / %d"):format(used, _budget)
+	-- biala liczba slotow ziomka (warstwowy tekst: Value + zagniezdzony Value)
+	if _slotsLbl then
+		if _slotsLbl:IsA("TextLabel") then _slotsLbl.Text = txt end
+		local inner = _slotsLbl:FindFirstChild("Value")
+		if inner and inner:IsA("TextLabel") then inner.Text = txt end
+	end
+	if _counter then _counter.Text = txt end
 end
 
 function BuildController._refreshPanel()
@@ -293,7 +301,7 @@ function BuildController._refreshPanel()
 				local st = card:FindFirstChildOfClass("UIStroke")
 				if st then st.Enabled = (_sel and _sel.key == key) or false end
 				card.MouseButton1Click:Connect(function()
-					_sel = { key = key, unitId = unitId, fp = u.footprint, isWeapon = u.combat ~= nil, range = u.combat and u.combat.range }
+					_sel = { key = key, unitId = unitId, fp = u.footprint, isWeapon = u.combat ~= nil, range = u.combat and (u.combat.range * (GameConfig.Sim.unitRangeMult or 1)) }
 					_mode = "place"
 					makeGhost()
 					BuildController._refreshPanel()
@@ -316,6 +324,12 @@ local function setTab(t)
 	BuildController._refreshPanel()
 end
 
+-- chowanie HUD-u ziomka w trybie budowania — wspolny HudOverlay (jeden system dla Build/Index/Sklep).
+-- keepCoins=false: w budowaniu chowamy tez monety (jak budpw.png).
+local function setHudHidden(hidden)
+	if hidden then HudOverlay.enter(false) else HudOverlay.exit() end
+end
+
 local function openBuild()
 	_on = true
 	_mode = "place"
@@ -324,6 +338,7 @@ local function openBuild()
 	local inv = Net.get("GetInventory"):InvokeServer()
 	if inv then _counts = inv end
 	if _bm then _bm.Enabled = true end
+	setHudHidden(true) -- schowaj kostke/Zbuduj/Umiejetnosci/fale/lewe UI/offline (jak budpw.png)
 	setTab(_activeTab)
 	BuildController._refreshCounter()
 end
@@ -334,6 +349,7 @@ local function closeBuild()
 	if _ghost then _ghost:Destroy(); _ghost = nil end
 	if _ring then _ring:Destroy(); _ring = nil end
 	if _bm then _bm.Enabled = false end
+	setHudHidden(false) -- przywroc HUD
 end
 
 function BuildController.start()
@@ -371,37 +387,28 @@ function BuildController.start()
 			if xBtn then xBtn.MouseButton1Click:Connect(closeBuild) end
 			local clearB = root and root:FindFirstChild("ClearPlot")
 			if clearB then clearB.MouseButton1Click:Connect(clearPlot) end
+			-- biala liczba slotow ziomka (BottomCanvas.Value) — nasz licznik ja aktualizuje
+			local bc = buildMode:FindFirstChild("BottomCanvas")
+			_slotsLbl = bc and bc:FindFirstChild("Value")
+			-- Exit/Delete ziomka (wewn. nazwy Build='Exit', Skills='Delete')
+			local bcBtns = bc and bc:FindFirstChild("Buttons")
+			local exitB = bcBtns and bcBtns:FindFirstChild("Build")
+			local delB = bcBtns and bcBtns:FindFirstChild("Skills")
+			if exitB then exitB.MouseButton1Click:Connect(closeBuild) end -- Exit -> wyjdz z budowania
+			if delB then
+				delB.MouseButton1Click:Connect(function() -- Delete -> tryb kasowania (klik jednostki usuwa)
+					_mode = (_mode == "delete") and "place" or "delete"
+					if _mode == "delete" and _ghost then _ghost.Parent = nil; if _ring then _ring.Parent = nil end end
+				end)
+			end
 			buildMode.Enabled = false
 		else
 			warn("[BuildController] brak StarterGui.BuildMode")
 		end
 
-	_delBtn = Instance.new("TextButton")
-	_delBtn.Size = UDim2.fromOffset(140, 34); _delBtn.AnchorPoint = Vector2.new(0.5, 1); _delBtn.Position = UDim2.new(0.5, -280, 1, -30)
-	_delBtn.BackgroundColor3 = Color3.fromRGB(90, 70, 40); _delBtn.TextColor3 = Color3.new(1, 1, 1)
-	_delBtn.Font = Enum.Font.GothamBold; _delBtn.TextSize = 14; _delBtn.Text = " Usuń"; _delBtn.Parent = gui
-	local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(0, 8); dc.Parent = _delBtn
-	_delBtn.MouseButton1Click:Connect(function()
-		_mode = (_mode == "delete") and "place" or "delete"
-		_delBtn.BackgroundColor3 = (_mode == "delete") and Color3.fromRGB(180, 60, 40) or Color3.fromRGB(90, 70, 40)
-		if _mode == "delete" and _ghost then _ghost.Parent = nil; if _ring then _ring.Parent = nil end end
-	end)
-
-	-- licznik zajetych kratek (dol-srodek)
-	_counter = Instance.new("TextLabel")
-	_counter.Size = UDim2.fromOffset(120, 34); _counter.AnchorPoint = Vector2.new(0.5, 1); _counter.Position = UDim2.new(0.5, 0, 1, -96)
-	_counter.BackgroundColor3 = Color3.fromRGB(20, 20, 28); _counter.BackgroundTransparency = 0.3
-	_counter.TextColor3 = Color3.new(1, 1, 1); _counter.Font = Enum.Font.GothamBold; _counter.TextSize = 20; _counter.Text = "0 / 40"
-	_counter.Visible = false; _counter.Parent = gui
-	local ctc = Instance.new("UICorner"); ctc.CornerRadius = UDim.new(0, 8); ctc.Parent = _counter
-
-	-- przycisk POSTAW (mobilny confirm; pojawia sie gdy kratka valid)
-	_postawBtn = Instance.new("TextButton")
-	_postawBtn.Size = UDim2.fromOffset(170, 48); _postawBtn.AnchorPoint = Vector2.new(0.5, 1); _postawBtn.Position = UDim2.new(0.5, 200, 1, -30)
-	_postawBtn.BackgroundColor3 = Color3.fromRGB(60, 160, 70); _postawBtn.TextColor3 = Color3.new(1, 1, 1)
-	_postawBtn.Font = Enum.Font.GothamBold; _postawBtn.TextSize = 18; _postawBtn.Text = "POSTAW ✓"; _postawBtn.Visible = false; _postawBtn.Parent = gui
-	local pbc = Instance.new("UICorner"); pbc.CornerRadius = UDim.new(0, 10); pbc.Parent = _postawBtn
-	_postawBtn.MouseButton1Click:Connect(place)
+	-- Proceduralne Wyjscie/Usun/licznik/POSTAW USUNIETE — uzywamy UI ziomka:
+	-- Wyjscie = BuildMode.X, licznik slotow = BuildMode.BottomCanvas.Value, czyszczenie = ClearPlot.
+	-- Usuwanie pojedynczej jednostki = PPM na siatce (patrz input nizej).
 
 	local function doToggle()
 		if _on then closeBuild() else openBuild() end
@@ -410,13 +417,11 @@ function BuildController.start()
 	openBtn.Visible = false -- stary temp guzik ukryty; nasz panel budowania zostaje (Etap E: designerowy BuildMode)
 	openBtn.MouseButton1Click:Connect(doToggle)
 
-	-- licznik/postaw widoczne tylko w trybie
 	local function syncVis()
-		_counter.Visible = _on; if _delBtn then _delBtn.Visible = _on end
-		if not _on then _postawBtn.Visible = false end
+		if _postawBtn then _postawBtn.Visible = false end
 	end
 
-	-- input: klik na siatce (PC) stawia/usuwa; X anuluje
+	-- input: LPM stawia, PPM usuwa jednostke pod kursorem, X anuluje wybor
 	UserInputService.InputBegan:Connect(function(input, gp)
 		if not _on or gp then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -425,6 +430,8 @@ function BuildController.start()
 			elseif _sel and _cell and validAt(_cell.x, _cell.z) then
 				place()
 			end
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+			deleteAt() -- PPM = usun jednostke pod kursorem
 		elseif input.KeyCode == Enum.KeyCode.X then
 			_sel = nil
 			if _ghost then _ghost:Destroy(); _ghost = nil end

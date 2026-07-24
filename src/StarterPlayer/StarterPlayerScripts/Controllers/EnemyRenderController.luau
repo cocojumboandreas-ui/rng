@@ -18,6 +18,7 @@ local GridMath = require(Framework:WaitForChild("GridMath"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
+local PerfSettings = require(script.Parent:WaitForChild("PerfSettings")) -- panel wydajnosci
 
 local PARK = CFrame.new(0, -500, 0)
 local PREWARM = 60 -- ile modeli podstawowego wroga (tier1) prealokowac synchronicznie
@@ -248,7 +249,7 @@ local function release(model, poolKey)
 	model:PivotTo(PARK)
 	model:SetAttribute("WR_EnemyId", nil) -- sparkowany wrog nie moze byc trafiony przez bron FPS
 	local hb = _hpBarByModel[model]
-	if hb and hb.gui.Enabled then hb.gui.Enabled = false end
+	if hb then hb.lastPct = nil; if hb.gui.Enabled then hb.gui.Enabled = false end end
 	_freeByModel[poolKey] = _freeByModel[poolKey] or {}
 	table.insert(_freeByModel[poolKey], model)
 end
@@ -434,6 +435,23 @@ local function hasNodes(): boolean
 	return next(_nodesByPlot) ~= nil
 end
 
+-- rozstaw na 9 KOLUMN placu: kazdy wrog dostaje kolumne. Kolejnosc rozproszona (krok 4 wzgl. 9)
+-- => rowny wachlarz po szerokosci, a nie sweep L->P. lane = boczny offset od srodka sciezki;
+-- spread narasta od bramy do pola (renderStep), wiec wychodzac z drzwi rozbiegaja sie do swoich kolumn.
+local BASE_COLS = 9
+local _colSeq = 0
+local function laneForSpawn(isBoss: boolean): number
+	if isBoss then
+		return (math.random() - 0.5) * 3 -- boss trzyma sie srodka
+	end
+	local cs = (GameConfig.Grid and GameConfig.Grid.cellSize) or 6
+	_colSeq += 1
+	local col = (_colSeq * 4) % BASE_COLS -- 0..8 rozproszone, rowno pokrywa wszystkie 9 kolumn
+	local center = (BASE_COLS - 1) / 2 -- 4
+	local jitter = (math.random() - 0.5) * cs * 0.5 -- lekki rozrzut w kolumnie (brak idealnego nakladania)
+	return (col - center) * cs + jitter
+end
+
 local function onEvents(payload)
 	if not hasNodes() then buildNodes() end
 	local plotId = payload.plotId
@@ -457,8 +475,8 @@ local function onEvents(payload)
 						maxHp = s.maxHp or 0, hpPct = 1, -- jawne HP: cur = maxHp * hpPct (hpPct z bufora sync)
 					weapon = _weaponByModel[model], -- {prof, part} rozpoznana bron
 						rig = _rigByModel[model], -- rig anim ruchu (nogi/kola/wirniki)
-						lane = (math.random() - 0.5) * (s.isBoss and 3 or 7.5), -- rozstaw w bok LOSOWO (chmara, nie kolumny)
-						fwd = (math.random() - 0.5) * (s.isBoss and 2 or 6), -- rozstaw w glab losowo (rozbiega szyk)
+						lane = laneForSpawn(s.isBoss), -- rozstaw na 9 KOLUMN placu (wachlarz, nie gesiego)
+						fwd = (math.random() - 0.5) * (s.isBoss and 2 or 4), -- lekki rozstaw w glab (desync szyku)
 						animPhase = math.random() * 6.28, -- desync animacji
 						atkRange = et and et.atkRange or 14,
 						atkInt = et and et.atkRate and (1 / et.atkRate) or 1.5,
@@ -517,8 +535,14 @@ local function renderStep(dt)
 	local now = os.clock()
 	updateFocus(now)
 	local ownPlot = Players.LocalPlayer:GetAttribute("PlotId")
+	-- klient-side przelaczniki wydajnosci (czytane RAZ na klatke)
+	local sAnim = PerfSettings.get("soldierAnim")
+	local sAttack = PerfSettings.get("attackAnim")
+	local sShowOthers = PerfSettings.get("showOthers")
+	local sDmg = PerfSettings.get("damageCounter")
 	for _, e in pairs(_active) do
-		local render = (e.plotId == ownPlot) or (e.plotId == _focused)
+		local own = (e.plotId == ownPlot)
+		local render = own or (sShowOthers and e.plotId == _focused)
 		if render then
 			local nodes = _nodesByPlot[e.plotId]
 			if nodes then
@@ -539,12 +563,12 @@ local function renderStep(dt)
 				local roll = 0
 				if rig then
 					local rp = rig.prof
-					if rp.hoverH then -- lot (heli/jet)
-						baseY += rp.hoverH + math.sin(e.animPhase * HOVER_FREQ) * (rp.bob or 0)
-						if rp.bank then roll = math.sin(e.animPhase * HOVER_FREQ * 0.6) * rp.bank end
-					elseif rig.kind == "walk" then -- marsz: podskok tulowia
+					if rp.hoverH then -- lot: utrzymaj WYSOKOSC lotu zawsze; bujanie/przechyl tylko gdy anim ON
+						baseY += rp.hoverH + (sAnim and math.sin(e.animPhase * HOVER_FREQ) * (rp.bob or 0) or 0)
+						if sAnim and rp.bank then roll = math.sin(e.animPhase * HOVER_FREQ * 0.6) * rp.bank end
+					elseif sAnim and rig.kind == "walk" then -- marsz: podskok tulowia
 						baseY += math.abs(math.sin(e.animPhase * WALK_FREQ)) * BODY_BOB
-					elseif rp.bob then -- jazda: lekki bujak (jeep/tank)
+					elseif sAnim and rp.bob then -- jazda: lekki bujak (jeep/tank)
 						baseY += math.abs(math.sin(e.animPhase * 11)) * rp.bob
 					end
 				end
@@ -557,19 +581,27 @@ local function renderStep(dt)
 				e.model:PivotTo(pivot)
 				e.shown = true
 
-				-- jawne HP: pasek nad wrogiem (pct z bufora sync, liczba cur/max)
+				-- jawne HP: pasek nad wrogiem. Aktualizuj fill/kolor/Text TYLKO gdy % faktycznie sie zmienil
+				-- (TextLabel.Text = przeliczanie layoutu = drogie; wrog z pelnym HP nie przelicza co klatke).
 				local hb = _hpBarByModel[e.model]
 				if hb then
-					local pct = math.clamp(e.hpPct or 1, 0, 1)
-					if not hb.gui.Enabled then hb.gui.Enabled = true end
-					hb.fill.Size = UDim2.fromScale(pct, 1)
-					hb.fill.BackgroundColor3 = HP_RED:Lerp(HP_GREEN, pct)
-					local mx = e.maxHp or 0
-					hb.label.Text = shortNum(mx * pct) .. "/" .. shortNum(mx)
+					if sDmg then
+						if not hb.gui.Enabled then hb.gui.Enabled = true end
+						local pct = math.clamp(e.hpPct or 1, 0, 1)
+						if hb.lastPct == nil or math.abs(pct - hb.lastPct) > 0.004 then
+							hb.lastPct = pct
+							hb.fill.Size = UDim2.fromScale(pct, 1)
+							hb.fill.BackgroundColor3 = HP_RED:Lerp(HP_GREEN, pct)
+							local mx = e.maxHp or 0
+							hb.label.Text = shortNum(mx * pct) .. "/" .. shortNum(mx)
+						end
+					elseif hb.gui.Enabled then
+						hb.gui.Enabled = false -- Damage Counter OFF -> ukryj pasek
+					end
 				end
 
-				-- napedy: nogi (chod, przeciwfaza) / kola / wirniki
-				if rig then
+				-- napedy: nogi (chod) / kola / wirniki — TYLKO gdy Soldier Animations ON (oszczedza CFrame/klatke)
+				if sAnim and rig then
 					if rig.kind == "walk" then
 						for _, leg in ipairs(rig.legs) do
 							local s = math.sin(e.animPhase * WALK_FREQ + leg.phase) * LEG_AMP
@@ -582,27 +614,29 @@ local function renderStep(dt)
 					end
 				end
 
-				-- wizualny ostrzal: najpierw najblizsza jednostka gracza; jak brak — RDZEN (gdy w zasiegu)
+				-- wizualny ostrzal: FX pokazuj dla WLASNEGO plota zawsze; dla CUDZYCH tylko gdy attackAnim ON.
 				if now >= e.nextFire then
 					e.nextFire = now + e.atkInt * (0.8 + math.random() * 0.4)
-					local target = nearestUnit(pos.X, pos.Z, e.atkRange)
-					if not target then
-						local cp = _corePosByPlot[e.plotId]
-						if cp then
-							local dx, dz = cp.X - pos.X, cp.Z - pos.Z
-							if dx * dx + dz * dz <= e.atkRange * e.atkRange then target = cp end
+					if own or sAttack then
+						local target = nearestUnit(pos.X, pos.Z, e.atkRange)
+						if not target then
+							local cp = _corePosByPlot[e.plotId]
+							if cp then
+								local dx, dz = cp.X - pos.X, cp.Z - pos.Z
+								if dx * dx + dz * dz <= e.atkRange * e.atkRange then target = cp end
+							end
 						end
-					end
-					if target then
-						local wp = e.weapon and e.weapon.part
-						local muzzle
-						if wp and wp.Parent then
-							-- lufa przesuwa sie z modelem (PivotTo) -> jej swiatowa pozycja jest aktualna
-							muzzle = wp.Position + (e.dir or dir) * 0.6
-						else
-							muzzle = Vector3.new(pos.X, pos.Y + e.halfH * 1.2, pos.Z)
+						if target then
+							local wp = e.weapon and e.weapon.part
+							local muzzle
+							if wp and wp.Parent then
+								-- lufa przesuwa sie z modelem (PivotTo) -> jej swiatowa pozycja jest aktualna
+								muzzle = wp.Position + (e.dir or dir) * 0.6
+							else
+								muzzle = Vector3.new(pos.X, pos.Y + e.halfH * 1.2, pos.Z)
+							end
+							fireWeapon(e, muzzle, target + Vector3.new(0, 1.5, 0))
 						end
-						fireWeapon(e, muzzle, target + Vector3.new(0, 1.5, 0))
 					end
 				end
 			end
@@ -610,7 +644,7 @@ local function renderStep(dt)
 			e.model:PivotTo(PARK)
 			e.shown = false
 			local hb = _hpBarByModel[e.model]
-			if hb and hb.gui.Enabled then hb.gui.Enabled = false end
+			if hb then hb.lastPct = nil; if hb.gui.Enabled then hb.gui.Enabled = false end end
 		end
 	end
 end

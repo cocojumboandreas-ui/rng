@@ -24,6 +24,7 @@ local _waveProgress, _waveEnded, _bossDefeated, _runSummary = nil, nil, nil, nil
 local _phase: { [any]: string } = {} -- player -> RunPhase (domyslnie Building)
 local _run: { [any]: any } = {} -- player -> {kills, pool} podczas WaveActive
 local _runStats: { [any]: any } = {} -- player -> {maxWave, coins} — akumulatory RUNU (przez wiele fal, do podsumowania)
+local _runGen: { [any]: number } = {} -- player -> licznik runu; bump w finishRun ubija zalegly auto-start fali
 
 local function isBossWave(waveNumber: number): boolean
 	local bw = GameConfig.Wave.bossWave
@@ -58,12 +59,35 @@ local function bossTypeFor(waveNumber: number): string
 	return bosses[math.clamp(k, 1, #bosses)]
 end
 
--- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count}}, poolSize, formation)
+-- HP najsilniejszego ZWYKLEGO (nie-boss) wroga aktywnego na fali w — baza skalowania bossa.
+-- boss fali 20 = bossHpVsPrevSoldier x (ten HP dla fali 19).
+local function referenceSoldierHp(waveNumber: number): number
+	if waveNumber < 1 then waveNumber = 1 end
+	local maxTier = maxTierFor(waveNumber)
+	local window = GameConfig.Wave.tierWindow or 3
+	local lowTier = math.max(1, maxTier - window + 1)
+	local maxBase = 0
+	for tr = lowTier, maxTier do
+		for _, typeId in ipairs(GameConfig.Wave.tierTypes[tr] or {}) do
+			local et = GameConfig.Wave.enemyTypes[typeId]
+			if et and not et.isBoss and (et.hp or 0) > maxBase then
+				maxBase = et.hp
+			end
+		end
+	end
+	if maxBase <= 0 then maxBase = 30 end
+	local hpMult = (GameConfig.Wave.scaling.hpGrowth or 1) ^ (waveNumber - 1)
+	return maxBase * hpMult
+end
+
+-- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count[,hpOverride]}}, poolSize, formation)
 local function waveComposition(waveNumber: number)
-	-- boss-fala: 1 boss (rosnacy z numerem) + podklad wrogow (tier maxTier-1)
+	-- boss-fala: 1 boss (HP = 5x zolnierz z fali n-1) + podklad wrogow (tier maxTier-1)
 	if isBossWave(waveNumber) then
 		local grunts = GameConfig.Wave.bossGrunts or 0
-		local comp = { { bossTypeFor(waveNumber), 1 } }
+		local mult = GameConfig.Wave.bossHpVsPrevSoldier or 5
+		local bossHp = mult * referenceSoldierHp(waveNumber - 1) -- 5x najsilniejszy zwykly wrog poprzedniej fali
+		local comp = { { bossTypeFor(waveNumber), 1, bossHp } }
 		if grunts > 0 then
 			local backTier = math.max(1, maxTierFor(waveNumber) - 1)
 			comp[#comp + 1] = { pickTierType(backTier, waveNumber), grunts }
@@ -140,7 +164,7 @@ function WaveService.StartWave(player)
 	_run[player] = { kills = 0, pool = pool }
 	_core.ResetHP(player)
 	for _, entry in ipairs(comp) do
-		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 } })
+		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3] })
 	end
 	WaveService.WaveStarted:Fire(player, waveNumber, pool)
 	pushProgress(player, waveNumber, 0, pool)
@@ -149,6 +173,7 @@ end
 -- KONIEC CALEGO RUNU (baza padla / gracz przerwal recznie): podsumowanie max fala + max dmg + monety.
 -- Czyta obrazenia z CombatService PRZED ClearPlot (ClearPlot je zeruje), potem reset runu do fali 1.
 local function finishRun(player, reason: string)
+	_runGen[player] = (_runGen[player] or 0) + 1 -- uniewaznia zalegly auto-start fali (jesli StopWave trafil w okno miedzy falami)
 	local data = _profile and _profile.GetProfile(player)
 	local waveNumber = (data and data.waveNumber) or 1
 	local rs = _runStats[player] or { maxWave = 0, coins = 0 }
@@ -201,6 +226,15 @@ local function endWave(player, reason)
 	if _waveEnded then
 		_waveEnded:FireClient(player, { plotId = plotIdOf(player), reason = reason, summary = summary })
 	end
+	-- AUTO-PROGRESJA (nieskonczone fale): wyczyszczono -> konfetti (klient na WaveEnded/Cleared)
+	-- -> po przerwie automatycznie startuje nastepna fala (n+1). Petla trwa do padu bazy / recznego stopu.
+	local d = GameConfig.Wave.interWaveDelay or 4
+	local gen = _runGen[player] or 0
+	task.delay(d, function()
+		if player and player.Parent and (_runGen[player] or 0) == gen and WaveService.GetPhase(player) == Enums.RunPhase.Building then
+			WaveService.StartWave(player)
+		end
+	end)
 end
 
 -- Gracz konczy run RECZNIE (przycisk „Zakończ falę") — w dowolnej fazie -> podsumowanie.

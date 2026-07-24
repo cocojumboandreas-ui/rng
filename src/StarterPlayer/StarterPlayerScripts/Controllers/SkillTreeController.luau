@@ -251,7 +251,7 @@ function SkillTreeController.start()
 	NodeTreeClient.treeVisibilityChanged:Connect(function(isVisible)
 		header.Visible = isVisible
 		closeBtn.Visible = isVisible
-		openBtn.Visible = not isVisible -- gdy modal otwarty: tylko Zamknij
+		openBtn.Visible = false -- temp guzik "Umiejetnosci" ZAWSZE ukryty (otwiera przycisk Skills ziomka w HUD)
 		setHudHidden(isVisible)
 		if isVisible then
 			task.delay(0.35, function()

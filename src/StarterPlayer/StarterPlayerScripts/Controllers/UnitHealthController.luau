@@ -9,6 +9,7 @@ local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
+local PerfSettings = require(script.Parent:WaitForChild("PerfSettings")) -- panel wydajnosci (Damage Counter)
 
 local UnitHealthController = {}
 
@@ -83,10 +84,24 @@ local function poof(pos)
 end
 
 function UnitHealthController.start()
+	-- Damage Counter OFF -> ukryj/nie pokazuj HP jednostek (live-toggle istniejacych barek)
+	PerfSettings.onChanged(function(key)
+		if key ~= "damageCounter" then return end
+		local on = PerfSettings.get("damageCounter")
+		for _, rec in pairs(_bars) do
+			if rec.gui then rec.gui.Enabled = on end
+		end
+	end)
+
 	Net.get("UnitHp").OnClientEvent:Connect(function(p)
 		if type(p) ~= "table" or not p.placementId then return end
 		local rec = ensureBar(p.placementId)
 		if not rec then return end
+		if not PerfSettings.get("damageCounter") then
+			if rec.gui then rec.gui.Enabled = false end
+			return -- Damage Counter OFF -> pomijamy pokazywanie/aktualizacje
+		end
+		if rec.gui and not rec.gui.Enabled then rec.gui.Enabled = true end
 		local pct = math.clamp(p.hpPct or 1, 0, 1)
 		rec.fill.Size = UDim2.fromScale(pct, 1)
 		rec.fill.BackgroundColor3 = RED:Lerp(GREEN, pct)

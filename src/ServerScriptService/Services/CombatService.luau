@@ -96,7 +96,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 		warn(("[CombatService] nieznany enemyType '%s'"):format(tostring(spec.enemyTypeId)))
 		return
 	end
-	local hp = et.hp * waveHpMult(waveNumber)
+	local hp = spec.hpOverride or (et.hp * waveHpMult(waveNumber)) -- boss: jawne HP (5x zolnierz z fali n-1)
 	local atkDmg = (et.atkDmg or 0) * waveAtkMult(waveNumber) -- obrazenia jednostek skalowane z fala
 	local isBoss = et.isBoss or false
 	local stagger = GameConfig.Sim.spawnStagger or 0.03
@@ -234,7 +234,7 @@ local function step(dt: number)
 					cds[pid] = (cds[pid] or 0) - dt
 					if cds[pid] <= 0 then
 						local tpos = towerWorldPos(plot, pl.unitId, pl.x, pl.z)
-						local effRange = u.combat.range * rangeMult
+						local effRange = u.combat.range * rangeMult * (GameConfig.Sim.unitRangeMult or 1)
 						local bestD = effRange * effRange
 						local best = nil
 						for _, e in pairs(enemies) do

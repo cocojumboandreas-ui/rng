@@ -12,6 +12,7 @@ local Net = require(Framework:WaitForChild("Net"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
+local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
 
 local IndexController = {}
 
@@ -65,8 +66,9 @@ local function showDetail(unitId, variant)
 	_detail.rarity.Text = ("Rzadkosc: %s (1 in %d)"):format(tier.name, u.rarityN)
 	_detail.rarity.TextColor3 = TIER_COLOR[tier.revealTier]
 	local c = u.combat or {}
+	local effRange = c.range and math.floor(c.range * (GameConfig.Sim.unitRangeMult or 1) + 0.5) or "-"
 	_detail.stats.Text = ("Obrazenia: %s\nSzybkostrzelnosc: %s/s\nZasieg: %s")
-		:format(tostring(c.dmg or "-"), tostring(c.fireRate or "-"), tostring(c.range or "-"))
+		:format(tostring(c.dmg or "-"), tostring(c.fireRate or "-"), tostring(effRange))
 end
 
 local function clearDetail()
@@ -197,7 +199,13 @@ local function showToast(unitId, variant)
 	end)
 end
 
+local function closePanel()
+	_panel.Visible = false
+	HudOverlay.exit() -- przywroc HUD
+end
+
 local function openPanel()
+	HudOverlay.enter(true) -- schowaj caly HUD, ZOSTAW monety (lewy gorny)
 	_panel.Visible = true
 	local state = Net.get("GetIndexState"):InvokeServer()
 	if state then
@@ -218,6 +226,7 @@ function IndexController.start()
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "WR_Index"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 150 -- NAD HUD ziomka (SideButtons=100), pod modalem podsumowania (200)
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 	-- TYMCZASOWY przycisk wejscia (re-hook do HUD ksiazki gdy bedzie)
@@ -243,7 +252,7 @@ function IndexController.start()
 	closeBtn.Size = UDim2.fromOffset(28, 28); closeBtn.Position = UDim2.new(1, -38, 0, 10)
 	closeBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40); closeBtn.TextColor3 = Color3.new(1, 1, 1)
 	closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16; closeBtn.Text = "X"; closeBtn.Parent = _panel
-	closeBtn.MouseButton1Click:Connect(function() _panel.Visible = false end)
+	closeBtn.MouseButton1Click:Connect(closePanel)
 
 	-- lewa kolumna zakladek
 	local tabCol = Instance.new("Frame")

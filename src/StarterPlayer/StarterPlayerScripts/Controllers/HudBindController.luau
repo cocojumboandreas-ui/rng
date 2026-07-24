@@ -45,6 +45,9 @@ end
 local PRESS_DOWN = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local PRESS_UP = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local function bindPress(btn)
+	-- Press-feedback przejal generyczny UIHoverBinder (hover+press+glow). Zostawiamy no-op,
+	-- zeby nie tworzyc konkurencyjnego UIScale na tych samych przyciskach.
+	if true then return end
 	if not btn or not btn:IsA("GuiButton") then return end
 	if btn:FindFirstChild("WR_PressScale") then return end
 	local s = Instance.new("UIScale")
@@ -79,6 +82,16 @@ function HudBindController.start()
 	-- ── akcje (klik -> Net) + feedback wciśnięcia ──
 	if startBtn then bindPress(startBtn); startBtn.MouseButton1Click:Connect(function() Net.get("StartWave"):FireServer() end) end
 	if stopBtn then bindPress(stopBtn); stopBtn.MouseButton1Click:Connect(function() Net.get("StopWave"):FireServer() end) end
+
+	-- "Zakoncz fale" widoczne TYLKO podczas aktywnej fali; poza fala -> tylko "Rozpocznij fale".
+	local startFrame = startBtn and startBtn:FindFirstAncestor("StartWave")
+	local stopFrame = stopBtn and stopBtn:FindFirstAncestor("StopWave")
+	local function setWaveActiveUI(active)
+		if startFrame then startFrame.Visible = not active end
+		if stopFrame then stopFrame.Visible = active end
+	end
+	setWaveActiveUI(false) -- start: idle (tylko Rozpocznij)
+	if waveInfo then waveInfo.Visible = false end -- "Wave X" na gorze pojawia sie dopiero po Start Wave
 	if rollBtn then bindPress(rollBtn); rollBtn.MouseButton1Click:Connect(function() Net.get("RollRequest"):FireServer() end) end
 
 	-- ── guziki paneli -> istniejace kontrolery (startuja PRZED HudBind, wiec .Toggle/.Open juz sa) ──
@@ -108,7 +121,13 @@ function HudBindController.start()
 			if ctrl and ctrl.Toggle then ctrl.Toggle() end
 		end)
 	end
-	if storeBtn then bindPress(storeBtn) end -- Store: brak systemu sklepu w v1 (sam feedback wcisniecia)
+	if storeBtn then
+		bindPress(storeBtn)
+		storeBtn.MouseButton1Click:Connect(function()
+			local ctrl = require(Controllers:FindFirstChild("StoreController"))
+			if ctrl and ctrl.Open then ctrl.Open() end
+		end)
+	end
 
 	-- ── waluty / rolki ──
 	Net.get("CoinsSync").OnClientEvent:Connect(function(p)
@@ -131,12 +150,20 @@ function HudBindController.start()
 		local left = math.max(0, (pool or 0) - (killed or 0))
 		setText(waveProgText, left .. " Left")
 		if waveProgBar and pool and pool > 0 then
-			local frac = math.clamp(killed / pool, 0.03, 1)
+			-- pasek = ILOSC LEFT (pozostali wrogowie): pelny na starcie, ZWEZA sie z kazdym zabitym
+			local frac = math.clamp((pool - killed) / pool, 0, 1)
 			waveProgBar.Size = UDim2.new(frac, 0, waveProgBar.Size.Y.Scale, waveProgBar.Size.Y.Offset)
 		end
 	end
 	Net.get("WaveProgress").OnClientEvent:Connect(function(p)
-		if type(p) == "table" then showWave(p.waveNumber, p.killed, p.pool) end
+		if type(p) == "table" then
+			showWave(p.waveNumber, p.killed, p.pool)
+			setWaveActiveUI(true) -- fala trwa -> pokaz "Zakoncz fale"
+		end
+	end)
+	Net.get("WaveEnded").OnClientEvent:Connect(function()
+		setWaveActiveUI(false) -- fala wyczyszczona -> tylko "Rozpocznij fale"
+		if waveInfo then waveInfo.Visible = false end
 	end)
 
 	-- ── MODAL PODSUMOWANIA RUNU (przeniesiony z HudController; SideButtons go nie ma) ──
@@ -181,6 +208,8 @@ function HudBindController.start()
 
 	Net.get("RunSummary").OnClientEvent:Connect(function(s)
 		if type(s) ~= "table" then return end
+		setWaveActiveUI(false) -- koniec runu -> tylko "Rozpocznij fale"
+		if waveInfo then waveInfo.Visible = false end
 		subL.Text = (s.reason == "core") and "Twoja baza została zniszczona" or "Przerwałeś falę"
 		waveVal.Text = fmt(s.maxWave or 0)
 		dmgVal.Text = fmt(s.damage or 0)

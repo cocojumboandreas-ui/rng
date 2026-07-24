@@ -46,3 +46,23 @@ HudBindController.start()
 
 local DevController = require(Controllers:WaitForChild("DevController"))
 DevController.start()
+
+-- Panel ustawien wydajnosci (przycisk ⚙): przelaczniki animacji/FX/HP-barek/cudzych plotow
+local SettingsPanelController = require(Controllers:WaitForChild("SettingsPanelController"))
+SettingsPanelController.start()
+
+-- Konfetti + baner po wyczyszczeniu fali
+local WaveFxController = require(Controllers:WaitForChild("WaveFxController"))
+WaveFxController.start()
+
+-- Sklep (chowa HUD, tresc doda ziomek)
+local StoreController = require(Controllers:WaitForChild("StoreController"))
+StoreController.start()
+
+-- Sprezyste hover/press na wszystkich przyciskach (port z obby)
+local UIHoverBinder = require(Controllers:WaitForChild("UIHoverBinder"))
+UIHoverBinder.start()
+
+-- Kolysanie Roll + Sklep (przyciaga uwage)
+local AttentionBob = require(Controllers:WaitForChild("AttentionBob"))
+AttentionBob.start()

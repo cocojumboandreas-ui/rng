@@ -18,6 +18,8 @@ local WaveConfig = {
 	--   atkMult    = dmgGrowth ^ (n-1)    (skaluje atkDmg wroga -> DEF bloku spowalnia, nie zatrzymuje na zawsze)
 	--   coinReward = round(waves[1].coinReward * coinGrowth ^ (n-1))
 	scaling = { poolBase = 20, poolPerWave = 4, hpGrowth = 1.12, dmgGrowth = 1.07, coinGrowth = 1.15 },
+	interWaveDelay = 4.5, -- sekundy miedzy wyczyszczeniem fali a auto-startem nastepnej (konfetti + oddech)
+	bossHpVsPrevSoldier = 5, -- HP bossa = tyle x HP najsilniejszego zwyklego wroga z fali (n-1)
 	enemyTypes = {
 		-- model = wizual wroga (klient renderuje prawdziwy model z Assets.Units, strzela z broni + animacje).
 		-- TIER 1 (szary) — Noob Soldier, pistolet. 'grunt' = alias tier1 (harness + wave 1).

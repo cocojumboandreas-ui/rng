@@ -8,6 +8,7 @@ local SimConfig = {
 	blockAhead = 2.5, -- jak daleko przed wrogiem sprawdzamy przeszkode (study)
 	blockRadius = 4.0, -- promien zajetosci postawionej jednostki/bloku (study; ~pol kafla=6/2+margines)
 	playerShotDmg = 10, -- BALANS: ile HP zdejmuje 1 trafienie z broni FPS gracza (strzelanie w fali)
+	unitRangeMult = 0.6, -- BALANS: globalny mnoznik zasiegu WSZYSTKICH jednostek gracza (0.6 = -40%). 1.0 = jak w UnitsConfig.
 }
 
 return SimConfig

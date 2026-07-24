@@ -305,6 +305,7 @@ function RollRevealController.start()
 	rollBtn.ScaleType = Enum.ScaleType.Fit
 	rollBtn.ZIndex = 40
 	rollBtn.Parent = gui
+	rollBtn.Visible = false -- STARY tymczasowy Roll ukryty; rolluje przycisk ziomka (SideButtons.Roll)
 	-- napis "Roll" na dole kostki (jak w packu)
 	local rbName = Instance.new("TextLabel")
 	rbName.Size = UDim2.new(1, 0, 0, 22); rbName.AnchorPoint = Vector2.new(0.5, 1)
