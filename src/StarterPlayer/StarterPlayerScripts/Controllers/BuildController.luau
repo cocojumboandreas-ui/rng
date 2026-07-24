@@ -124,9 +124,9 @@ local function cellLayerMaps(ignorePid)
 	return out
 end
 
--- NAJNIZSZA warstwa L gdzie footprint sie zmiesci (wypelnia DZIURY od dolu): wszystkie kratki wolne na L,
--- i (L==0 albo pod kazda kratka na L-1 stoi platforma). nil = brak miejsca. Zgodne z serwerem (GridService).
-local function placementLayer(maps, cells)
+-- NAJNIZSZA warstwa L gdzie footprint sie zmiesci. Wszystkie kratki wolne na L, i (L==0 albo pod kazda na L-1
+-- stoi platforma). DZIURE (cos NAD L) wypelnia TYLKO blok; bron/pulapka szuka wyzej. nil = brak. Jak serwer.
+local function placementLayer(maps, cells, unitIsPlatform)
 	local maxH = 0
 	for _, c in ipairs(cells) do
 		local m = maps[cellKey(c.x, c.z)]
@@ -142,7 +142,17 @@ local function placementLayer(maps, cells)
 				if not (below and isPlatform(below)) then ok = false; break end
 			end
 		end
-		if ok then return L end
+		if ok then
+			local hasAbove = false
+			if not unitIsPlatform then
+				for _, c in ipairs(cells) do
+					local m = maps[cellKey(c.x, c.z)]
+					if m then for l in pairs(m) do if l > L then hasAbove = true; break end end end
+					if hasAbove then break end
+				end
+			end
+			if not hasAbove then return L end
+		end
 	end
 	return nil
 end
@@ -153,7 +163,7 @@ local function heightAt(x, z)
 	if not _sel then return 0 end
 	local maps = cellLayerMaps(_moving)
 	local cells = GridMath.footprintCells(x, z, _sel.fp)
-	local L = placementLayer(maps, cells)
+	local L = placementLayer(maps, cells, isPlatform(_sel.unitId))
 	if L then return L end
 	local top = 0
 	for _, c in ipairs(cells) do
@@ -197,8 +207,8 @@ local function validAt(x, z)
 		if c.x < 1 or c.x > _plot.width or c.z < 1 or c.z > _plot.depth then return false end
 		if _coreSet[cellKey(c.x, c.z)] then return false end -- kratka rdzenia
 	end
-	-- STOS: musi istniec warstwa (wypelnia dziury od dolu, z podparciem platforma)
-	if placementLayer(cellLayerMaps(_moving), cells) == nil then return false end
+	-- STOS: musi istniec warstwa (dziure wypelni tylko blok; bron/pulapka idzie na wierzch)
+	if placementLayer(cellLayerMaps(_moving), cells, isPlatform(_sel.unitId)) == nil then return false end
 	-- budzet
 	local _, used = occupancy(_moving)
 	if used + fp.w * fp.d > _budget then return false end
@@ -776,7 +786,10 @@ function BuildController.start()
 				if m then pickup(m) end
 			end
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-			if not gp then deleteAt() end
+			-- PPM: gdy cos trzymamy -> anuluj wybor (nie usuwaj cudzej jednostki!); inaczej -> usun pod kursorem
+			if not gp then
+				if _sel then cancelSelection() else deleteAt() end
+			end
 		elseif input.KeyCode == Enum.KeyCode.R then
 			if _sel then
 				_rot = (_rot + 90) % 360

@@ -344,6 +344,36 @@ function BuildService.ClearPlot(player): number
 	return removed
 end
 
+-- GRAWITACJA na start fali: wszystko OPADA, dziury znikaja (blok z gory spada na miejsce luki).
+-- Odbudowa gridu od DOLU (wg oryginalnej warstwy): kazda jednostka siada najnizej jak sie da; zmienione respawnujemy.
+function BuildService.SettleStacks(player)
+	local data = _profile.GetProfile(player)
+	if not data or not data.placements then
+		return
+	end
+	local order = {}
+	for pid, p in pairs(data.placements) do
+		order[#order + 1] = { pid = pid, p = p }
+	end
+	table.sort(order, function(a, b)
+		return (a.p.layer or 0) < (b.p.layer or 0)
+	end)
+	_grid.ResetPlayer(player)
+	local changed = false
+	for _, e in ipairs(order) do
+		local newLayer = _grid.Occupy(player, e.pid, e.p.itemId, e.p.x, e.p.z) -- najnizej jak sie da (opada)
+		if newLayer ~= (e.p.layer or 0) then
+			e.p.layer = newLayer
+			despawnModel(player, e.pid)
+			spawnModel(player, e.p.itemId, e.pid, e.p.x, e.p.z, e.p.rot)
+			changed = true
+		end
+	end
+	if changed then
+		BuildService.PlacementChanged:Fire(player)
+	end
+end
+
 -- FAZA 5: jednostka zabita przez wroga (BEZ refundu). Zwalnia grid, usuwa placement, despawnuje, notyfikuje klienta.
 function BuildService.KillUnit(player, placementId: string): boolean
 	local data = _profile.GetProfile(player)
@@ -442,6 +472,13 @@ function BuildService.Start()
 		end
 		BuildService.RestorePlot(player)
 	end)
+
+	-- GRAWITACJA: na start fali bloki opadaja i wypelniaja dziury (blok z gory spada na miejsce luki)
+	if _wave.WaveStarted then
+		_wave.WaveStarted:Connect(function(player)
+			BuildService.SettleStacks(player)
+		end)
+	end
 
 	Players.PlayerRemoving:Connect(function(player)
 		local byPid = _models[player]

@@ -65,9 +65,10 @@ local function cellHeight(s, k): number
 	return maxL + 1
 end
 
--- NAJNIZSZA warstwa L, na ktora zmiesci sie caly footprint (wypelnia DZIURY od dolu, potem wierzch):
--- wszystkie kratki WOLNE na L, i (L==0 albo pod kazda kratka na L-1 stoi PLATFORMA). nil = brak miejsca/podparcia.
-local function placementLayer(s, cells)
+-- NAJNIZSZA warstwa L, na ktora zmiesci sie caly footprint. Wszystkie kratki WOLNE na L, i (L==0 albo pod
+-- kazda kratka na L-1 stoi PLATFORMA). DZIURE (warstwa z czyms NAD nia) moze wypelnic TYLKO platforma (blok);
+-- bron/pulapka szuka wtedy wyzej (idzie na sam wierzch). nil = brak miejsca/podparcia.
+local function placementLayer(s, cells, unitIsPlatform)
 	local maxH = 0
 	for _, c in ipairs(cells) do
 		local h = cellHeight(s, GridMath.key(c.x, c.z))
@@ -90,7 +91,22 @@ local function placementLayer(s, cells)
 			end
 		end
 		if ok then
-			return L
+			-- czy cos stoi NAD L? (dziura). Jesli tak, a stawiamy NIE-platforme -> pomin (tylko blok wypelnia dziure).
+			local hasAbove = false
+			if not unitIsPlatform then
+				for _, c in ipairs(cells) do
+					local stack = s.stacks[GridMath.key(c.x, c.z)]
+					if stack then
+						for l in pairs(stack) do
+							if l > L then hasAbove = true; break end
+						end
+					end
+					if hasAbove then break end
+				end
+			end
+			if not hasAbove then
+				return L
+			end
 		end
 	end
 	return nil
@@ -128,8 +144,8 @@ function GridService.CanPlace(player, unitId: string, cellX: number, cellZ: numb
 		end
 	end
 
-	-- B) STOS: musi istniec warstwa gdzie footprint sie zmiesci (wypelnia dziury od dolu, z podparciem platforma)
-	if placementLayer(s, cells) == nil then
+	-- B) STOS: musi istniec warstwa (dziure wypelni tylko blok; bron/pulapka idzie na wierzch)
+	if placementLayer(s, cells, isPlatform(unitId)) == nil then
 		return false, "NoSupport"
 	end
 
@@ -152,7 +168,7 @@ function GridService.Occupy(player, placementId: string, unitId: string, cellX: 
 	local cells = GridMath.footprintCells(cellX, cellZ, fp)
 	local layer = forcedLayer
 	if layer == nil then
-		layer = placementLayer(s, cells) or 0 -- najnizsza wolna warstwa (wypelnia dziury)
+		layer = placementLayer(s, cells, isPlatform(unitId)) or 0 -- najnizsza wolna warstwa (dziure tylko blok)
 	end
 	for _, c in ipairs(cells) do
 		local k = GridMath.key(c.x, c.z)
@@ -204,6 +220,11 @@ end
 function GridService.GetLayer(player, placementId: string): number
 	local p = stateOf(player).placements[placementId]
 	return p and p.layer or 0
+end
+
+-- Wyczysc caly stan gracza (uzywane przez SettleStacks: budujemy grid od nowa od dolu -> wszystko opada, dziury znikaja).
+function GridService.ResetPlayer(player)
+	_state[player] = { stacks = {}, usedCells = 0, placements = {} }
 end
 
 function GridService.Init() end
