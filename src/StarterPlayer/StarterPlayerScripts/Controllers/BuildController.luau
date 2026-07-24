@@ -24,7 +24,6 @@ local GridMath = require(Framework:WaitForChild("GridMath"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local UnitModelFactory = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UnitModelFactory"))
 local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
-local UnitTooltip = require(script.Parent:WaitForChild("UnitTooltipController"))
 
 local BuildController = {}
 
@@ -70,6 +69,11 @@ local _clearOrigText = "Wyczyść działkę!" -- oryginalny napis przycisku (prz
 -- czy gracz cos aktualnie stawia (ghost aktywny) — UnitTooltip pyta, by nie pokazywac dymka swiata podczas stawiania
 function BuildController.HasSelection()
 	return _sel ~= nil
+end
+
+-- czy TRYB BUDOWANIA jest otwarty (panel aktywny). UnitTooltip pyta: dymek swiata TYLKO w trybie wolnym.
+function BuildController.IsBuildMode()
+	return _on
 end
 
 -- ── geometria kratek ──
@@ -626,9 +630,6 @@ function BuildController._refreshPanel()
 					setPcControls(true); setCursor(true)
 					BuildController._refreshPanel()
 				end)
-				-- DYMEK z podgladem (ikona + DMG/s + HP) przy najechaniu na karte
-				card.MouseEnter:Connect(function() UnitTooltip.showForCard(unitId, card) end)
-				card.MouseLeave:Connect(function() UnitTooltip.hideCard() end)
 				card.Parent = _list
 			end
 		end
