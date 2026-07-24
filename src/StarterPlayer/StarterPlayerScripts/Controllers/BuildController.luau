@@ -586,6 +586,12 @@ function BuildController._refreshPanel()
 				local card = _template:Clone()
 				card.Name = "Card_" .. key
 				card.Visible = true
+				-- 3 KOLUMNY na sztywno (niezaleznie od rozdzielczosci): szerokosc karty = ~30% SZEROKOSCI listy;
+				-- box wysokosci = 100%, wiec UIAspectRatioConstraint (kwadrat) bierze SZEROKOSC jako limit ->
+				-- karta zawsze 0.3*listW szeroka -> mieszcza sie dokladnie 3 w rzedzie (a nie 4 na szerszym ekranie).
+				card.Size = UDim2.new(0.30, 0, 1, 0)
+				local arc = card:FindFirstChildOfClass("UIAspectRatioConstraint")
+				if arc then arc.DominantAxis = Enum.DominantAxis.Width end
 				local nameL, countL
 				for _, l in ipairs(card:GetChildren()) do
 					if l:IsA("TextLabel") and l.Name == "Text" then
