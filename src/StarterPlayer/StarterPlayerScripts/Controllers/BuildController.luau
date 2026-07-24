@@ -637,8 +637,29 @@ end
 -- Nadmiar rzedow chowa sie i mozna do niego zjechac (scroll). Skala-odporne (liczone z realnych rozmiarow).
 function fitListRows()
 	if not (_list and _content) then return end
-	-- Wypelnij CALA wysokosc panelu (nie zostawiaj pustego miejsca u dolu — wykorzystaj przestrzen do konca).
-	-- Nadmiar rzedow = scroll kolkiem; dolny rzad przyciety OBRYSEM (ClipsDescendants) -> nic nie wychodzi poza ramke.
+	local layout
+	for _, c in ipairs(_list:GetChildren()) do
+		if c:IsA("UIListLayout") then layout = c break end
+	end
+	if not layout then return end
+	local W = _list.AbsoluteSize.X
+	local H = _content.AbsoluteSize.Y
+	if W < 1 or H < 1 then return end
+	local pad = layout.Padding.Offset
+	-- 3 KOLUMNY (szerokosc karty = 0.30*listW) + wypelnij wysokosc CALYMI rzedami: dobierz liczbe rzedow N
+	-- najblizej kwadratu i ustaw aspect karty tak, by N rzedow zajelo cala wysokosc -> BRAK partial-rzedu na dole
+	-- (zadne "x8" nie wystaje poza ramke) i BRAK pustego miejsca. Nadmiar (>N rzedow) = scroll kolkiem.
+	local cardW = 0.30 * W
+	local N = math.max(1, math.floor(H / cardW + 0.5))
+	local cardH = (H - (N - 1) * pad) / N
+	local A = cardW / math.max(cardH, 1)
+	for _, c in ipairs(_list:GetChildren()) do
+		if c:IsA("GuiButton") then
+			local arc = c:FindFirstChildOfClass("UIAspectRatioConstraint")
+			if arc then arc.AspectRatio = A; arc.DominantAxis = Enum.DominantAxis.Width end
+			c.Size = UDim2.new(0.30, 0, 1, 0)
+		end
+	end
 	_list.Size = UDim2.new(_list.Size.X.Scale, _list.Size.X.Offset, 1, 0)
 end
 
