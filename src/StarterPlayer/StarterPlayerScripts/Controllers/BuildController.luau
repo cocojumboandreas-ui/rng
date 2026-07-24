@@ -107,7 +107,12 @@ local function cursorCell()
 	local cs = _plot.cellSize
 	local x = math.floor((hit.X - go.X) / cs) + 1
 	local z = math.floor((hit.Z - go.Z) / cs) + 1
-	if x < 1 or x > _plot.width or z < 1 or z > _plot.depth then return nil end
+	-- CLAMP do siatki (z uwzglednieniem footprintu) — NIE wyjezdzamy poza obrys planszy; ghost zostaje
+	-- na ostatnim dostepnym polu przy krawedzi, zamiast znikac gdy kursor wyjedzie poza plansze.
+	local w, d = 1, 1
+	if _sel then w, d = _sel.fp.w, _sel.fp.d end
+	x = math.clamp(x, 1, math.max(1, _plot.width - w + 1))
+	z = math.clamp(z, 1, math.max(1, _plot.depth - d + 1))
 	return { x = x, z = z }
 end
 
@@ -188,14 +193,15 @@ end
 local function updateGhost()
 	if not _ghost or not _plot then return end
 	local c = cursorCell()
-	_cell = c
-	if not c then
+	if c then _cell = c end -- ray trafil w plaszczyzne -> zaktualizuj (clamped). Miss (sky) -> zostaw ostatnia kratke.
+	if not _cell then
+		-- jeszcze nigdy nie bylo kratki (start) -> schowaj do pierwszego trafienia
 		_ghost.Parent = nil
 		if _ring then _ring.Parent = nil end
 		return
 	end
 	_ghost.Parent = Workspace
-	local center = GridMath.cellToWorld(_plot.gridOrigin, _plot.cellSize, c.x, c.z, _sel.fp).Position
+	local center = GridMath.cellToWorld(_plot.gridOrigin, _plot.cellSize, _cell.x, _cell.z, _sel.fp).Position
 	local groundY = _plot.gridOrigin.Position.Y
 	local targetPos = Vector3.new(center.X, groundY, center.Z)
 	_ghostPos = _ghostPos and _ghostPos:Lerp(targetPos, LERP) or targetPos
@@ -207,7 +213,7 @@ local function updateGhost()
 	local anchor = _ghost:FindFirstChild("HumanoidRootPart", true)
 	local aPos = (anchor and anchor:IsA("BasePart")) and anchor.Position or (select(1, _ghost:GetBoundingBox())).Position
 	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(_ghostPos.X - aPos.X, 0, _ghostPos.Z - aPos.Z))
-	local ok = validAt(c.x, c.z)
+	local ok = validAt(_cell.x, _cell.z)
 	local hl = _ghost:FindFirstChildOfClass("Highlight")
 	if hl then
 		-- OK = bialy obrys (jak Start Wave), zle miejsce = czerwony
@@ -274,10 +280,10 @@ local function tintCursor(color)
 	for _, s in ipairs(_cursorTint) do s.Color = color end
 end
 
--- widocznosc kursora: przy wybranym przedmiocie chowamy kursor systemowy i pokazujemy celownik
+-- Celownik (marker nad jednostka) wl/wyl. Myszka SYSTEMOWA zostaje DOMYSLNA (nigdy nie chowamy) —
+-- celownik to tylko znacznik nad ghostem, a normalna strzalka pozwala klikac UI/karty.
 local function setCursor(active)
 	if _cursorGui then _cursorGui.Enabled = active end
-	UserInputService.MouseIconEnabled = not active
 end
 
 local function setPcControls(vis)
@@ -562,6 +568,7 @@ end
 local function openBuild()
 	_on = true
 	_mode = "place"
+	UserInputService.MouseIconEnabled = true -- myszka zawsze domyslna w budowaniu (na wypadek starego stanu)
 	local info = Net.get("GetPlotInfo"):InvokeServer()
 	if info then _plot = info end
 	local inv = Net.get("GetInventory"):InvokeServer()
@@ -706,34 +713,30 @@ function BuildController.start()
 		-- gui ma IgnoreGuiInset=true, wiec dodajemy GetGuiInset (WorldToViewportPoint/GetMouseLocation sa bez topbara).
 		if _sel then
 			if _hovered then clearHover() end -- podczas stawiania/przenoszenia nie podswietlamy hover
-			local inset = GuiService:GetGuiInset()
+			-- Celownik = marker NAD jednostka (ghost), rzutowany world->ekran. NIE sledzi myszki i NIE chowa
+			-- kursora systemowego (myszka zostaje domyslna, mozna klikac UI). Pokazuje sie tylko gdy ghost jest
+			-- widoczny na kratce (a jest zawsze, bo cursorCell clampuje do planszy).
 			local cam = Workspace.CurrentCamera
-			local sx, sy
 			if _cell and _ghostPos and cam and _ghost then
-				-- celownik NAD jednostka (nad glowa), nie pod stopami: rzut punktu na wysokosci szczytu modelu
+				local inset = GuiService:GetGuiInset()
 				local _, bbSize = _ghost:GetBoundingBox()
 				local aboveY = _plot.gridOrigin.Position.Y + bbSize.Y + 2.5
 				local sp = cam:WorldToViewportPoint(Vector3.new(_ghostPos.X, aboveY, _ghostPos.Z))
-				sx, sy = sp.X, sp.Y
-			else
-				local mp = UserInputService:GetMouseLocation()
-				sx, sy = mp.X, mp.Y
-			end
-			_reticle.Position = UDim2.fromOffset(sx + inset.X, sy + inset.Y)
-			_reticle.Rotation = (_reticle.Rotation + dt * 45) % 360 -- powolny obrot (efekt)
-			local ok = _cell ~= nil and validAt(_cell.x, _cell.z)
-			tintCursor(ok and GREEN or Color3.new(1, 1, 1))
-			-- puls obrysu ghosta
-			if _ghost then
+				_reticle.Position = UDim2.fromOffset(sp.X + inset.X, sp.Y + inset.Y)
+				_reticle.Rotation = (_reticle.Rotation + dt * 45) % 360 -- powolny obrot (efekt)
+				local ok = validAt(_cell.x, _cell.z)
+				tintCursor(ok and GREEN or Color3.new(1, 1, 1))
 				local hl = _ghost:FindFirstChildOfClass("Highlight")
 				if hl then hl.OutlineTransparency = 0.15 + 0.15 * math.abs(math.sin(os.clock() * 3)) end
+				if not _cursorGui.Enabled then _cursorGui.Enabled = true end
+			else
+				if _cursorGui.Enabled then _cursorGui.Enabled = false end
 			end
-			if not _cursorGui.Enabled then setCursor(true) end
 		else
 			-- nic nie stawiamy: podswietl wlasna jednostke pod kursorem (klik = edycja/przestawienie).
 			-- Tylko w trybie stawiania (w trybie Usun LPM kasuje, wiec bez hover-edycji).
 			if _mode == "place" then updateHover() else clearHover() end
-			if _cursorGui.Enabled then setCursor(false) end
+			if _cursorGui.Enabled then _cursorGui.Enabled = false end
 		end
 	end)
 end
