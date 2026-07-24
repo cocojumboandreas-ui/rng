@@ -1,9 +1,15 @@
 --!nonstrict
--- StarterPlayerScripts/Controllers/BuildController.luau  (KLIENT — tryb budowania, wzor: Power Roll)
--- ZBUDUJ -> tryb budowania: panel po lewej (Bloki/Bron, siatka posiadanych z inventory + miniatury 3D),
--- wybor przedmiotu -> GHOST na kratce pod kursorem (zielony/czerwony = mozna/nie mozna) + KOLO ZASIEGU
--- dla broni. Klik/POSTAW = PlaceUnit. Usun = tryb kasowania (klik jednostki -> RemoveUnit). Licznik X/budzet.
--- Jednostki auto-obracaja sie w strone wroga (faceDir z GetPlotInfo) — brak recznego obrotu w v1.
+-- StarterPlayerScripts/Controllers/BuildController.luau  (KLIENT — tryb budowania, wzor: bud.mp4)
+-- ZBUDUJ -> panel po lewej (Bloki/Bron ziomka) + GHOST na kratce pod kursorem, ktory PLYNNIE dojezdza
+-- (lerp) i wpasowuje sie dokladnie w obrys kratki. Obrys = Highlight (jak podswietlenie Start Wave) pulsujacy
+-- na zielono/czerwono (mozna/nie mozna). Celownik (crosshair) rysowany w GUI zamiast kursora systemowego.
+-- INTERAKCJE:
+--   • Klik karty -> wybor przedmiotu z inventory (ghost sledzi kursor).
+--   • LPM na kratce -> POSTAW (PlaceUnit z obrotem rot).
+--   • LPM na WLASNEJ postawionej jednostce (gdy nic nie wybrane) -> PODNIES i przenies (MoveUnit, bez ruszania inventory).
+--   • R -> obrot o 90° (kosmetyka renderu). X -> anuluj wybor/przenoszenie.
+--   • Tryb Usun (Delete) -> LPM/PPM na jednostce usuwa. PPM zawsze usuwa jednostke pod kursorem.
+--   • Wyczysc dzialke -> 2-krok (Czy jestes pewny?) -> ClearPlot usuwa WSZYSTKO naraz.
 -- Serwer autorytatywny: klient wysyla tylko intencje; walidacja i tak po stronie serwera.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -23,6 +29,8 @@ local BuildController = {}
 local LP = Players.LocalPlayer
 local GREEN = Color3.fromRGB(80, 220, 100)
 local RED = Color3.fromRGB(220, 70, 70)
+local FIT_MARGIN = 0.8 -- MUSI zgadzac sie z BuildService.FIT_MARGIN (ghost == realny model)
+local LERP = 0.35 -- plynnosc dojazdu ghosta (0..1; wiecej = szybciej)
 
 -- ── stan ──
 local _on = false
@@ -31,33 +39,47 @@ local _counts = {} -- invKey -> count (inventory)
 local _plot = nil -- {plotId, gridOrigin(CFrame), width, depth, cellSize, faceDir}
 local _budget = GameConfig.Grid.baseCellBudget
 local _sel = nil -- { key, unitId, fp, isWeapon, range }
+local _rot = 0 -- reczny obrot yaw (0/90/180/270), utrzymywany miedzy postawieniami
+local _moving = nil -- placementId przenoszonej jednostki (nil = stawiamy nowa z inventory)
+local _movingModel = nil -- oryginalny model schowany podczas przenoszenia
 local _ghost, _ring = nil, nil
+local _ghostPos = nil -- Vector3 lerpowanej pozycji ghosta
 local _cell = nil -- {x,z} aktualna kratka pod kursorem
 local _thumbCache = {}
 
--- UI refs — designerowy BuildMode (StarterGui.BuildMode, place-owned) + male overlaye (WR_Build)
-local _bm, _list, _template = nil, nil, nil -- ScreenGui BuildMode / lista / karta-szablon
-local _counter, _tabBtns, _postawBtn, _delBtn, _exitBtn = nil, nil, nil, nil, nil
+-- UI refs — designerowy BuildMode (place-owned)
+local _bm, _list, _template = nil, nil, nil
+local _counter, _tabBtns = nil, nil
 local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
+local _pcControls = nil -- BottomRightCanvas.PcControls (Place/Rotate/Cancel — pokaz tylko gdy stawiamy)
 local _activeTab = "weapon"
+
+-- crosshair (celownik) + pulsujacy obrys
+local _cursorGui, _reticle, _cursorTint = nil, nil, {}
+
+-- clear-plot 2-krok
+local _clearBtn, _clearLbl, _clearArmed, _clearToken = nil, nil, false, 0
+local _clearOrigText = "Wyczyść działkę!" -- oryginalny napis przycisku (przywracany po confirm)
 
 -- ── geometria kratek ──
 local function cellKey(x, z) return x .. "," .. z end
 
--- zajetosc wlasnego plotu z atrybutow modeli WR_Units + suma zajetych kratek
-local function occupancy()
+-- zajetosc wlasnego plotu (opcjonalnie pomijamy jedna jednostke — przy przenoszeniu nie koliduje sama ze soba)
+local function occupancy(ignorePid)
 	local occ, used = {}, 0
 	local units = Workspace:FindFirstChild("WR_Units")
 	if units then
 		for _, m in ipairs(units:GetChildren()) do
 			if m:IsA("Model") and m:GetAttribute("OwnerUserId") == LP.UserId then
-				local x, z = m:GetAttribute("CellX"), m:GetAttribute("CellZ")
-				local w, d = m:GetAttribute("FpW") or 1, m:GetAttribute("FpD") or 1
-				if x and z then
-					for _, c in ipairs(GridMath.footprintCells(x, z, { w = w, d = d })) do
-						occ[cellKey(c.x, c.z)] = true
+				if not (ignorePid and m:GetAttribute("PlacementId") == ignorePid) then
+					local x, z = m:GetAttribute("CellX"), m:GetAttribute("CellZ")
+					local w, d = m:GetAttribute("FpW") or 1, m:GetAttribute("FpD") or 1
+					if x and z then
+						for _, c in ipairs(GridMath.footprintCells(x, z, { w = w, d = d })) do
+							occ[cellKey(c.x, c.z)] = true
+						end
+						used += w * d
 					end
-					used += w * d
 				end
 			end
 		end
@@ -88,7 +110,7 @@ end
 local function validAt(x, z)
 	if not _sel then return false end
 	local fp = _sel.fp
-	local occ, used = occupancy()
+	local occ, used = occupancy(_moving)
 	for _, c in ipairs(GridMath.footprintCells(x, z, fp)) do
 		if c.x < 1 or c.x > _plot.width or c.z < 1 or c.z > _plot.depth then return false end
 		if occ[cellKey(c.x, c.z)] then return false end
@@ -98,17 +120,20 @@ local function validAt(x, z)
 end
 
 -- ── ghost + kolo zasiegu ──
-local function tint(model, color, transparency)
-	for _, d in ipairs(model:GetDescendants()) do
-		if d:IsA("BasePart") then
-			d.Color = color; d.Transparency = transparency; d.Material = Enum.Material.ForceField
-		end
-	end
+local function orientAt(pos, groundY)
+	return CFrame.lookAlong(Vector3.new(pos.X, groundY, pos.Z), _plot.faceDir) * CFrame.Angles(0, math.rad(_rot), 0)
 end
 
-local function makeGhost()
+local function clearGhost()
 	if _ghost then _ghost:Destroy(); _ghost = nil end
 	if _ring then _ring:Destroy(); _ring = nil end
+	_ghostPos = nil
+end
+
+-- Buduje ghost DOKLADNIE tak jak serwer stawia model (orientacja faceDir*rot -> pomiar -> skala FIT_MARGIN ->
+-- domiar), dzieki czemu podglad = realny model i idealnie miesci sie w obrysie kratki.
+local function makeGhost()
+	clearGhost()
 	if not _sel then return end
 	local tmpl = UnitModelFactory.get(_sel.unitId)
 	if not tmpl then return end
@@ -116,23 +141,30 @@ local function makeGhost()
 	if not g.PrimaryPart then
 		g.PrimaryPart = g:FindFirstChild("HumanoidRootPart") or g:FindFirstChildWhichIsA("BasePart")
 	end
-	-- fit do footprintu (jak renderer, uproszczone)
 	local cs = _plot.cellSize
 	local cellW, cellD = _sel.fp.w * cs, _sel.fp.d * cs
-	local sz = g:GetExtentsSize()
-	local f = math.min(cellW / math.max(sz.X, 0.01), cellD / math.max(sz.Z, 0.01)) * 0.85
-	if g.ScaleTo and f < 1 then g:ScaleTo(f) end
+	-- orientacja jak na serwerze (mierzymy footprint po obrocie)
+	g:PivotTo(CFrame.lookAlong(Vector3.zero, _plot.faceDir) * CFrame.Angles(0, math.rad(_rot), 0))
+	local size = g:GetExtentsSize()
+	local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
+	factor = math.min(factor, 1)
+	if factor < 0.999 and g.ScaleTo then g:ScaleTo(factor) end
+	if g.GetScale and g.ScaleTo then -- gwarancja zmieszczenia (dlugie pojazdy)
+		local s2 = g:GetExtentsSize()
+		local over = math.max(s2.X / cellW, s2.Z / cellD)
+		if over > 1 then g:ScaleTo(g:GetScale() / over * 0.98) end
+	end
 	for _, d in ipairs(g:GetDescendants()) do
 		if d:IsA("BasePart") then d.Anchored = true; d.CanCollide = false; d.CanQuery = false end
 	end
 	g.Parent = Workspace
 	_ghost = g
-	-- podglad = WIDOCZNY realny model + Highlight walidacji (zielony/czerwony), zamiast przezroczystego ghosta
+	-- OBRYS jak przy najechaniu na Start Wave: Highlight z jasnym konturem (pulsuje w petli renderu)
 	local hl = Instance.new("Highlight")
 	hl.Adornee = g
-	hl.DepthMode = Enum.HighlightDepthMode.Occluded
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	hl.FillColor = GREEN
-	hl.FillTransparency = 0.7
+	hl.FillTransparency = 0.6
 	hl.OutlineColor = GREEN
 	hl.OutlineTransparency = 0
 	hl.Parent = g
@@ -145,6 +177,7 @@ local function makeGhost()
 		ring.Parent = Workspace
 		_ring = ring
 	end
+	_ghostPos = nil -- nastepna klatka snapuje na kratke (bez dojazdu z poprzedniego miejsca)
 end
 
 local function updateGhost()
@@ -154,15 +187,17 @@ local function updateGhost()
 	if not c then
 		_ghost.Parent = nil
 		if _ring then _ring.Parent = nil end
-		if _postawBtn then _postawBtn.Visible = false end
 		return
 	end
 	_ghost.Parent = Workspace
 	local center = GridMath.cellToWorld(_plot.gridOrigin, _plot.cellSize, c.x, c.z, _sel.fp).Position
 	local groundY = _plot.gridOrigin.Position.Y
-	_ghost:PivotTo(CFrame.lookAlong(Vector3.new(center.X, groundY, center.Z), _plot.faceDir))
-	local _, bb = _ghost:GetBoundingBox()
-	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, groundY - (_ghost:GetPivot().Position.Y - bb.Y * 0.5), 0))
+	local targetPos = Vector3.new(center.X, groundY, center.Z)
+	_ghostPos = _ghostPos and _ghostPos:Lerp(targetPos, LERP) or targetPos
+	-- pozycja (plynnie) + orientacja (natychmiast, wg _rot), potem posadz na ziemi
+	_ghost:PivotTo(orientAt(_ghostPos, groundY))
+	local bbCf, bbSize = _ghost:GetBoundingBox()
+	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, groundY - (bbCf.Position.Y - bbSize.Y * 0.5), 0))
 	local ok = validAt(c.x, c.z)
 	local hl = _ghost:FindFirstChildOfClass("Highlight")
 	if hl then
@@ -171,59 +206,186 @@ local function updateGhost()
 	end
 	if _ring then
 		_ring.Parent = Workspace
-		_ring.CFrame = CFrame.new(center.X, groundY + 0.3, center.Z) * CFrame.Angles(0, 0, math.rad(90))
+		_ring.CFrame = CFrame.new(_ghostPos.X, groundY + 0.3, _ghostPos.Z) * CFrame.Angles(0, 0, math.rad(90))
 		_ring.Color = ok and GREEN or RED
 	end
-	if _postawBtn then
-		_postawBtn.Visible = ok
+end
+
+-- ── celownik (crosshair) ──
+local function makeCursor()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "WR_BuildCursor"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 200000; gui.Enabled = false; gui.Parent = LP:WaitForChild("PlayerGui")
+
+	local ret = Instance.new("Frame")
+	ret.Name = "Reticle"; ret.Size = UDim2.fromOffset(46, 46); ret.AnchorPoint = Vector2.new(0.5, 0.5)
+	ret.BackgroundTransparency = 1; ret.Parent = gui
+
+	local function stroke(parent, thick)
+		local s = Instance.new("UIStroke")
+		s.Thickness = thick; s.Color = Color3.new(1, 1, 1); s.Transparency = 0
+		s.Parent = parent
+		_cursorTint[#_cursorTint + 1] = s
+		return s
 	end
+
+	-- pierscien
+	local ring = Instance.new("Frame")
+	ring.Size = UDim2.fromOffset(30, 30); ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.Position = UDim2.fromScale(0.5, 0.5); ring.BackgroundTransparency = 1; ring.Parent = ret
+	local rc = Instance.new("UICorner"); rc.CornerRadius = UDim.new(1, 0); rc.Parent = ring
+	stroke(ring, 2)
+
+	-- 4 kreski (N/S/E/W)
+	local ticks = {
+		{ UDim2.fromOffset(3, 9), UDim2.new(0.5, 0, 0, 0), Vector2.new(0.5, 0) }, -- gora
+		{ UDim2.fromOffset(3, 9), UDim2.new(0.5, 0, 1, 0), Vector2.new(0.5, 1) }, -- dol
+		{ UDim2.fromOffset(9, 3), UDim2.new(0, 0, 0.5, 0), Vector2.new(0, 0.5) }, -- lewo
+		{ UDim2.fromOffset(9, 3), UDim2.new(1, 0, 0.5, 0), Vector2.new(1, 0.5) }, -- prawo
+	}
+	for _, t in ipairs(ticks) do
+		local bar = Instance.new("Frame")
+		bar.Size = t[1]; bar.Position = t[2]; bar.AnchorPoint = t[3]
+		bar.BackgroundColor3 = Color3.new(1, 1, 1); bar.BorderSizePixel = 0; bar.Parent = ret
+		stroke(bar, 1)
+	end
+
+	-- kropka srodkowa
+	local dot = Instance.new("Frame")
+	dot.Size = UDim2.fromOffset(4, 4); dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.Position = UDim2.fromScale(0.5, 0.5); dot.BackgroundColor3 = Color3.new(1, 1, 1)
+	dot.BorderSizePixel = 0; dot.Parent = ret
+	local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(1, 0); dc.Parent = dot
+
+	_cursorGui, _reticle = gui, ret
+end
+
+local function tintCursor(color)
+	for _, s in ipairs(_cursorTint) do s.Color = color end
+end
+
+-- widocznosc kursora: przy wybranym przedmiocie chowamy kursor systemowy i pokazujemy celownik
+local function setCursor(active)
+	if _cursorGui then _cursorGui.Enabled = active end
+	UserInputService.MouseIconEnabled = not active
+end
+
+local function setPcControls(vis)
+	if _pcControls then _pcControls.Visible = vis end
 end
 
 -- ── akcje ──
 local function place()
 	if not _sel or not _cell then return end
 	if not validAt(_cell.x, _cell.z) then return end
-	local res = Net.get("PlaceUnit"):InvokeServer(_sel.key, _cell.x, _cell.z)
+	if _moving then
+		-- przenoszenie juz postawionej jednostki (bez zwrotu do inventory)
+		local res = Net.get("MoveUnit"):InvokeServer(_moving, _cell.x, _cell.z, _rot)
+		if res and res.ok then
+			_moving = nil; _movingModel = nil -- serwer zniszczyl stary i postawil nowy model
+			_sel = nil
+			clearGhost()
+			setPcControls(false); setCursor(false)
+			BuildController._refreshCounter()
+		end
+		return
+	end
+	local res = Net.get("PlaceUnit"):InvokeServer(_sel.key, _cell.x, _cell.z, _rot)
 	if res and res.ok then
-		-- optymistycznie zmniejsz licznik (InventorySync i tak nadpisze)
 		_counts[_sel.key] = math.max(0, (_counts[_sel.key] or 1) - 1)
 		if (_counts[_sel.key] or 0) <= 0 then
 			_sel = nil
-			if _ghost then _ghost:Destroy(); _ghost = nil end
-			if _ring then _ring:Destroy(); _ring = nil end
+			clearGhost()
+			setPcControls(false); setCursor(false)
 		end
 		BuildController._refreshCounter()
 		BuildController._refreshPanel()
 	end
 end
 
-local function deleteAt()
+-- raycast do WLASNEJ jednostki pod kursorem -> Model (albo nil)
+local function unitUnderCursor()
 	local cam = Workspace.CurrentCamera
+	if not cam then return nil end
 	local mp = UserInputService:GetMouseLocation()
 	local ray = cam:ViewportPointToRay(mp.X, mp.Y)
+	local units = Workspace:FindFirstChild("WR_Units")
+	if not units then return nil end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Include
-	local units = Workspace:FindFirstChild("WR_Units")
-	if not units then return end
 	params.FilterDescendantsInstances = { units }
 	local hit = Workspace:Raycast(ray.Origin, ray.Direction * 800, params)
-	if hit then
-		local m = hit.Instance:FindFirstAncestorWhichIsA("Model")
-		if m and m:GetAttribute("OwnerUserId") == LP.UserId and m:GetAttribute("PlacementId") then
-			Net.get("RemoveUnit"):InvokeServer(m:GetAttribute("PlacementId"))
-			BuildController._refreshCounter()
+	if not hit then return nil end
+	local m = hit.Instance:FindFirstAncestorWhichIsA("Model")
+	if m and m:GetAttribute("OwnerUserId") == LP.UserId and m:GetAttribute("PlacementId") then
+		return m
+	end
+	return nil
+end
+
+local function cancelSelection()
+	if _movingModel then -- odkryj oryginal, zostaje tam gdzie byl
+		for _, d in ipairs(_movingModel:GetDescendants()) do
+			if d:IsA("BasePart") then d.LocalTransparencyModifier = 0 end
 		end
+	end
+	_moving = nil; _movingModel = nil; _sel = nil
+	clearGhost()
+	setPcControls(false); setCursor(false)
+end
+
+-- podnies wlasna jednostke do przeniesienia
+local function pickup(m)
+	local unitId = m:GetAttribute("UnitId")
+	local u = unitId and GameConfig.Units[unitId]
+	if not u then return end
+	_moving = m:GetAttribute("PlacementId")
+	_movingModel = m
+	_rot = m:GetAttribute("Rot") or 0
+	_sel = {
+		key = unitId, unitId = unitId, fp = u.footprint,
+		isWeapon = u.combat ~= nil,
+		range = u.combat and (u.combat.range * (GameConfig.Sim.unitRangeMult or 1)),
+	}
+	_mode = "place"
+	-- schowaj oryginal lokalnie (ghost go zastepuje)
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then d.LocalTransparencyModifier = 1 end
+	end
+	makeGhost()
+	setPcControls(true); setCursor(true)
+end
+
+local function deleteAt()
+	local m = unitUnderCursor()
+	if m then
+		Net.get("RemoveUnit"):InvokeServer(m:GetAttribute("PlacementId"))
+		BuildController._refreshCounter()
 	end
 end
 
+-- Wyczysc dzialke: 1. klik uzbraja ("Czy jestes pewny?"), 2. klik czysci naraz (ClearPlot).
 local function clearPlot()
-	local units = Workspace:FindFirstChild("WR_Units")
-	if not units then return end
-	for _, m in ipairs(units:GetChildren()) do
-		if m:IsA("Model") and m:GetAttribute("OwnerUserId") == LP.UserId and m:GetAttribute("PlacementId") then
-			Net.get("RemoveUnit"):InvokeServer(m:GetAttribute("PlacementId"))
-		end
+	if not _clearArmed then
+		_clearArmed = true
+		if _clearLbl then _clearLbl.Text = "Czy jesteś pewny?" end
+		_clearToken += 1
+		local tok = _clearToken
+		task.delay(3, function() -- auto-rozbrojenie po 3 s
+			if _clearArmed and _clearToken == tok then
+				_clearArmed = false
+				if _clearLbl then _clearLbl.Text = _clearOrigText end
+			end
+		end)
+		return
 	end
+	_clearArmed = false
+	_clearToken += 1
+	if _clearLbl then _clearLbl.Text = _clearOrigText end
+	Net.get("ClearPlot"):InvokeServer()
+	_sel = nil; _moving = nil; _movingModel = nil
+	clearGhost()
+	setPcControls(false); setCursor(false)
 	BuildController._refreshCounter()
 end
 
@@ -247,7 +409,6 @@ end
 function BuildController._refreshCounter()
 	local _, used = occupancy()
 	local txt = ("%d / %d"):format(used, _budget)
-	-- biala liczba slotow ziomka (warstwowy tekst: Value + zagniezdzony Value)
 	if _slotsLbl then
 		if _slotsLbl:IsA("TextLabel") then _slotsLbl.Text = txt end
 		local inner = _slotsLbl:FindFirstChild("Value")
@@ -258,7 +419,6 @@ end
 
 function BuildController._refreshPanel()
 	if not _list or not _template then return end
-	-- usun poprzednie karty (Template jest juz poza lista -> zostaja tylko klony)
 	for _, ch in ipairs(_list:GetChildren()) do
 		if ch:IsA("GuiButton") then ch:Destroy() end
 	end
@@ -271,13 +431,11 @@ function BuildController._refreshPanel()
 		local unitId = string.split(key, "#")[1]
 		local u = GameConfig.Units[unitId]
 		if u then
-			-- klasyfikacja: bron = ma combat, blok = nie ma combat
 			local want = (_activeTab == "weapon") and (u.combat ~= nil) or (_activeTab == "block") and (u.combat == nil)
 			if want then
 				local card = _template:Clone()
 				card.Name = "Card_" .. key
 				card.Visible = true
-				-- dwa labele "Text": licznik konczy sie na "x", reszta = nazwa
 				local nameL, countL
 				for _, l in ipairs(card:GetChildren()) do
 					if l:IsA("TextLabel") and l.Name == "Text" then
@@ -291,19 +449,19 @@ function BuildController._refreshPanel()
 				local hpL = stats and stats:FindFirstChild("Health") and stats.Health:FindFirstChild("TextLabel")
 				if atkL then atkL.Text = u.combat and ("⚔️ " .. tostring(u.combat.dmg)) or "🧱 blok" end
 				if hpL then hpL.Text = "💘 " .. tostring(u.hp or 0) end
-				-- miniatura 3D w PetIcon (nasze modele nie maja assetId ikon)
 				local petIcon = card:FindFirstChild("PetIcon")
 				if petIcon then
 					petIcon.Image = ""
 					local tv = thumb(unitId); tv.Size = UDim2.fromScale(1, 1); tv.Position = UDim2.fromScale(0, 0); tv.Parent = petIcon
 				end
-				-- podswietl wybrana (UIStroke jesli szablon ma)
 				local st = card:FindFirstChildOfClass("UIStroke")
-				if st then st.Enabled = (_sel and _sel.key == key) or false end
+				if st then st.Enabled = (_sel and not _moving and _sel.key == key) or false end
 				card.MouseButton1Click:Connect(function()
+					_moving = nil; _movingModel = nil
 					_sel = { key = key, unitId = unitId, fp = u.footprint, isWeapon = u.combat ~= nil, range = u.combat and (u.combat.range * (GameConfig.Sim.unitRangeMult or 1)) }
 					_mode = "place"
 					makeGhost()
+					setPcControls(true); setCursor(true)
 					BuildController._refreshPanel()
 				end)
 				card.Parent = _list
@@ -324,8 +482,6 @@ local function setTab(t)
 	BuildController._refreshPanel()
 end
 
--- chowanie HUD-u ziomka w trybie budowania — wspolny HudOverlay (jeden system dla Build/Index/Sklep).
--- keepCoins=false: w budowaniu chowamy tez monety (jak budpw.png).
 local function setHudHidden(hidden)
 	if hidden then HudOverlay.enter(false) else HudOverlay.exit() end
 end
@@ -338,104 +494,106 @@ local function openBuild()
 	local inv = Net.get("GetInventory"):InvokeServer()
 	if inv then _counts = inv end
 	if _bm then _bm.Enabled = true end
-	setHudHidden(true) -- schowaj kostke/Zbuduj/Umiejetnosci/fale/lewe UI/offline (jak budpw.png)
+	setPcControls(false)
+	setHudHidden(true)
 	setTab(_activeTab)
 	BuildController._refreshCounter()
 end
 
 local function closeBuild()
 	_on = false
-	_sel = nil
-	if _ghost then _ghost:Destroy(); _ghost = nil end
-	if _ring then _ring:Destroy(); _ring = nil end
+	cancelSelection()
+	_mode = "place"
 	if _bm then _bm.Enabled = false end
-	setHudHidden(false) -- przywroc HUD
+	setHudHidden(false)
+	UserInputService.MouseIconEnabled = true
 end
 
 function BuildController.start()
+	makeCursor()
+
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "WR_Build"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 30
 	gui.Parent = LP:WaitForChild("PlayerGui")
 
-	-- przycisk ZBUDUJ (dol, na lewo od ROLL)
-	local openBtn = Instance.new("TextButton")
-	openBtn.Size = UDim2.fromOffset(140, 54); openBtn.AnchorPoint = Vector2.new(1, 1)
-	openBtn.Position = UDim2.new(0.5, -130, 1, -32)
-	openBtn.BackgroundColor3 = Color3.fromRGB(70, 100, 60); openBtn.TextColor3 = Color3.new(1, 1, 1)
-	openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 16; openBtn.Text = " ZBUDUJ"; openBtn.Parent = gui
-	local oc = Instance.new("UICorner"); oc.CornerRadius = UDim.new(0, 10); oc.Parent = openBtn
-
-		-- DESIGNEROWY panel budowania (StarterGui.BuildMode, place-owned)
-		local buildMode = LP:WaitForChild("PlayerGui"):WaitForChild("BuildMode", 15)
-		_bm = buildMode
-		if buildMode then
-			local root = buildMode:FindFirstChild("LeftCanvas") and buildMode.LeftCanvas:FindFirstChild("BuildMode")
-			local stroke = root and root:FindFirstChild("ContentStroke")
-			local content = stroke and stroke:FindFirstChild("Content")
-			_list = content and content:FindFirstChild("List")
-			local tmpl = _list and _list:FindFirstChild("Template")
-			if tmpl and content then
-				_template = tmpl
-				_template.Parent = content
-				_template.Visible = false
-			end
-			local btns = stroke and stroke:FindFirstChild("Buttons")
-			_tabBtns = { block = btns and btns:FindFirstChild("Blocks"), weapon = btns and btns:FindFirstChild("Weapons") }
-			if _tabBtns.block then _tabBtns.block.MouseButton1Click:Connect(function() setTab("block") end) end
-			if _tabBtns.weapon then _tabBtns.weapon.MouseButton1Click:Connect(function() setTab("weapon") end) end
-			local xBtn = root and root:FindFirstChild("X")
-			if xBtn then xBtn.MouseButton1Click:Connect(closeBuild) end
-			local clearB = root and root:FindFirstChild("ClearPlot")
-			if clearB then clearB.MouseButton1Click:Connect(clearPlot) end
-			-- biala liczba slotow ziomka (BottomCanvas.Value) — nasz licznik ja aktualizuje
-			local bc = buildMode:FindFirstChild("BottomCanvas")
-			_slotsLbl = bc and bc:FindFirstChild("Value")
-			-- Exit/Delete ziomka (wewn. nazwy Build='Exit', Skills='Delete')
-			local bcBtns = bc and bc:FindFirstChild("Buttons")
-			local exitB = bcBtns and bcBtns:FindFirstChild("Build")
-			local delB = bcBtns and bcBtns:FindFirstChild("Skills")
-			if exitB then exitB.MouseButton1Click:Connect(closeBuild) end -- Exit -> wyjdz z budowania
-			if delB then
-				delB.MouseButton1Click:Connect(function() -- Delete -> tryb kasowania (klik jednostki usuwa)
-					_mode = (_mode == "delete") and "place" or "delete"
-					if _mode == "delete" and _ghost then _ghost.Parent = nil; if _ring then _ring.Parent = nil end end
-				end)
-			end
-			buildMode.Enabled = false
-		else
-			warn("[BuildController] brak StarterGui.BuildMode")
+	-- DESIGNEROWY panel budowania (StarterGui.BuildMode, place-owned)
+	local buildMode = LP:WaitForChild("PlayerGui"):WaitForChild("BuildMode", 15)
+	_bm = buildMode
+	if buildMode then
+		local root = buildMode:FindFirstChild("LeftCanvas") and buildMode.LeftCanvas:FindFirstChild("BuildMode")
+		local stroke = root and root:FindFirstChild("ContentStroke")
+		local content = stroke and stroke:FindFirstChild("Content")
+		_list = content and content:FindFirstChild("List")
+		local tmpl = _list and _list:FindFirstChild("Template")
+		if tmpl and content then
+			_template = tmpl
+			_template.Parent = content
+			_template.Visible = false
 		end
-
-	-- Proceduralne Wyjscie/Usun/licznik/POSTAW USUNIETE — uzywamy UI ziomka:
-	-- Wyjscie = BuildMode.X, licznik slotow = BuildMode.BottomCanvas.Value, czyszczenie = ClearPlot.
-	-- Usuwanie pojedynczej jednostki = PPM na siatce (patrz input nizej).
+		local btns = stroke and stroke:FindFirstChild("Buttons")
+		_tabBtns = { block = btns and btns:FindFirstChild("Blocks"), weapon = btns and btns:FindFirstChild("Weapons") }
+		if _tabBtns.block then _tabBtns.block.MouseButton1Click:Connect(function() setTab("block") end) end
+		if _tabBtns.weapon then _tabBtns.weapon.MouseButton1Click:Connect(function() setTab("weapon") end) end
+		local xBtn = root and root:FindFirstChild("X")
+		if xBtn then xBtn.MouseButton1Click:Connect(closeBuild) end
+		-- Wyczysc dzialke (2-krok confirm) — deepest TextLabel do zmiany napisu
+		_clearBtn = root and root:FindFirstChild("ClearPlot")
+		if _clearBtn then
+			local tl = _clearBtn:FindFirstChild("TextLabel")
+			_clearLbl = tl and tl:FindFirstChild("TextLabel") or tl
+			if _clearLbl and _clearLbl:IsA("TextLabel") then _clearOrigText = _clearLbl.Text end
+			_clearBtn.MouseButton1Click:Connect(clearPlot)
+		end
+		-- biala liczba slotow ziomka (BottomCanvas.Value)
+		local bc = buildMode:FindFirstChild("BottomCanvas")
+		_slotsLbl = bc and bc:FindFirstChild("Value")
+		-- Exit/Delete ziomka (Build='Exit', Skills='Delete')
+		local bcBtns = bc and bc:FindFirstChild("Buttons")
+		local exitB = bcBtns and bcBtns:FindFirstChild("Build")
+		local delB = bcBtns and bcBtns:FindFirstChild("Skills")
+		if exitB then exitB.MouseButton1Click:Connect(closeBuild) end
+		if delB then
+			delB.MouseButton1Click:Connect(function()
+				_mode = (_mode == "delete") and "place" or "delete"
+				if _mode == "delete" then cancelSelection() end
+			end)
+		end
+		-- napis PC (Kliknij-Umiesc / R-Obroc / X-Anuluj) — pokaz tylko gdy cos stawiamy
+		local brc = buildMode:FindFirstChild("BottomRightCanvas")
+		_pcControls = brc and brc:FindFirstChild("PcControls")
+		setPcControls(false)
+		buildMode.Enabled = false
+	else
+		warn("[BuildController] brak StarterGui.BuildMode")
+	end
 
 	local function doToggle()
 		if _on then closeBuild() else openBuild() end
 	end
 	BuildController.Toggle = doToggle -- HUD ziomka (SideButtons.Build) wola to
-	openBtn.Visible = false -- stary temp guzik ukryty; nasz panel budowania zostaje (Etap E: designerowy BuildMode)
-	openBtn.MouseButton1Click:Connect(doToggle)
 
-	local function syncVis()
-		if _postawBtn then _postawBtn.Visible = false end
-	end
-
-	-- input: LPM stawia, PPM usuwa jednostke pod kursorem, X anuluje wybor
+	-- input: LPM stawia/podnosi/usuwa, PPM usuwa, R obraca, X anuluje
 	UserInputService.InputBegan:Connect(function(input, gp)
-		if not _on or gp then return end
+		if not _on then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if gp then return end -- klik w UI panelu (karty) — nie stawiaj
 			if _mode == "delete" then
 				deleteAt()
-			elseif _sel and _cell and validAt(_cell.x, _cell.z) then
-				place()
+			elseif _sel then
+				if _cell and validAt(_cell.x, _cell.z) then place() end
+			else
+				local m = unitUnderCursor() -- nic nie wybrane -> podnies jednostke do przeniesienia
+				if m then pickup(m) end
 			end
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-			deleteAt() -- PPM = usun jednostke pod kursorem
+			if not gp then deleteAt() end
+		elseif input.KeyCode == Enum.KeyCode.R then
+			if _sel then
+				_rot = (_rot + 90) % 360
+				makeGhost()
+			end
 		elseif input.KeyCode == Enum.KeyCode.X then
-			_sel = nil
-			if _ghost then _ghost:Destroy(); _ghost = nil end
-			if _ring then _ring:Destroy(); _ring = nil end
+			if _sel then cancelSelection() end
 		end
 	end)
 
@@ -443,17 +601,31 @@ function BuildController.start()
 	Net.get("InventorySync").OnClientEvent:Connect(function(counts)
 		if type(counts) == "table" then
 			_counts = counts
-			if _on then BuildController._refreshPanel() end
+			if _on then BuildController._refreshPanel(); BuildController._refreshCounter() end
 		end
 	end)
 
-	-- petla: ghost sledzi kursor + odswieza licznik
-	RunService.RenderStepped:Connect(function()
-		syncVis()
-		if _on and _mode == "place" and _sel and _ghost then
+	-- petla: ghost sledzi kursor (plynnie) + celownik pod myszka + pulsujacy obrys
+	RunService.RenderStepped:Connect(function(dt)
+		if not _on then return end
+		if _mode == "place" and _sel and _ghost then
 			updateGhost()
-		elseif _postawBtn then
-			_postawBtn.Visible = false
+		end
+		-- celownik
+		if _sel then
+			local mp = UserInputService:GetMouseLocation()
+			_reticle.Position = UDim2.fromOffset(mp.X, mp.Y)
+			_reticle.Rotation = (_reticle.Rotation + dt * 45) % 360 -- powolny obrot (efekt)
+			local ok = _cell ~= nil and validAt(_cell.x, _cell.z)
+			tintCursor(ok and GREEN or Color3.new(1, 1, 1))
+			-- puls obrysu ghosta
+			if _ghost then
+				local hl = _ghost:FindFirstChildOfClass("Highlight")
+				if hl then hl.OutlineTransparency = 0.15 + 0.15 * math.abs(math.sin(os.clock() * 3)) end
+			end
+			if not _cursorGui.Enabled then setCursor(true) end
+		else
+			if _cursorGui.Enabled then setCursor(false) end
 		end
 	end)
 end

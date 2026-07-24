@@ -62,7 +62,7 @@ end
 
 -- ── stan (orkiestracja, bez Workspace) ───────────────────────────────────────
 -- (ok, placementId | reason). reason: NotBuilding|UnknownUnit|NotOwned|OutOfBounds|Occupied|BudgetExceeded
-local function doPlace(player, itemId: string, cellX: number, cellZ: number)
+local function doPlace(player, itemId: string, cellX: number, cellZ: number, rot: number?)
 	if _wave.GetPhase(player) ~= Enums.RunPhase.Building then
 		return false, "NotBuilding"
 	end
@@ -89,9 +89,34 @@ local function doPlace(player, itemId: string, cellX: number, cellZ: number)
 	end
 	local data = _profile.GetProfile(player)
 	if data then
-		data.placements[pid] = { itemId = unitId, x = cellX, z = cellZ, mut = mutId, variant = variant }
+		data.placements[pid] = { itemId = unitId, x = cellX, z = cellZ, mut = mutId, variant = variant, rot = rot or 0 }
 	end
 	return true, pid
+end
+
+-- (ok, reason). Przenosi juz postawiona jednostke na nowa kratke (bez ruszania inventory).
+-- WALIDACJA: zwalniamy stare kratki, sprawdzamy nowe (wiec kolizja z samym soba nie blokuje), przy porazce rollback.
+-- reason: NotBuilding|NoSuchPlacement|OutOfBounds|Occupied|BudgetExceeded|UnknownUnit
+local function doMove(player, placementId: string, cellX: number, cellZ: number, rot: number?)
+	if _wave.GetPhase(player) ~= Enums.RunPhase.Building then
+		return false, "NotBuilding"
+	end
+	local data = _profile.GetProfile(player)
+	local p = data and data.placements[placementId]
+	if not p then
+		return false, "NoSuchPlacement"
+	end
+	local unitId = p.itemId
+	local oldX, oldZ = p.x, p.z
+	_grid.Free(player, placementId)
+	local canOK, reason = _grid.CanPlace(player, unitId, cellX, cellZ)
+	if not canOK then
+		_grid.Occupy(player, placementId, unitId, oldX, oldZ) -- rollback do starej pozycji
+		return false, reason
+	end
+	_grid.Occupy(player, placementId, unitId, cellX, cellZ)
+	p.x, p.z, p.rot = cellX, cellZ, rot or 0
+	return true
 end
 
 -- (ok, reason). reason: NotBuilding|NoSuchPlacement
@@ -125,7 +150,9 @@ local function ensureUnitsFolder(): Folder
 	return f
 end
 
-local function spawnModel(player, unitId: string, placementId: string, cellX: number, cellZ: number)
+local FIT_MARGIN = 0.8 -- odstep od krawedzi kratki (mniejszy = jednostka ciasniej wpasowana w obrys)
+
+local function spawnModel(player, unitId: string, placementId: string, cellX: number, cellZ: number, rot: number?)
 	local plot = _plot.GetPlot(player)
 	if not plot then
 		warn("[BuildService] spawnModel: brak plotu gracza")
@@ -161,14 +188,18 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	-- osiowany w swiecie, wiec mierzenie przed obrotem dawalo zle osie (np. dlugi czolg nie miescil Z).
 	local center = GridMath.cellToWorld(plot.gridOrigin, GameConfig.Grid.cellSize, cellX, cellZ, fp).Position
 	local groundY = plot.gridOrigin.Position.Y
-	model:PivotTo(CFrame.lookAlong(Vector3.new(center.X, groundY, center.Z), plot.faceDirection))
+	-- baza = zwrot na wroga (faceDirection); rot = RECZNY obrot gracza (yaw) doklejony na wierzch (kosmetyka renderu)
+	model:PivotTo(
+		CFrame.lookAlong(Vector3.new(center.X, groundY, center.Z), plot.faceDirection)
+			* CFrame.Angles(0, math.rad(rot or 0), 0)
+	)
 
 	-- Fit-to-cell: przeskaluj tak, by footprint XZ zmiescil sie w kratkach (pojazdy male, piechota lekko);
 	-- NIE powiekszaj (cap 1). Margines 0.85 zostawia odstep od krawedzi kratki. ScaleTo skaluje wzgl. pivota.
 	local size = model:GetExtentsSize() -- juz w orientacji docelowej
 	local cellW = fp.w * GameConfig.Grid.cellSize
 	local cellD = fp.d * GameConfig.Grid.cellSize
-	local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * 0.85
+	local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
 	factor = math.min(factor, 1)
 	if factor < 0.999 and model.ScaleTo then
 		model:ScaleTo(factor)
@@ -222,6 +253,7 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	model:SetAttribute("UnitId", unitId) -- klient (UnitAnimator) rozpoznaje typ jednostki
 	model:SetAttribute("CellX", cellX) -- tryb budowania: klient liczy zajetosc kratek wlasnego plotu
 	model:SetAttribute("CellZ", cellZ)
+	model:SetAttribute("Rot", rot or 0) -- reczny obrot (klient odczytuje przy podniesieniu jednostki do przeniesienia)
 	model:SetAttribute("FpW", fp.w)
 	model:SetAttribute("FpD", fp.d)
 	model.Parent = ensureUnitsFolder()
@@ -248,9 +280,33 @@ function BuildService.RestorePlot(player)
 	end
 	for pid, p in pairs(data.placements) do
 		_grid.Occupy(player, pid, p.itemId, p.x, p.z)
-		spawnModel(player, p.itemId, pid, p.x, p.z)
+		spawnModel(player, p.itemId, pid, p.x, p.z, p.rot)
 	end
 	BuildService.PlacementChanged:Fire(player)
+end
+
+-- Usun WSZYSTKIE jednostki gracza NARAZ (przycisk "Wyczysc dzialke"): zwrot do inventory + zwolnij grid + despawn.
+-- Jedno PlacementChanged na koniec (nie po kazdej sztuce) -> klient odswieza panel raz.
+function BuildService.ClearPlot(player): number
+	if _wave.GetPhase(player) ~= Enums.RunPhase.Building then
+		return 0
+	end
+	local data = _profile.GetProfile(player)
+	if not data or not data.placements then
+		return 0
+	end
+	local removed = 0
+	for pid, p in pairs(data.placements) do
+		_grid.Free(player, pid)
+		_inv.Refund(player, p.itemId, mutObject(p.mut), p.variant or "regular")
+		despawnModel(player, pid)
+		data.placements[pid] = nil
+		removed += 1
+	end
+	if removed > 0 then
+		BuildService.PlacementChanged:Fire(player)
+	end
+	return removed
 end
 
 -- FAZA 5: jednostka zabita przez wroga (BEZ refundu). Zwalnia grid, usuwa placement, despawnuje, notyfikuje klienta.
@@ -279,18 +335,50 @@ function BuildService.Start()
 	_wave = ServiceRegistry.get("WaveService")
 	_profile = ServiceRegistry.get("ProfileService")
 
+	-- normalizacja obrotu z klienta -> {0,90,180,270}
+	local function normRot(rot)
+		if type(rot) ~= "number" then return 0 end
+		return (math.floor((rot % 360) / 90 + 0.5) % 4) * 90
+	end
+
 	-- Net.PlaceUnit (RemoteFunction): zwraca {ok, placementId?|reason?}
-	Net.get("PlaceUnit").OnServerInvoke = function(player, itemId, cellX, cellZ)
+	Net.get("PlaceUnit").OnServerInvoke = function(player, itemId, cellX, cellZ, rot)
 		if type(itemId) ~= "string" or type(cellX) ~= "number" or type(cellZ) ~= "number" then
 			return { ok = false, reason = "BadArgs" }
 		end
-		local ok, res = doPlace(player, itemId, cellX, cellZ)
+		rot = normRot(rot)
+		local ok, res = doPlace(player, itemId, cellX, cellZ, rot)
 		if ok then
-			spawnModel(player, (select(1, parseItemId(itemId))), res, cellX, cellZ)
+			spawnModel(player, (select(1, parseItemId(itemId))), res, cellX, cellZ, rot)
 			BuildService.PlacementChanged:Fire(player)
 			return { ok = true, placementId = res }
 		end
 		return { ok = false, reason = res }
+	end
+
+	-- Net.MoveUnit (RemoteFunction): przenies juz postawiona jednostke -> {ok, reason?}
+	Net.get("MoveUnit").OnServerInvoke = function(player, placementId, cellX, cellZ, rot)
+		if type(placementId) ~= "string" or type(cellX) ~= "number" or type(cellZ) ~= "number" then
+			return { ok = false, reason = "BadArgs" }
+		end
+		rot = normRot(rot)
+		local data = _profile.GetProfile(player)
+		local p = data and data.placements[placementId]
+		local unitId = p and p.itemId
+		local ok, reason = doMove(player, placementId, cellX, cellZ, rot)
+		if ok and unitId then
+			despawnModel(player, placementId)
+			spawnModel(player, unitId, placementId, cellX, cellZ, rot)
+			BuildService.PlacementChanged:Fire(player)
+			return { ok = true }
+		end
+		return { ok = false, reason = reason }
+	end
+
+	-- Net.ClearPlot (RemoteFunction): usun wszystkie jednostki naraz -> {ok, removed}
+	Net.get("ClearPlot").OnServerInvoke = function(player)
+		local removed = BuildService.ClearPlot(player)
+		return { ok = true, removed = removed }
 	end
 
 	-- Net.RemoveUnit (RemoteFunction): zwraca {ok, reason?}

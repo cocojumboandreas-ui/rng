@@ -13,8 +13,10 @@ local FOLDER_NAME = "Net"
 local REMOTES: { [string]: string } = {
 	RollRequest = "RemoteEvent", -- C->S ()
 	RollResult = "RemoteEvent", -- S->C {unitId, rarityN, revealTier, mutation?, pityTriggered}
-	PlaceUnit = "RemoteFunction", -- C->S (itemId, cellX, cellZ) -> (ok, reason?)
+	PlaceUnit = "RemoteFunction", -- C->S (itemId, cellX, cellZ, rot?) -> (ok, reason?) — rot = yaw stopnie (0/90/180/270), kosmetyka renderu
 	RemoveUnit = "RemoteFunction", -- C->S (placementId) -> (ok)
+	MoveUnit = "RemoteFunction", -- C->S (placementId, cellX, cellZ, rot?) -> (ok, reason?) — przenies juz postawiona jednostke (bez zwrotu do inventory)
+	ClearPlot = "RemoteFunction", -- C->S () -> {ok, removed} — usun WSZYSTKIE jednostki gracza naraz (zwrot do inventory)
 	StartWave = "RemoteEvent", -- C->S ()
 	StopWave = "RemoteEvent", -- C->S () — gracz konczy run recznie -> podsumowanie
 	PlayerHitEnemy = "RemoteEvent", -- C->S (enemyId) — gracz trafil wroga z broni FPS -> -playerShotDmg HP (tylko WaveActive)
