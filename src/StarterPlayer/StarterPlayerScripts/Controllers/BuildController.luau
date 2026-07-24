@@ -147,11 +147,20 @@ local function placementLayer(maps, cells)
 	return nil
 end
 
--- warstwa, na ktora TRAFI wybrana jednostka pod (x,z) — do pozycji Y ghosta (moze wypelnic dziure!)
+-- warstwa, na ktora TRAFI wybrana jednostka pod (x,z) — do pozycji Y ghosta (moze wypelnic dziure!).
+-- Gdy nie da sie postawic (nil), ghost siedzi na WIERZCHU stosu (czerwony), nie zatapia sie do ziemi.
 local function heightAt(x, z)
 	if not _sel then return 0 end
-	local L = placementLayer(cellLayerMaps(_moving), GridMath.footprintCells(x, z, _sel.fp))
-	return L or 0
+	local maps = cellLayerMaps(_moving)
+	local cells = GridMath.footprintCells(x, z, _sel.fp)
+	local L = placementLayer(maps, cells)
+	if L then return L end
+	local top = 0
+	for _, c in ipairs(cells) do
+		local m = maps[cellKey(c.x, c.z)]
+		if m then for l in pairs(m) do if l + 1 > top then top = l + 1 end end end
+	end
+	return top
 end
 
 -- punkt na plaszczyznie siatki pod kursorem -> kratka (x,z), clamp do siatki
