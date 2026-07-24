@@ -47,6 +47,7 @@ local _movingModel = nil -- oryginalny model schowany podczas przenoszenia
 local _ghost, _ring = nil, nil
 local _ghostPos = nil -- Vector3 lerpowanej pozycji ghosta
 local _cell = nil -- {x,z} aktualna kratka pod kursorem
+local _hovered = nil -- WLASNA jednostka pod kursorem (podswietlona do edycji, gdy nic nie stawiamy)
 local _thumbCache = {}
 
 -- UI refs — designerowy BuildMode (place-owned)
@@ -332,7 +333,36 @@ local function unitUnderCursor()
 	return nil
 end
 
+-- HOVER-do-edycji: gdy nic nie stawiamy, jednostka pod kursorem dostaje bialy obrys (jak Start Wave)
+-- + lekkie przyciemnienie (czarny fill) — sygnal "kliknij, by ja edytowac/przestawic". Efekt lokalny.
+local function clearHover()
+	if _hovered and _hovered.Parent then
+		local h = _hovered:FindFirstChild("WR_HoverHL")
+		if h then h:Destroy() end
+	end
+	_hovered = nil
+end
+
+local function updateHover()
+	local m = unitUnderCursor()
+	if m == _hovered then return end
+	clearHover()
+	if m then
+		local hl = Instance.new("Highlight")
+		hl.Name = "WR_HoverHL"
+		hl.Adornee = m
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.OutlineColor = WHITE
+		hl.OutlineTransparency = 0
+		hl.FillColor = Color3.new(0, 0, 0) -- lekkie przyciemnienie jednostki
+		hl.FillTransparency = 0.6
+		hl.Parent = m
+		_hovered = m
+	end
+end
+
 local function cancelSelection()
+	clearHover()
 	if _movingModel then -- odkryj oryginal, zostaje tam gdzie byl
 		for _, d in ipairs(_movingModel:GetDescendants()) do
 			if d:IsA("BasePart") then d.LocalTransparencyModifier = 0 end
@@ -348,6 +378,7 @@ local function pickup(m)
 	local unitId = m:GetAttribute("UnitId")
 	local u = unitId and GameConfig.Units[unitId]
 	if not u then return end
+	clearHover() -- zdejmij podswietlenie hover (zaraz schowamy oryginal i zrobimy ghosta)
 	_moving = m:GetAttribute("PlacementId")
 	_movingModel = m
 	_rot = m:GetAttribute("Rot") or 0
@@ -668,6 +699,7 @@ function BuildController.start()
 		-- celownik: siedzi DOKLADNIE na srodku kratki (rzut world->ekran), a poza siatka — pod myszka.
 		-- gui ma IgnoreGuiInset=true, wiec dodajemy GetGuiInset (WorldToViewportPoint/GetMouseLocation sa bez topbara).
 		if _sel then
+			if _hovered then clearHover() end -- podczas stawiania/przenoszenia nie podswietlamy hover
 			local inset = GuiService:GetGuiInset()
 			local cam = Workspace.CurrentCamera
 			local sx, sy
@@ -692,6 +724,9 @@ function BuildController.start()
 			end
 			if not _cursorGui.Enabled then setCursor(true) end
 		else
+			-- nic nie stawiamy: podswietl wlasna jednostke pod kursorem (klik = edycja/przestawienie).
+			-- Tylko w trybie stawiania (w trybie Usun LPM kasuje, wiec bez hover-edycji).
+			if _mode == "place" then updateHover() else clearHover() end
 			if _cursorGui.Enabled then setCursor(false) end
 		end
 	end)
