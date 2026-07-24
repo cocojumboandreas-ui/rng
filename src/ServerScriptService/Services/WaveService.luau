@@ -86,8 +86,11 @@ local function waveComposition(waveNumber: number)
 	if isBossWave(waveNumber) then
 		local grunts = GameConfig.Wave.bossGrunts or 0
 		local mult = GameConfig.Wave.bossHpVsPrevSoldier or 5
-		local bossHp = mult * referenceSoldierHp(waveNumber - 1) -- 5x najsilniejszy zwykly wrog poprzedniej fali
-		local comp = { { bossTypeFor(waveNumber), 1, bossHp } }
+		local bossType = bossTypeFor(waveNumber)
+		local bet = GameConfig.Wave.enemyTypes[bossType]
+		-- HP bossa = mult * najsilniejszy zwykly wrog fali n-1 * per-boss hpMult (SZARZA=mniej, by byla ubijalna)
+		local bossHp = mult * referenceSoldierHp(waveNumber - 1) * ((bet and bet.hpMult) or 1)
+		local comp = { { bossType, 1, bossHp } }
 		if grunts > 0 then
 			local backTier = math.max(1, maxTierFor(waveNumber) - 1)
 			comp[#comp + 1] = { pickTierType(backTier, waveNumber), grunts }
@@ -103,34 +106,53 @@ local function waveComposition(waveNumber: number)
 		end
 		return w.composition, pool, w.formation
 	end
-	-- generowana wzorem: pula z formuly, rozdzielona miedzy aktywne tiery (okno tierWindow, waga ~tier).
-	-- Wyzszy tier = wieksza waga -> fala wizualnie "przechodzi" na nowe jednostki, z podkladem nizszych.
+	-- generowana wzorem: FODDER FLOOR (staly udzial najnizszych tierow) + reszta na tiery okna z ODWROCONYMI
+	-- wagami (nizszy tier = wieksza waga). Efekt: roj taniego miesa + rzadkie elity = tekstura TD. Fodder floor
+	-- dziala NIEZALEZNIE od okna top-N, wiec na falach 60+ (okno tier 3-6) roj tieru 1-2 dalej istnieje.
 	local s = GameConfig.Wave.scaling
 	local pool = math.floor(s.poolBase + waveNumber * s.poolPerWave)
 	local maxTier = maxTierFor(waveNumber)
 	local window = GameConfig.Wave.tierWindow or 3
 	local lowTier = math.max(1, maxTier - window + 1)
 
+	local comp = {}
+	local function push(tier, salt, cnt)
+		if cnt and cnt > 0 then
+			comp[#comp + 1] = { pickTierType(tier, salt), cnt }
+		end
+	end
+
+	-- 1) FODDER FLOOR: staly % puli na najnizsze tiery (roj miesa), niezaleznie od okna elit.
+	local fodderTiers = GameConfig.Wave.fodderTiers or {}
+	local fodderBudget = math.floor(pool * (GameConfig.Wave.fodderFrac or 0))
+	local fodderUsed = 0
+	if fodderBudget > 0 and #fodderTiers > 0 then
+		for idx, tr in ipairs(fodderTiers) do
+			local cnt
+			if idx == #fodderTiers then
+				cnt = fodderBudget - fodderUsed -- ostatni fodder-tier bierze reszte fodder-puli
+			else
+				cnt = math.floor(fodderBudget / #fodderTiers)
+				fodderUsed += cnt
+			end
+			push(tr, waveNumber + tr, cnt)
+		end
+	end
+
+	-- 2) ELITY: reszta puli na tiery okna z ODWROCONYMI wagami; NAJNIZSZY tier okna dominuje (bierze reszte).
+	local elitePool = pool - fodderBudget
 	local totalW = 0
 	for tr = lowTier, maxTier do
-		totalW += tr
+		totalW += (maxTier - tr + 1) -- waga ODWROCONA: nizszy tier = wieksza waga
 	end
-	local comp = {}
-	local assigned = 0
-	local i = 0
-	for tr = lowTier, maxTier do
-		i += 1
-		local cnt
-		if tr == maxTier then
-			cnt = pool - assigned -- reszta puli na najwyzszy tier (nie gubimy sztuk przez floor)
-		else
-			cnt = math.floor(pool * tr / totalW)
-			assigned += cnt
-		end
-		if cnt > 0 then
-			comp[#comp + 1] = { pickTierType(tr, waveNumber + i), cnt }
-		end
+	local eliteUsed = 0
+	for tr = maxTier, lowTier + 1, -1 do -- wyzsze tiery floor-em (rzadkie elity)
+		local cnt = math.floor(elitePool * (maxTier - tr + 1) / totalW)
+		push(tr, waveNumber + tr, cnt)
+		eliteUsed += cnt
 	end
+	push(lowTier, waveNumber + lowTier, elitePool - eliteUsed) -- najnizszy tier okna = reszta -> dominuje
+
 	return comp, pool, { cols = 6 }
 end
 

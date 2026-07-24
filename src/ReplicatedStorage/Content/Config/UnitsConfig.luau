@@ -1,10 +1,20 @@
 --!strict
 -- Content/Config/UnitsConfig.luau — definicje jednostek (TYPY, nie egzemplarze).
--- Drabina rzadkosci kalibrowana z Build a Base RNG: 1in3 -> 1in1500.
--- Footprinty AUTHORED: piechota 1x1, pojazdy 2x2. Jet/Helicopter NIE placeable w v1 (pominiete).
+-- Drabina rzadkosci kalibrowana z Build a Base RNG: 1in3 -> 1in2000.
+-- Footprinty AUTHORED: piechota 1x1, pojazdy 2x2 (jeep/tank/heli/jet). (Uwaga: wczesniejszy komentarz mowil,
+-- ze Jet/Heli NIE placeable w v1 — NIEAKTUALNE: sa pelnoprawnymi weaponami w rosterze ponizej.)
 -- Dublet z placu: uzywamy "Flamethrower" (pelny model); "FlameThrower" (pusty 5x1x0) pominiety.
 -- ODSTEPSTWO od §4: zamiast modelId=assetId uzywamy `model` = nazwa dziecka w
 -- ReplicatedStorage.Assets.Units (modele sklonowane w MAP PREP; Build klonuje po tej nazwie).
+--
+-- ⚠ NOTKA DLA OLO (BALANS — do osobnego re-tuningu WARTOSCI, NIE kod): base DPS = dmg*fireRate jest
+-- NIEMONOTONICZNY z rzadkoscia. Rzadsze MUSI miec wyzsze base DPS, a nie ma:
+--   • Czolg (1in1500) = 85*0.6 = 51 DPS  <  Helikopter (1in800) = 24*5.0 = 120 DPS   [odwrocone]
+--   • Jet (1in2000) = 100*1.2 = 120 DPS  =  Helikopter (1in800) = 120 DPS            [brak progresu mimo 2.5x rzadszy]
+--   • Jeep (1in300) = 8*1.5 = 12 DPS  ledwo bije  SWAT (1in30) = 8*1.4 = 11.2 DPS    [10x rzadszy, ~ten sam DPS]
+--   • Snajper (1in15) = 6.4  <  Zolnierz (1in8) = 7.2   (ale snajper ma zasieg/burst — czesciowo uzasadnione)
+-- Lewelowanie (Etap 3) MNOZY na wierzchu (base*1.10^lvl), wiec NIE prostuje krzywej bazy — inwersje zostaja.
+-- To re-tuning dmg/fireRate per jednostka (Twoja domena), nie zmiana logiki.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Enums = require(Shared:WaitForChild("Enums"))
 

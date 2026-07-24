@@ -40,9 +40,12 @@ local WaveConfig = {
 		-- TIER 6 (czerwony) — jet
 		t6_jet = { tier = 6, hp = 520, speed = 0.050, coreDmg = 24, coreAttackInterval = 1.4, model = "Jet", atkRange = 32, atkRate = 1.2, atkDmg = 30 },
 		-- BOSSY = wieksi warianci (isBoss -> wieksza skala na kliencie + pasek HP). 'boss' = boss fali 20 (tier 4).
-		boss = { tier = 4, isBoss = true, hp = 900, speed = 0.028, coreDmg = 30, coreAttackInterval = 1.5, model = "Tank", atkRange = 24, atkRate = 0.6, atkDmg = 45 },
-		boss5 = { tier = 5, isBoss = true, hp = 1800, speed = 0.026, coreDmg = 42, coreAttackInterval = 1.5, model = "Helicopter", atkRange = 28, atkRate = 0.9, atkDmg = 55 },
-		boss6 = { tier = 6, isBoss = true, hp = 3200, speed = 0.024, coreDmg = 58, coreAttackInterval = 1.6, model = "Jet", atkRange = 34, atkRate = 1.1, atkDmg = 72 },
+		-- ARCHETYPY (feel): boss=SCIANA, boss5=SZARZA, boss6=BOMBARDIER. Realne HP bossa NIE z pola hp (inertne),
+		-- tylko override w WaveService: bossHpVsPrevSoldier * refSoldierHp(n-1) * (hpMult albo 1). hpMult = per-boss
+		-- korekta HP (SZARZA ma mniej, by byla ubijalna mimo predkosci). speed/atk* /coreDmg czytane wprost.
+		boss = { tier = 4, isBoss = true, hp = 900, speed = 0.028, coreDmg = 30, coreAttackInterval = 1.5, model = "Tank", atkRange = 24, atkRate = 0.6, atkDmg = 45 }, -- SCIANA: wolny mur HP, kill-zone
+		boss5 = { tier = 5, isBoss = true, hp = 1800, hpMult = 0.55, speed = 0.050, coreDmg = 42, coreAttackInterval = 1.5, model = "Helicopter", atkRange = 28, atkRate = 0.9, atkDmg = 55 }, -- SZARZA: szybki nalot (speed↑), mniej HP (hpMult) -> zmusza obrone na calej sciezce
+		boss6 = { tier = 6, isBoss = true, hp = 3200, speed = 0.032, coreDmg = 82, coreAttackInterval = 1.6, model = "Jet", atkRange = 52, atkRate = 1.1, atkDmg = 100 }, -- BOMBARDIER: ostrzal rdzenia z DUZEGO dystansu (atkRange↑ + coreDmg↑, omija front), predkosc umiarkowana
 	},
 	-- typy wroga per tier (WaveService losuje deterministycznie po numerze fali -> stabilne + zroznicowane)
 	tierTypes = {
@@ -60,6 +63,11 @@ local WaveConfig = {
 	bossWave = 20, -- INTERWAL: co 20. fala = boss (20, 40, 60...)
 	bossRewardMult = 3, -- boss-fala daje x nagrody normalnej fali n
 	bossGrunts = 10, -- kompozycja boss-fali = 1 boss + tylu wrogow podkladu (tier maxTier-1)
+	-- KOMPOZYCJA fali generowanej wzorem (WaveService.waveComposition): ODWROCONE wagi + FODDER FLOOR.
+	--   Waga tieru w oknie = (maxTier - tier + 1) -> NIZSZY tier CZESTSZY (roj taniego miesa, elity rzadkie).
+	--   Fodder floor: staly % puli ZAWSZE na fodderTiers, niezaleznie od okna top-N (roj nie znika na falach 60+).
+	fodderFrac = 0.35, -- udzial puli na fodder floor (0..1); reszta = elity okna z odwroconymi wagami
+	fodderTiers = { 1, 2 }, -- najtansze tiery fodderu (mieso), dolewane poza oknem elit
 }
 
 return WaveConfig
