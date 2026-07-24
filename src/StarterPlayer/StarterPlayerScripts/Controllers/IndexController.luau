@@ -1,9 +1,10 @@
 --!nonstrict
 -- StarterPlayerScripts/Controllers/IndexController.luau  (ETAP 2 — klient, model wzorca)
 -- 4 zakladki (Regularny / Blyszczacy / Galaktyka / Wrogowie), siatka slotow z ramka rzadkosci,
--- panel detali (view-only), dolny pasek bonusu luck. Wrogowie = STUB (sloty puste, tresc etap 5).
--- Stan: GetIndexState (RF) na otwarcie; IndexUpdated (S->C) live (nowy wpis per-wariant + %/luck).
--- BEZ przycisku levelowania (etap 3) i BEZ ODBIERZ (etap 4).
+-- panel detali (staty EFEKTYWNE wg poziomu + POZIOM + przycisk Ulepsz), dolny pasek bonusu luck.
+-- Wrogowie = STUB (sloty puste, tresc etap 5). Stan: GetIndexState (RF; discovered per-wariant + levels +
+-- luck) na otwarcie; IndexUpdated (S->C) live (nowy wpis per-wariant + %/luck). Ulepsz -> LevelUpUnit RF
+-- (server-auth spend, Etap 3). BEZ ODBIERZ luck (etap 4) i BEZ bestiariusza staty (etap 5).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -23,8 +24,27 @@ local _overall = { count = 0, total = 0, percent = 0 }
 local _luckBonus = 0
 local _activeCat = nil
 local _unitOrder = {} -- unitId po rarityN rosnaco (stabilne)
+local _levels = {} -- unitId -> poziom (z GetIndexState; update po LevelUpUnit) — ETAP 3
+local _coins = 0 -- saldo (CoinsSync) do koloru przycisku Ulepsz (stac/nie stac)
 local _panel, _grid, _luckLabel, _toast, _tabBtns = nil, nil, nil, nil, {}
-local _detail = {} -- {frame, name, rarity, stats}
+local _detail = {} -- {frame, name, rarity, stats, level, upBtn, selUnit, selVariant}
+
+local NL = string.char(10) -- newline (bez sekwencji escape w zrodle — MCP sync je psul)
+
+-- 2.9K / 1.2M
+local function fmtNum(n)
+	n = n or 0
+	if n >= 1e6 then return string.format("%.2fM", n / 1e6) end
+	if n >= 1e3 then return string.format("%.1fK", n / 1e3) end
+	return tostring(math.floor(n + 0.5))
+end
+
+-- koszt WYSWIETLANY (mirror LevelService.GetCost): floor(floor(rarityN*baseCostK) * costGrowth^level)
+local function costOf(unitId, level)
+	local u = GameConfig.Units[unitId]
+	local base = math.floor(((u and u.rarityN) or 1) * GameConfig.Level.baseCostK)
+	return math.floor(base * (GameConfig.Level.costGrowth ^ level))
+end
 
 -- ── rzadkosc / warianty (prezentacja) ───────────────────────────────────────────
 local TIER_COLOR = {
@@ -54,21 +74,50 @@ local function mkLabel(parent, size, pos, text, size2, color)
 	return l
 end
 
--- ── panel detali (view-only; przycisk levelowania dochodzi w etapie 3) ──────────
+-- ── panel detali (ETAP 3: staty EFEKTYWNE wg poziomu + poziom + przycisk Ulepsz przez LevelUpUnit) ──────
+-- Odswiez sam przycisk Ulepsz (tekst/kolor) wg poziomu i salda.
+local function refreshUpgradeBtn(unitId)
+	if not _detail.upBtn then return end
+	local level = _levels[unitId] or 0
+	if level >= GameConfig.Level.maxLevel then
+		_detail.upBtn.Text = "Poziom MAX"
+		_detail.upBtn.BackgroundColor3 = Color3.fromRGB(70, 74, 86)
+	else
+		local cost = costOf(unitId, level)
+		_detail.upBtn.Text = "Ulepsz — " .. fmtNum(cost) .. " monet"
+		_detail.upBtn.BackgroundColor3 = (_coins >= cost) and Color3.fromRGB(80, 165, 95) or Color3.fromRGB(150, 70, 70)
+	end
+	_detail.upBtn.Visible = true
+end
+
 local function showDetail(unitId, variant)
 	local u = GameConfig.Units[unitId]
 	if not u then
 		return
 	end
+	_detail.selUnit, _detail.selVariant = unitId, variant
 	local tier = tierFor(u.rarityN)
+	local level = _levels[unitId] or 0
+	local mult = GameConfig.Level.growthPerLevel ^ level -- level TYPU (wariant-niezalezny)
 	_detail.name.Text = (u.displayName or unitId) .. (VARIANT_BADGE[variant] and (" " .. VARIANT_BADGE[variant]) or "")
 	_detail.name.TextColor3 = VARIANT_TINT[variant] or Color3.new(1, 1, 1)
 	_detail.rarity.Text = ("Rzadkosc: %s (1 in %d)"):format(tier.name, u.rarityN)
 	_detail.rarity.TextColor3 = TIER_COLOR[tier.revealTier]
-	local c = u.combat or {}
-	local effRange = c.range and math.floor(c.range * (GameConfig.Sim.unitRangeMult or 1) + 0.5) or "-"
-	_detail.stats.Text = ("Obrazenia: %s\nSzybkostrzelnosc: %s/s\nZasieg: %s")
-		:format(tostring(c.dmg or "-"), tostring(c.fireRate or "-"), tostring(effRange))
+	if u.combat then -- WEAPON: level buffuje dmg (fireRate/range bez zmian)
+		local c = u.combat
+		local effRange = c.range and math.floor(c.range * (GameConfig.Sim.unitRangeMult or 1) + 0.5) or "-"
+		local effDmg = math.floor((c.dmg or 0) * mult + 0.5)
+		_detail.stats.Text = "Obrazenia: " .. effDmg .. NL
+			.. "Szybkostrzelnosc: " .. tostring(c.fireRate or "-") .. "/s" .. NL
+			.. "Zasieg: " .. tostring(effRange)
+	else -- BLOCK: level buffuje HP
+		local effHp = math.floor((u.hp or 0) * mult + 0.5)
+		local defTxt = u.def and (NL .. "Pancerz (DEF): " .. u.def) or ""
+		_detail.stats.Text = "HP: " .. effHp .. defTxt
+	end
+	_detail.level.Text = "Poziom: " .. level
+	_detail.level.Visible = true
+	refreshUpgradeBtn(unitId)
 end
 
 local function clearDetail()
@@ -76,6 +125,9 @@ local function clearDetail()
 	_detail.name.TextColor3 = Color3.fromRGB(150, 150, 160)
 	_detail.rarity.Text = ""
 	_detail.stats.Text = ""
+	_detail.selUnit, _detail.selVariant = nil, nil
+	if _detail.level then _detail.level.Visible = false end
+	if _detail.upBtn then _detail.upBtn.Visible = false end
 end
 
 -- ── siatka slotow aktywnej kategorii ────────────────────────────────────────────
@@ -180,6 +232,7 @@ local function applyState(state)
 	end
 	_overall = state.overall or _overall
 	_luckBonus = state.luckBonus or 0
+	_levels = state.levels or {} -- poziomy typow (ETAP 3) do detail panelu
 	refreshLuck()
 	renderCategory(_activeCat or _catOrder[1])
 end
@@ -277,9 +330,47 @@ function IndexController.start()
 	_detail.name.TextXAlignment = Enum.TextXAlignment.Left; _detail.name.TextYAlignment = Enum.TextYAlignment.Top
 	_detail.rarity = mkLabel(detailFrame, UDim2.new(1, -16, 0, 36), UDim2.fromOffset(8, 58), "", 12)
 	_detail.rarity.TextWrapped = true; _detail.rarity.TextXAlignment = Enum.TextXAlignment.Left
-	_detail.stats = mkLabel(detailFrame, UDim2.new(1, -16, 0, 120), UDim2.fromOffset(8, 100), "", 13,
+	_detail.stats = mkLabel(detailFrame, UDim2.new(1, -16, 0, 96), UDim2.fromOffset(8, 100), "", 13,
 		Color3.fromRGB(210, 210, 220))
 	_detail.stats.TextXAlignment = Enum.TextXAlignment.Left; _detail.stats.TextYAlignment = Enum.TextYAlignment.Top
+
+	-- ETAP 3: aktualny poziom + przycisk Ulepsz (dom tymczasowego przycisku lewelowania z Task A)
+	_detail.level = mkLabel(detailFrame, UDim2.new(1, -16, 0, 22), UDim2.fromOffset(8, 208), "", 14,
+		Color3.fromRGB(255, 220, 120))
+	_detail.level.Font = Enum.Font.GothamBold; _detail.level.TextXAlignment = Enum.TextXAlignment.Left
+	_detail.level.Visible = false
+	_detail.upBtn = Instance.new("TextButton")
+	_detail.upBtn.Size = UDim2.new(1, -16, 0, 40); _detail.upBtn.Position = UDim2.fromOffset(8, 236)
+	_detail.upBtn.BackgroundColor3 = Color3.fromRGB(80, 165, 95); _detail.upBtn.BorderSizePixel = 0
+	_detail.upBtn.Font = Enum.Font.GothamBold; _detail.upBtn.TextSize = 13; _detail.upBtn.TextColor3 = Color3.new(1, 1, 1)
+	_detail.upBtn.Text = "Ulepsz"; _detail.upBtn.AutoButtonColor = true; _detail.upBtn.Visible = false
+	_detail.upBtn.Parent = detailFrame
+	local ubc = Instance.new("UICorner"); ubc.CornerRadius = UDim.new(0, 8); ubc.Parent = _detail.upBtn
+	-- klik -> LevelUpUnit RF (server-auth spend); po ok odswiez poziom + staty EFEKTYWNE + koszt nastepnego
+	_detail.upBtn.MouseButton1Click:Connect(function()
+		local unitId = _detail.selUnit
+		if not unitId then return end
+		local res = Net.get("LevelUpUnit"):InvokeServer(unitId)
+		if type(res) == "table" and res.ok then
+			_levels[unitId] = res.newLevel
+			showDetail(unitId, _detail.selVariant)
+		else
+			local reason = type(res) == "table" and res.reason or "?"
+			_detail.upBtn.Text = (reason == "NotEnoughCoins") and "Brak monet!"
+				or (reason == "MaxLevel" and "Poziom MAX" or "Blad")
+			task.delay(0.9, function()
+				if _detail.selUnit == unitId then refreshUpgradeBtn(unitId) end
+			end)
+		end
+	end)
+
+	-- saldo monet (kolor przycisku Ulepsz: stac/nie stac)
+	Net.get("CoinsSync").OnClientEvent:Connect(function(p)
+		if type(p) == "table" and type(p.balance) == "number" then
+			_coins = p.balance
+			if _detail.selUnit then refreshUpgradeBtn(_detail.selUnit) end
+		end
+	end)
 
 	-- dolny pasek bonusu luck (bez ODBIERZ — etap 4)
 	_luckLabel = mkLabel(_panel, UDim2.new(1, -32, 0, 24), UDim2.new(0, 16, 1, -54),

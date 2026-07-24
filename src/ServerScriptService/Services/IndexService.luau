@@ -25,6 +25,7 @@ local GameConfig = require(
 local IndexService = {}
 
 local _profileService = nil
+local _level = nil -- LevelService (poziomy typow do GetIndexState -> detail panel)
 local _netIndexUpdated = nil -- cache remote (guard nil w tescie)
 
 -- klucz wpisu = unitId .. "#" .. variant (variant domyslnie "regular")
@@ -178,6 +179,7 @@ end
 
 function IndexService.Start()
 	_profileService = ServiceRegistry.get("ProfileService")
+	_level = ServiceRegistry.get("LevelService")
 	_netIndexUpdated = Net.get("IndexUpdated")
 
 	-- migracja starego indeksu (unitId-only -> unitId#regular) przy zaladowaniu profilu
@@ -196,6 +198,7 @@ function IndexService.Start()
 			categories = cats, -- [{id,label,kind,variant,discovered,count,total,percent}]
 			overall = { count = count, total = total, percent = percent },
 			luckBonus = luckForPercent(percent),
+			levels = (_level and _level.GetLevels(player)) or {}, -- { [unitId]=level } (ETAP 3, detail panel)
 		}
 	end
 end
