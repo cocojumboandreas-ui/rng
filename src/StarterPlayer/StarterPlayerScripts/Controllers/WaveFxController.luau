@@ -31,6 +31,53 @@ function WaveFxController.start()
 	banner.TextStrokeColor3 = Color3.new(0, 0, 0); banner.TextStrokeTransparency = 0.3
 	banner.Text = "WAVE CLEARED!"; banner.TextTransparency = 1; banner.Parent = gui
 
+		-- gold popup "+N Monet" (nagroda za falę) — scale-in + float up
+		local coinPop = Instance.new("TextLabel")
+		coinPop.AnchorPoint = Vector2.new(0.5, 0); coinPop.Position = UDim2.new(0.5, 0, 0.26, 0)
+		coinPop.Size = UDim2.fromOffset(320, 46); coinPop.BackgroundTransparency = 1
+		coinPop.Font = Enum.Font.GothamBlack; coinPop.TextSize = 34; coinPop.TextColor3 = Color3.fromRGB(255, 210, 70)
+		coinPop.TextStrokeColor3 = Color3.new(0, 0, 0); coinPop.TextStrokeTransparency = 0.25
+		coinPop.Text = ""; coinPop.TextTransparency = 1; coinPop.Parent = gui
+
+		local function shortCoins(n)
+			n = math.max(0, math.floor(n + 0.5))
+			if n >= 1e6 then return string.format("%.1fM", n / 1e6) end
+			if n >= 1000 then return string.format("%.1fK", n / 1000) end
+			return tostring(n)
+		end
+
+		local function showCoins(amount)
+			if not amount or amount <= 0 then return end
+			coinPop.Text = "+" .. shortCoins(amount) .. " Monet"
+			coinPop.TextTransparency = 1; coinPop.TextStrokeTransparency = 1
+			coinPop.TextSize = 22; coinPop.Position = UDim2.new(0.5, 0, 0.27, 0)
+			TweenService:Create(coinPop, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				TextTransparency = 0, TextStrokeTransparency = 0.25, TextSize = 34, Position = UDim2.new(0.5, 0, 0.24, 0),
+			}):Play()
+			task.delay(1.3, function()
+				TweenService:Create(coinPop, TweenInfo.new(0.5), { TextTransparency = 1, TextStrokeTransparency = 1, Position = UDim2.new(0.5, 0, 0.21, 0) }):Play()
+			end)
+		end
+
+		-- ambient: unoszace sie zielone koniczyny szczescia (echo "+szczescia" z gry-wzorca)
+		local CLOVER = Color3.fromRGB(120, 255, 130)
+		local function cloverRise()
+			for _ = 1, 14 do
+				local pc = Instance.new("Frame")
+				local sz = math.random(10, 20)
+				pc.Size = UDim2.fromOffset(sz, sz); pc.BackgroundColor3 = CLOVER; pc.BorderSizePixel = 0
+				pc.Rotation = math.random(0, 360); pc.BackgroundTransparency = 0.15
+				pc.Position = UDim2.new(0.28 + math.random() * 0.44, 0, 0.62 + math.random() * 0.12, 0); pc.Parent = gui
+				local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0.5, 0); cc.Parent = pc
+				local dur = 1.1 + math.random() * 0.8
+				TweenService:Create(pc, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Position = UDim2.new(pc.Position.X.Scale, 0, 0.30 + math.random() * 0.12, 0),
+					BackgroundTransparency = 1, Rotation = pc.Rotation + math.random(-180, 180),
+				}):Play()
+				Debris:AddItem(pc, dur + 0.2)
+			end
+		end
+
 	local function showBanner()
 		banner.TextTransparency = 1; banner.TextStrokeTransparency = 1
 		banner.Position = UDim2.new(0.5, 0, 0.13, 0)
@@ -66,6 +113,8 @@ function WaveFxController.start()
 		if type(payload) == "table" then
 			burst()
 			showBanner()
+			cloverRise()
+			showCoins(payload.summary and payload.summary.coinsEarned)
 		end
 	end)
 end

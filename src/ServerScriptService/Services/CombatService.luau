@@ -38,6 +38,16 @@ local _lastStepMs = 0 -- czas ostatniego kroku symulacji [ms] (instrumentacja br
 local _syncBytes = 0 -- bajty EnemySync od ostatniego odczytu (KB/s bramki)
 local _runDamage: { [any]: number } = {} -- player -> suma obrazen zadanych wrogom w runie (do podsumowania; overkill nieliczony)
 
+-- FIX P0: klamra anty-spirala-smierci na nadganianiu akumulatora (+ rate-limit warna).
+local MAX_STEPS_PER_FRAME = 3 -- max krokow symulacji na 1 Heartbeat; nadwyzka = PORZUCONY dlug (gra zwalnia, nie umiera)
+local OVERRUN_WARN_EVERY = 5 -- [s] jak rzadko warnowac o porzuceniu dlugu / przepelnieniu sync (nie zalewaj outputu)
+local _lastOverrunWarn = -math.huge
+local _dtStep = 1 / (GameConfig.Sim.simHz or 10) -- staly krok symulacji [s] (bylo lokalne w Start)
+-- FIX P0: chunkowanie EnemySync (UnreliableRemoteEvent dropuje CALY pakiet >~900B).
+local ENEMIES_PER_PACKET = 180 -- 180*4B + 2B naglowek = 722B < 900B; wiecej wrogow -> kolejne chunki
+local MAX_SYNC_CHUNKS = 8 -- twardy sufit: powyzej ENEMIES_PER_PACKET*8 wrogow nadwyzka NIE jest wysylana (+warn)
+local _lastSyncOverflowWarn = -math.huge
+
 -- Rozwiazanie geometrii plotu: realny gracz -> GetPlot; klucz syntetyczny -> GetPlotById.
 local function resolvePlot(key)
 	if not _plot then
@@ -96,7 +106,8 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 		warn(("[CombatService] nieznany enemyType '%s'"):format(tostring(spec.enemyTypeId)))
 		return
 	end
-	local hp = spec.hpOverride or (et.hp * waveHpMult(waveNumber)) -- boss: jawne HP (5x zolnierz z fali n-1)
+	local protoHp = (GameConfig.Wave.proto and GameConfig.Wave.proto.hpMul) or 1 -- PROTOTYP: grubsi wrogowie
+	local hp = (spec.hpOverride or (et.hp * waveHpMult(waveNumber))) * protoHp -- boss: jawne HP (5x zolnierz z fali n-1) tez x hpMul
 	local atkDmg = (et.atkDmg or 0) * waveAtkMult(waveNumber) -- obrazenia jednostek skalowane z fala
 	local isBoss = et.isBoss or false
 	local stagger = GameConfig.Sim.spawnStagger or 0.03
@@ -153,6 +164,16 @@ function CombatService.ClearPlot(player)
 			_enemyEvents:FireAllClients({ plotId = plot and plot.plotId or 0, spawns = {}, deaths = ids })
 		end
 	end
+	-- FIX P0: wyczysc throttle-timestampy HP jednostek tego placu (inaczej placementId-e orphanowaly w
+	-- _unitHpSend — tabela globalna po placementId, nietkniety przez czyszczenie per-gracza). Kazdy wpis
+	-- _unitHpSend ma odpowiednik w _unitHp[player] (pisany tylko przy oberwaniu jednostki), wiec iteracja
+	-- po kluczach uhp pokrywa wszystkie wpisy tego gracza i nie rusza cudzych placementId-ow.
+	local uhp = _unitHp[player]
+	if uhp then
+		for pid in pairs(uhp) do
+			_unitHpSend[pid] = nil
+		end
+	end
 	_enemies[player] = nil
 	_towerCd[player] = nil
 	_deaths[player] = nil
@@ -172,6 +193,44 @@ end
 local function queueDeath(player, id)
 	_deaths[player] = _deaths[player] or {}
 	table.insert(_deaths[player], id)
+end
+
+-- FIX P0: buduje pakiety EnemySync z limitem rozmiaru. Wrogowie NAJBLIZSI RDZENIA (najwyzszy pathT) ida
+-- w chunk 0 — jesli pakiet zginie w transporcie, traci sie tych NAJDALEJ od gracza. Kazdy chunk to
+-- NIEZALEZNA aktualizacja stanu znanych wrogow; pruning idzie osobno przez reliable EnemyEvents, wiec
+-- pominiecie wroga w chunku = brak update tej klatki, NIE usuniecie. Format bufora (na chunk):
+--   [u8 chunkIdx][u8 chunkCount] + N*(u16 id + u8 pathT + u8 hpPct).
+-- Zwraca: chunks (lista buforow), total (ilu wrogow zywych), sent (ilu zmiescilo sie po twardym capie).
+local function buildSyncChunks(enemies)
+	local list = {}
+	for _, e in pairs(enemies) do
+		list[#list + 1] = e
+	end
+	local total = #list
+	if total == 0 then
+		return {}, 0, 0
+	end
+	table.sort(list, function(a, b) return a.pathT > b.pathT end) -- najblizsi rdzenia (wyzszy pathT) pierwsi
+	local sent = math.min(total, ENEMIES_PER_PACKET * MAX_SYNC_CHUNKS)
+	local chunkCount = math.ceil(sent / ENEMIES_PER_PACKET)
+	local chunks = {}
+	for ci = 0, chunkCount - 1 do
+		local startI = ci * ENEMIES_PER_PACKET + 1
+		local endI = math.min(startI + ENEMIES_PER_PACKET - 1, sent)
+		local buf = buffer.create(2 + (endI - startI + 1) * 4)
+		buffer.writeu8(buf, 0, ci)
+		buffer.writeu8(buf, 1, chunkCount)
+		local off = 2
+		for i = startI, endI do
+			local e = list[i]
+			buffer.writeu16(buf, off, e.id % 65536)
+			buffer.writeu8(buf, off + 2, math.floor(math.clamp(e.pathT, 0, 1) * 255 + 0.5))
+			buffer.writeu8(buf, off + 3, math.clamp(math.floor(e.hp / e.maxHp * 100 + 0.5), 0, 100))
+			off += 4
+		end
+		chunks[#chunks + 1] = buf
+	end
+	return chunks, total, sent
 end
 
 local function step(dt: number)
@@ -288,10 +347,8 @@ local function step(dt: number)
 					if u.combat == nil then maxHp = maxHp * levelMult(pl.unitId) end -- BLOK: level TYPU buffuje HP
 					if uhp[pid] == nil then
 						uhp[pid] = maxHp
-						if _unitHpNet then -- pierwsze pojawienie: pokaz pasek od razu na pelnym HP (jawne HP jednostki)
-							_unitHpSend[pid] = os.clock()
-							_unitHpNet:FireClient(player, { placementId = pid, hpPct = 1, hp = maxHp, maxHp = maxHp })
-						end
+						-- NIE pokazuj paska na pelnym HP przy pojawieniu (to robilo "zupe" zielonych X/Y nad
+						-- kazda jednostka). Pasek pojawi sie dopiero przy PIERWSZYM oberwaniu (ponizej, pct<1).
 					end
 					unitList[#unitList + 1] = { pid = pid, pos = towerWorldPos(plot, pl.unitId, pl.x, pl.z), maxHp = maxHp, def = u.def or 0 }
 				end
@@ -316,10 +373,12 @@ local function step(dt: number)
 							end
 							if best then
 								e.unitTimer = 1 / (et.atkRate or 1)
-								-- DEF: pancerz W PELNI chroni — obrona >= dmg wroga => 0 obrazen (blok/jednostka NIE traci HP).
-								-- Slaby wrog nie zadraśnie dobrze opancerzonego bloku; dopiero silniejszy (wyzszy tier /
-								-- pozniejsza fala, atkDmg rosnie przez waveAtkMult) przebija obrone. e.atkDmg zamrozony na spawnie.
-								local dealt = math.max(0, (e.atkDmg or et.atkDmg) - (best.def or 0))
+								-- DEF: pancerz REDUKUJE obrazenia, ale NIGDY do zera. Wrog ZAWSZE zdejmuje blokowi min
+								-- defMinChipFrac*atkDmg -> zaden blok nie jest niezniszczalny, droga ZAWSZE sie w koncu utoruje.
+								-- Wyzszy def/HP = blok trzyma DUZO dluzej (wolniej pada), ale w koncu padnie. e.atkDmg zamrozony na spawnie.
+								local base = (e.atkDmg or et.atkDmg)
+								local minChip = base * (GameConfig.Sim.defMinChipFrac or 0)
+								local dealt = math.max(minChip, base - (best.def or 0))
 								if dealt > 0 then
 									uhp[best.pid] = uhp[best.pid] - dealt
 									if uhp[best.pid] <= 0 then
@@ -352,27 +411,24 @@ local function step(dt: number)
 				end
 			end
 
-			-- 4) sync PER PLOT jako buffer: u16 id(id%65536) + u8 pathT(0..255) + u8 hpPct = 4B/wrog.
-			-- Tabela z ~300 wrogami przekracza limit UnreliableRemoteEvent (~900B) i jest DROPowana;
-			-- per-plot buffer (50 wrogow = 200B) miesci sie. u16 id (nie u32) -> ~11KB/s przy simHz=10.
-			-- BRAK KOLIZJI po obcieciu do u16: alive/plot ~50, id MONOTONICZNE, okno zycia wroga to
-			-- sekundy -> zadne dwa ZYWE wrogi nie roznia sie o dokladnie 65536 w id (klient i tak
-			-- weryfikuje po pelnym id przy spawnie i ostrzega przy kolizji).
-			local cnt = 0
-			for _ in pairs(enemies) do
-				cnt += 1
-			end
-			if _enemySync and cnt > 0 then
-				local buf = buffer.create(cnt * 4)
-				local off = 0
-				for _, e in pairs(enemies) do
-					buffer.writeu16(buf, off, e.id % 65536)
-					buffer.writeu8(buf, off + 2, math.floor(math.clamp(e.pathT, 0, 1) * 255 + 0.5))
-					buffer.writeu8(buf, off + 3, math.clamp(math.floor(e.hp / e.maxHp * 100 + 0.5), 0, 100))
-					off += 4
+			-- 4) sync PER PLOT: CHUNKOWANY buffer (u16 id + u8 pathT + u8 hpPct = 4B/wrog, +2B naglowek/chunk).
+			-- Chunkowanie bo UnreliableRemoteEvent dropuje CALY pakiet >~900B (kiedys ~225 wrogow na plocie =
+			-- zamrozeni wrogowie na kliencie; w solo jeden plac niesie cala pule fali). buildSyncChunks sortuje
+			-- po pathT (najblizsi rdzenia w chunk 0), tnie po ENEMIES_PER_PACKET, twardy cap MAX_SYNC_CHUNKS.
+			-- Pruning idzie osobno przez reliable EnemyEvents -> chunk = niezalezna aktualizacja znanych wrogow.
+			if _enemySync then
+				local chunks, total, sent = buildSyncChunks(enemies)
+				for _, buf in ipairs(chunks) do
+					_enemySync:FireAllClients(plot.plotId, buf)
+					_syncBytes += buffer.len(buf)
 				end
-				_enemySync:FireAllClients(plot.plotId, buf)
-				_syncBytes += buffer.len(buf)
+				if sent < total then
+					local now = os.clock()
+					if now - _lastSyncOverflowWarn >= OVERRUN_WARN_EVERY then
+						_lastSyncOverflowWarn = now
+						warn(("[CombatService] EnemySync: %d wrogow > cap %d na plocie %d - nadwyzka niesynchronizowana"):format(total, ENEMIES_PER_PACKET * MAX_SYNC_CHUNKS, plot.plotId))
+					end
+				end
 			end
 
 			-- BossHP -> pasek bossa (rzadkie: <=1 boss/plot; reliable do wlasciciela plotu)
@@ -396,6 +452,30 @@ local function step(dt: number)
 			_deaths[player] = nil
 		end
 	end
+end
+
+-- FIX P0: nadganianie akumulatora z KLAMRA MAX_STEPS_PER_FRAME. Nadwyzka dlugu PORZUCANA (nie kolejkowana)
+-- -> przy zadyszce serwer zwalnia symulacje zamiast wpadac w spirale smierci. Sub-tickowa reszta (_acc %
+-- _dtStep) zachowana. Zwraca liczbe wykonanych krokow (do testu). Definicja PO step() (uzywa go jako upvalue).
+local function advanceAccumulator(dt: number): number
+	_acc += dt
+	local steps = 0
+	while _acc >= _dtStep and steps < MAX_STEPS_PER_FRAME do
+		local t0 = os.clock()
+		step(_dtStep)
+		_lastStepMs = (os.clock() - t0) * 1000
+		_acc -= _dtStep
+		steps += 1
+	end
+	if _acc >= _dtStep then
+		_acc = _acc % _dtStep -- PORZUC caly zalegly dlug, zostaw tylko reszte sub-tickowa
+		local now = os.clock()
+		if now - _lastOverrunWarn >= OVERRUN_WARN_EVERY then
+			_lastOverrunWarn = now
+			warn(("[CombatService] symulacja nie nadaza (>%d krokow/klatke, step=%.1fms) - porzucam dlug"):format(MAX_STEPS_PER_FRAME, _lastStepMs))
+		end
+	end
+	return steps
 end
 
 -- gracz trafil wroga z broni FPS (WeaponsSystem onHit -> Net.PlayerHitEnemy). -playerShotDmg HP.
@@ -435,15 +515,8 @@ function CombatService.Start()
 		CombatService.PlayerHitEnemy(player, tonumber(id))
 	end)
 
-	local dtStep = 1 / (GameConfig.Sim.simHz or 10)
 	RunService.Heartbeat:Connect(function(dt)
-		_acc += dt
-		while _acc >= dtStep do
-			local t0 = os.clock()
-			step(dtStep)
-			_lastStepMs = (os.clock() - t0) * 1000
-			_acc -= dtStep
-		end
+		advanceAccumulator(dt) -- klamra MAX_STEPS_PER_FRAME (anty-spirala smierci) — FIX P0
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
@@ -491,6 +564,30 @@ function CombatService._GetEnemiesForTest(player)
 end
 function CombatService._EnemyWorldPosForTest(plot, t)
 	return enemyWorldPos(plot, t)
+end
+-- FIX P0 hooki testowe: klamra akumulatora, chunkowanie sync, throttle-tabela HP.
+function CombatService._AdvanceAccumulatorForTest(dt)
+	return advanceAccumulator(dt)
+end
+function CombatService._GetAccForTest()
+	return _acc
+end
+function CombatService._ResetAccForTest()
+	_acc = 0
+end
+function CombatService._BuildSyncChunksForTest(enemies)
+	return buildSyncChunks(enemies)
+end
+function CombatService._GetUnitHpSendForTest()
+	return _unitHpSend
+end
+function CombatService._SeedUnitHpForTest(player, pid, hp)
+	_unitHp[player] = _unitHp[player] or {}
+	_unitHp[player][pid] = hp
+	_unitHpSend[pid] = os.clock() -- symuluj wpis throttle po oberwaniu jednostki
+end
+function CombatService._GetSyncConstsForTest()
+	return { perPacket = ENEMIES_PER_PACKET, maxChunks = MAX_SYNC_CHUNKS, maxSteps = MAX_STEPS_PER_FRAME, dtStep = _dtStep }
 end
 
 return CombatService

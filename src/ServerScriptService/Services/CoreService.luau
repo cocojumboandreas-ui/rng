@@ -72,7 +72,8 @@ function CoreService.Start()
 	local combat = ServiceRegistry.get("CombatService")
 	combat.EnemyReachedCore:Connect(function(player, enemyTypeId)
 		local et = GameConfig.Wave.enemyTypes[enemyTypeId]
-		local dmg = et and et.coreDmg or 0
+		local protoCore = (GameConfig.Wave.proto and GameConfig.Wave.proto.coreDmgMul) or 1 -- PROTOTYP: mniej wrogow => wiekszy coreDmg (to samo zagrozenie)
+		local dmg = (et and et.coreDmg or 0) * protoCore
 		CoreService.ApplyDamage(player, dmg)
 	end)
 

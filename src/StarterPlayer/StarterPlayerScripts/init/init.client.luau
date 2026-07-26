@@ -6,70 +6,44 @@ local Players = game:GetService("Players")
 local playerScripts = Players.LocalPlayer:WaitForChild("PlayerScripts")
 local Controllers = playerScripts:WaitForChild("Controllers")
 
-local EnemyRenderController = require(Controllers:WaitForChild("EnemyRenderController"))
-EnemyRenderController.start()
+-- FIX P0: KAZDY kontroler startuje w osobnym pcall. Kiedys jeden rzucony blad zabijal wszystkie kolejne
+-- (init-cascade -> martwe HUD/przyciski). Teraz porazka = warn z nazwa+trescia, LECIMY DALEJ; na koncu
+-- zbiorczy warn z lista. Kolejnosc ZACHOWANA (czesc kontrolerow zaklada, ze wczesniejsze wystartowaly).
+-- Uwagi z historii pliku (zachowane): stary HudController wylaczony (duplikat guzikow -> HudBindController);
+-- LevelPanelController wycofany (lewelowanie w INDEKSie); SettingsPanel = przelaczniki wydajnosci (⚙).
+local ORDER = {
+	"EnemyRenderController",
+	"SkillTreeController",
+	"IndexController",
+	"OfflineController",
+	"RollRevealController",
+	"BossController",
+	"UnitCombatAnimator",
+	"UnitHealthController",
+	"CoreHealthController",
+	"WeaponCameraGate",
+	"BuildController",
+	"UnitTooltipController", -- dymek podgladu jednostki (ikona + DMG/s + HP)
+	"HudBindController", -- HUD ziomka (StarterGui.SideButtons)
+	"DevController",
+	"SettingsPanelController",
+	"WaveFxController", -- konfetti + baner po wyczyszczeniu fali
+	"StoreController",
+	"UIHoverBinder", -- sprezyste hover/press na przyciskach
+	"AttentionBob", -- kolysanie Roll + Sklep
+}
 
-local SkillTreeController = require(Controllers:WaitForChild("SkillTreeController"))
-SkillTreeController.start()
-
-local IndexController = require(Controllers:WaitForChild("IndexController"))
-IndexController.start()
-
-local OfflineController = require(Controllers:WaitForChild("OfflineController"))
-OfflineController.start()
-
-local RollRevealController = require(Controllers:WaitForChild("RollRevealController"))
-RollRevealController.start()
-
-local BossController = require(Controllers:WaitForChild("BossController"))
-BossController.start()
-
-local UnitCombatAnimator = require(Controllers:WaitForChild("UnitCombatAnimator"))
-UnitCombatAnimator.start()
-
-local UnitHealthController = require(Controllers:WaitForChild("UnitHealthController"))
-UnitHealthController.start()
-
-local CoreHealthController = require(Controllers:WaitForChild("CoreHealthController"))
-CoreHealthController.start()
-
-local WeaponCameraGate = require(Controllers:WaitForChild("WeaponCameraGate"))
-WeaponCameraGate.start()
-
-local BuildController = require(Controllers:WaitForChild("BuildController"))
-BuildController.start()
-
--- Dymek podgladu jednostki (ikona + DMG/s + HP) przy najechaniu na karte panelu lub na postawiona jednostke
-local UnitTooltipController = require(Controllers:WaitForChild("UnitTooltipController"))
-UnitTooltipController.start()
-
--- HUD ziomka (StarterGui.SideButtons) wpięty przez HudBindController; stary HudController wyłączony
--- (tworzył własne guziki/pille = duplikat). Plik HudController.luau zostaje na dysku (revert).
-local HudBindController = require(Controllers:WaitForChild("HudBindController"))
-HudBindController.start()
-
-local DevController = require(Controllers:WaitForChild("DevController"))
-DevController.start()
-
--- (Etap 2) Lewelowanie przeniesione z tymczasowego panelu (L) do detail panelu indeksu (IndexController).
--- LevelPanelController wycofany — otwarcie/ulepszanie odbywa sie w INDEKSie.
-
--- Panel ustawien wydajnosci (przycisk ⚙): przelaczniki animacji/FX/HP-barek/cudzych plotow
-local SettingsPanelController = require(Controllers:WaitForChild("SettingsPanelController"))
-SettingsPanelController.start()
-
--- Konfetti + baner po wyczyszczeniu fali
-local WaveFxController = require(Controllers:WaitForChild("WaveFxController"))
-WaveFxController.start()
-
--- Sklep (chowa HUD, tresc doda ziomek)
-local StoreController = require(Controllers:WaitForChild("StoreController"))
-StoreController.start()
-
--- Sprezyste hover/press na wszystkich przyciskach (port z obby)
-local UIHoverBinder = require(Controllers:WaitForChild("UIHoverBinder"))
-UIHoverBinder.start()
-
--- Kolysanie Roll + Sklep (przyciaga uwage)
-local AttentionBob = require(Controllers:WaitForChild("AttentionBob"))
-AttentionBob.start()
+local failed = {}
+for _, name in ipairs(ORDER) do
+	local ok, err = pcall(function()
+		local ctrl = require(Controllers:WaitForChild(name))
+		ctrl.start()
+	end)
+	if not ok then
+		failed[#failed + 1] = name
+		warn(("[init.client] kontroler %s padl przy starcie: %s"):format(name, tostring(err)))
+	end
+end
+if #failed > 0 then
+	warn(("[init.client] %d/%d kontrolerow NIE wystartowalo: %s"):format(#failed, #ORDER, table.concat(failed, ", ")))
+end

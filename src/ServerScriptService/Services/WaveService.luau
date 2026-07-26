@@ -80,6 +80,20 @@ local function referenceSoldierHp(waveNumber: number): number
 	return maxBase * hpMult
 end
 
+-- PROTOTYP "mniej grubszych": podziel liczby wrogow przez proto.countDiv (kopia, NIE mutuje configu).
+-- Zwraca nowy comp + przeliczony pool. countDiv=1 => bez zmian (oryginalny roj).
+local function applyProto(comp)
+	local div = (GameConfig.Wave.proto and GameConfig.Wave.proto.countDiv) or 1
+	local out, pool = {}, 0
+	for _, e in ipairs(comp) do
+		local cnt = e[2]
+		if div > 1 then cnt = math.max(1, math.floor(cnt / div + 0.5)) end
+		out[#out + 1] = { e[1], cnt, e[3] }
+		pool += cnt
+	end
+	return out, pool
+end
+
 -- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count[,hpOverride]}}, poolSize, formation)
 local function waveComposition(waveNumber: number)
 	-- boss-fala: 1 boss (HP = 5x zolnierz z fali n-1) + podklad wrogow (tier maxTier-1)
@@ -95,7 +109,8 @@ local function waveComposition(waveNumber: number)
 			local backTier = math.max(1, maxTierFor(waveNumber) - 1)
 			comp[#comp + 1] = { pickTierType(backTier, waveNumber), grunts }
 		end
-		return comp, 1 + grunts, { cols = 6 }
+		local sc, pool = applyProto(comp) -- proto: mniej wrogow (boss zawsze zostaje bo min 1)
+		return sc, pool, { cols = 6 }
 	end
 	-- jawna fala (np. [1]) — bez zmian
 	local w = GameConfig.Wave.waves[waveNumber]
@@ -104,7 +119,8 @@ local function waveComposition(waveNumber: number)
 		for _, e in ipairs(w.composition) do
 			pool += e[2]
 		end
-		return w.composition, pool, w.formation
+		local sc, scPool = applyProto(w.composition) -- proto: mniej wrogow (kopia, nie mutuje configu)
+		return sc, scPool, w.formation
 	end
 	-- generowana wzorem: FODDER FLOOR (staly udzial najnizszych tierow) + reszta na tiery okna z ODWROCONYMI
 	-- wagami (nizszy tier = wieksza waga). Efekt: roj taniego miesa + rzadkie elity = tekstura TD. Fodder floor
@@ -153,7 +169,8 @@ local function waveComposition(waveNumber: number)
 	end
 	push(lowTier, waveNumber + lowTier, elitePool - eliteUsed) -- najnizszy tier okna = reszta -> dominuje
 
-	return comp, pool, { cols = 6 }
+	local sc, scPool = applyProto(comp) -- proto: mniej wrogow (kopia)
+	return sc, scPool, { cols = 6 }
 end
 
 local function plotIdOf(player): number
@@ -291,6 +308,15 @@ local function onCoreDestroyed(player)
 	endWave(player, Enums.WaveEndReason.CoreDestroyed)
 end
 
+-- FIX P0: sprzatanie stanu per-gracz przy wyjsciu. Wczesniej _runGen NIE bylo zerowane (mikrowyciek:
+-- integer + referencja-klucz Player zostawaly na zawsze). To JEDYNE 4 tabele kluczowane po graczu w tym pliku.
+local function cleanupPlayer(player)
+	_phase[player] = nil
+	_run[player] = nil
+	_runStats[player] = nil
+	_runGen[player] = nil
+end
+
 function WaveService.Init()
 	WaveService.WaveStarted = Signal.new() -- (player, waveNumber, poolSize)
 	WaveService.WaveEnded = Signal.new() -- (player, reason, summary)
@@ -322,11 +348,7 @@ function WaveService.Start()
 		onCoreDestroyed(player)
 	end)
 
-	Players.PlayerRemoving:Connect(function(player)
-		_phase[player] = nil
-		_run[player] = nil
-		_runStats[player] = nil
-	end)
+	Players.PlayerRemoving:Connect(cleanupPlayer)
 end
 
 -- Hooki TYLKO do testow.
@@ -343,6 +365,16 @@ end
 function WaveService._WaveCompositionForTest(waveNumber)
 	local comp, pool = waveComposition(waveNumber)
 	return { comp = comp, pool = pool, isBoss = isBossWave(waveNumber) }
+end
+-- FIX P0 hooki testowe: zasianie/odczyt _runGen + wywolanie sprzatania (jak PlayerRemoving).
+function WaveService._SeedRunGenForTest(player, v)
+	_runGen[player] = v
+end
+function WaveService._GetRunGenForTest(player)
+	return _runGen[player]
+end
+function WaveService._CleanupPlayerForTest(player)
+	cleanupPlayer(player)
 end
 
 return WaveService

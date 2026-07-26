@@ -27,11 +27,14 @@ local PREWARM_BOSS = 2 -- ile modeli KAZDEGO bossa prealokowac (w tle)
 local BOSS_FOOT = 10 -- docelowy footprint bossa (study)
 local GRUNT_FOOT = 4 -- docelowy footprint zwyklego wroga
 -- FORMACJA (render-only): wrogowie wychodza z bramy GESIEGO/prosto, dopiero po chwili rozchodza sie na plac.
-local LANE_SCALE = 0.5 -- ZWEZENIE rozstawu bocznego (mniejsze odleglosci miedzy wrogami; 1 = pelna szerokosc placu)
-local SPREAD_START = 0.16 -- do tego t (od bramy) ida PROSTO, gesiego (jeszcze bez rozejscia)
-local SPREAD_RAMP = 0.26 -- odcinek t na ktorym narasta pelny rozstaw (t: START -> START+RAMP)
+-- Cel (wg gry-wzorca): luzna MASZERUJACA LINIA przez cala szerokosc+glebokosc placu, nie zbity klab.
+local LANE_SCALE = 0.9 -- rozstaw boczny (bylo 0.5 = kłąb; 0.9 = szeroki wachlarz na cala szerokosc lane)
+local SPREAD_START = 0.13 -- do tego t (od bramy) ida PROSTO, gesiego (jeszcze bez rozejscia)
+local SPREAD_RAMP = 0.22 -- odcinek t na ktorym narasta pelny rozstaw (t: START -> START+RAMP)
 local FX_POOL = 24 -- max jednoczesnych blyskow strzalow wrogow (hitscan)
 local HEAVY_CAP = 10 -- max jednoczesnych ciezkich FX (rakiety, wybuchy, ogien)
+local DMG_POOL = 30 -- pula floating liczb obrazen "-N" nad wrogiem
+local COIN_CAP = 48 -- max jednoczesnych monet-FX (fontanna z killa)
 
 local EnemyRenderController = {}
 
@@ -45,6 +48,8 @@ local _corePosByPlot = {} -- plotId -> pozycja rdzenia (WR_CoreAnchor) — cel o
 local _focused = nil
 local _lodClock = 0
 local _fxFree = {} -- { {flash, tracer}, ... }
+local _dmgFree = {} -- pula floating liczb obrazen "-N" (BillboardGui na anchorze)
+local _coinActive = 0 -- licznik aktywnych monet-FX (cap kosztu)
 local _weaponByModel = setmetatable({}, { __mode = "k" }) -- model -> { prof, part }  (bron rozpoznana raz)
 local _rigByModel = setmetatable({}, { __mode = "k" }) -- model -> { kind, prof, legs/spin }  (rig anim raz)
 local _hpBarByModel = setmetatable({}, { __mode = "k" }) -- model -> { gui, fill, label }  (pasek HP nad wrogiem, raz)
@@ -358,6 +363,74 @@ local function fireWeapon(e, muzzle, target)
 	end)
 end
 
+-- ── floating liczby obrazen "-N" (feel jak w grze-wzorcu) ──────────────────────
+local function buildDmgLabel()
+	local anchor = Instance.new("Part")
+	anchor.Size = Vector3.new(0.2, 0.2, 0.2); anchor.Transparency = 1
+	anchor.Anchored = true; anchor.CanCollide = false; anchor.CanQuery = false; anchor.CanTouch = false; anchor.CastShadow = false
+	anchor.Parent = _fxFolder
+	local gui = Instance.new("BillboardGui")
+	gui.Size = UDim2.fromOffset(80, 28); gui.AlwaysOnTop = true; gui.Enabled = false; gui.Adornee = anchor; gui.Parent = anchor
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.fromScale(1, 1); lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.GothamBlack
+	lbl.TextScaled = true; lbl.TextColor3 = Color3.fromRGB(255, 240, 140)
+	lbl.TextStrokeTransparency = 0.25; lbl.TextStrokeColor3 = Color3.new(0, 0, 0); lbl.Text = ""; lbl.Parent = gui
+	return { anchor = anchor, gui = gui, lbl = lbl }
+end
+
+-- popnij "-N" nad pozycja (rise + fade). big=trafienie krytyczne/duze -> wieksze i pomaranczowe.
+local function popDamage(pos, amount, big)
+	local rec = table.remove(_dmgFree)
+	if not rec then return end -- pula wyczerpana -> pomin (cap kosztu)
+	rec.anchor.Position = pos
+	rec.lbl.Text = "-" .. shortNum(amount)
+	rec.lbl.TextColor3 = big and Color3.fromRGB(255, 170, 60) or Color3.fromRGB(255, 240, 140)
+	rec.lbl.TextTransparency = 0; rec.lbl.TextStrokeTransparency = 0.25
+	rec.gui.Size = UDim2.fromOffset(big and 120 or 84, big and 42 or 30)
+	local jitterX = (math.random() - 0.5) * 2.4
+	rec.gui.StudsOffsetWorldSpace = Vector3.new(jitterX, 0, 0)
+	rec.gui.Enabled = true
+	task.spawn(function()
+		local t0 = os.clock(); local dur = 0.62
+		while rec.gui.Enabled do
+			local a = (os.clock() - t0) / dur
+			if a >= 1 then break end
+			rec.gui.StudsOffsetWorldSpace = Vector3.new(jitterX, a * 3.6, 0)
+			rec.lbl.TextTransparency = a * a
+			rec.lbl.TextStrokeTransparency = 0.25 + a * 0.75
+			RunService.Heartbeat:Wait()
+		end
+		rec.gui.Enabled = false
+		table.insert(_dmgFree, rec)
+	end)
+end
+
+-- fontanna monet z killa (kilka zlotych kulek podskakuje i znika) — bounded COIN_CAP.
+local function coinBurst(pos)
+	for _ = 1, 4 do
+		if _coinActive >= COIN_CAP then return end
+		_coinActive += 1
+		local c = Instance.new("Part")
+		c.Shape = Enum.PartType.Ball; c.Size = Vector3.new(0.6, 0.6, 0.6)
+		c.Anchored = true; c.CanCollide = false; c.CanQuery = false; c.CanTouch = false; c.CastShadow = false
+		c.Material = Enum.Material.Neon; c.Color = Color3.fromRGB(255, 205, 60); c.Position = pos + Vector3.new(0, 2, 0)
+		c.Parent = _fxFolder
+		local p0 = c.Position
+		local vx, vz, vy = (math.random() - 0.5) * 9, (math.random() - 0.5) * 9, 8 + math.random() * 5
+		task.spawn(function()
+			local t0 = os.clock(); local dur = 0.5 + math.random() * 0.25
+			while c.Parent do
+				local t = os.clock() - t0
+				if t >= dur then break end
+				c.Position = Vector3.new(p0.X + vx * t, p0.Y + vy * t - 16 * t * t, p0.Z + vz * t)
+				c.Transparency = (t / dur) * 0.6
+				RunService.Heartbeat:Wait()
+			end
+			c:Destroy(); _coinActive = math.max(0, _coinActive - 1)
+		end)
+	end
+end
+
 -- najblizsza jednostka gracza w zasiegu (XZ)
 local function nearestUnit(ox, oz, range)
 	local units = Workspace:FindFirstChild("WR_Units")
@@ -480,7 +553,7 @@ local function onEvents(payload)
 					weapon = _weaponByModel[model], -- {prof, part} rozpoznana bron
 						rig = _rigByModel[model], -- rig anim ruchu (nogi/kola/wirniki)
 						lane = laneForSpawn(s.isBoss), -- rozstaw na 9 KOLUMN placu (wachlarz, nie gesiego)
-						fwd = (math.random() - 0.5) * (s.isBoss and 1.5 or 2.5), -- lekki rozstaw w glab (desync szyku, zwezony)
+						fwd = (math.random() - 0.5) * (s.isBoss and 3 or 9), -- rozstaw W GLAB (glebokosc linii; bylo 2.5=plasko)
 						animPhase = math.random() * 6.28, -- desync animacji
 						atkRange = et and et.atkRange or 14,
 						atkInt = et and et.atkRate and (1 / et.atkRate) or 1.5,
@@ -493,6 +566,7 @@ local function onEvents(payload)
 		local key = id % U16
 		local e = _active[key]
 		if e then
+			if e.shown then coinBurst(e.model:GetPivot().Position) end -- fontanna monet na widocznym killu
 			release(e.model, e.poolKey)
 			_active[key] = nil
 		end
@@ -501,10 +575,15 @@ end
 
 local function onSync(_plotId, buf)
 	if type(buf) ~= "buffer" then return end
+	local len = buffer.len(buf)
+	if len < 2 then return end -- min. sam naglowek
 	local now = os.clock()
-	local n = buffer.len(buf) // 4
+	-- FIX P0: naglowek [u8 chunkIdx][u8 chunkCount] + rekordy 4B. Chunk = NIEZALEZNA aktualizacja stanu
+	-- znanych wrogow; chunkIdx/chunkCount czysto informacyjne (pruning idzie przez EnemyEvents, nie po
+	-- buforze) -> stosujemy po prostu to co przyszlo, zero czekania na komplet chunkow.
+	local n = (len - 2) // 4
 	for i = 0, n - 1 do
-		local off = i * 4
+		local off = 2 + i * 4
 		local id = buffer.readu16(buf, off)
 		local pathT = buffer.readu8(buf, off + 2) / 255
 		local hpPct = buffer.readu8(buf, off + 3) / 100 -- bajt 4 = % HP (0..100)
@@ -512,6 +591,15 @@ local function onSync(_plotId, buf)
 		if e then
 			e.prevT, e.prevC = e.curT, e.curC
 			e.curT, e.curC = pathT, now
+			-- floating "-N": pokaz gdy HP spadlo (tylko renderowani wrogowie -> wlasny/ogladany plot)
+			local oldPct = e.hpPct or 1
+			if e.shown and hpPct < oldPct - 0.004 and (e.maxHp or 0) > 0 then
+				local dmg = (oldPct - hpPct) * e.maxHp
+				if dmg >= 1 then
+					local hp = e.model:GetPivot().Position + Vector3.new(0, (e.halfH or 2) + 1.2, 0)
+					popDamage(hp, dmg, dmg >= e.maxHp * 0.25)
+				end
+			end
 			e.hpPct = hpPct
 		end
 	end
@@ -657,19 +745,29 @@ function EnemyRenderController.start()
 	_folder = Instance.new("Folder"); _folder.Name = "WR_EnemyRender"; _folder.Parent = Workspace
 	_fxFolder = Instance.new("Folder"); _fxFolder.Name = "WR_EnemyFX"; _fxFolder.Parent = Workspace
 	for _ = 1, FX_POOL do table.insert(_fxFree, buildFx()) end
-	-- prewarm bazowego wroga (tier1) synchronicznie — pojawia sie od fali 1
-	local baseModel = enemyModelName("grunt", false)
-	local baseKey = poolKeyFor(baseModel, false)
-	_freeByModel[baseKey] = {}
-	for _ = 1, PREWARM do
-		local m = buildEnemyModel(baseModel, false)
-		if m then table.insert(_freeByModel[baseKey], m) end
-	end
-	-- prewarm pozostalych modeli tierow + bossow W TLE (rozlozony na klatki), osobne pule boss/zwykly.
-	-- Zero Instance.new przy pierwszym pojawieniu Snipera/Heli/Jeta w fali (brak hitcha).
+	for _ = 1, DMG_POOL do table.insert(_dmgFree, buildDmgLabel()) end -- pula floating liczb obrazen
+	-- FIX P0: prewarm CALY w tle (partiami po ~10) — reszta bootstrapu klienta NIE czeka na niego (kiedys 60
+	-- grunta klonowanych synchronicznie = hitch przy wejsciu). Gated na Assets.Units: jesli nie zreplikowal
+	-- sie w 10s, pomijamy prewarm (modele zbuduja sie leniwie przez acquire) — warn, zero erroru.
 	task.spawn(function()
-		local seen = { [baseKey] = true }
+		local assets = ReplicatedStorage:WaitForChild("Assets", 10)
+		if not assets or not assets:FindFirstChild("Units") then
+			warn("[EnemyRenderController] Assets.Units niedostepny po 10s — pomijam prewarm (modele zbuduja sie leniwie)")
+			return
+		end
+		local baseModel = enemyModelName("grunt", false)
+		local baseKey = poolKeyFor(baseModel, false)
 		local built = 0
+		-- baza (tier1 grunt) pierwsza — pojawia sie od fali 1
+		_freeByModel[baseKey] = _freeByModel[baseKey] or {}
+		for _ = 1, PREWARM do
+			local m = buildEnemyModel(baseModel, false)
+			if m then table.insert(_freeByModel[baseKey], m) end
+			built += 1
+			if built % 10 == 0 then task.wait() end -- partiami po ~10, koszt klonowania rozlozony na klatki
+		end
+		-- pozostale tiery + bossy (osobne pule boss/zwykly) — zero Instance.new przy 1. pojawieniu w fali
+		local seen = { [baseKey] = true }
 		for _, et in pairs(GameConfig.Wave.enemyTypes) do
 			local isBoss = et.isBoss or false
 			local modelName = et.model or baseModel
@@ -682,7 +780,7 @@ function EnemyRenderController.start()
 					local m = buildEnemyModel(modelName, isBoss)
 					if m then table.insert(_freeByModel[pk], m) end
 					built += 1
-					if built % 8 == 0 then task.wait() end -- rozloz koszt klonowania na klatki
+					if built % 10 == 0 then task.wait() end
 				end
 			end
 		end

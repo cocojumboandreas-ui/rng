@@ -17,8 +17,18 @@ local WaveConfig = {
 	--   hpMult     = hpGrowth ^ (n-1)     (skaluje hp wroga)
 	--   atkMult    = dmgGrowth ^ (n-1)    (skaluje atkDmg wroga -> DEF bloku spowalnia, nie zatrzymuje na zawsze)
 	--   coinReward = round(waves[1].coinReward * coinGrowth ^ (n-1))
+	-- OGLĄDALNOŚĆ: pool ZOSTAWIONY jak w oryginale (20 + 4/fala). Weryfikacja pokazala, ze gra-wzorzec ma
+	-- MALO grubych wrogow, a nasz wzor (poolBase+fodderFrac) robi ROJ 80-110 -> gesty stos pasków+liczb przy
+	-- scianie. Zwiekszanie puli POGARSZA czytelnosc. Kierunek "mniej, grubszych" = decyzja balansu (BALANCE.md).
+	-- Zmieniony tylko interWaveDelay: dluzszy oddech, zeby celebracja (konfetti/koniczyny/+Monet) wybrzmiala.
 	scaling = { poolBase = 20, poolPerWave = 4, hpGrowth = 1.12, dmgGrowth = 1.07, coinGrowth = 1.15 },
-	interWaveDelay = 4.5, -- sekundy miedzy wyczyszczeniem fali a auto-startem nastepnej (konfetti + oddech)
+	-- PROTOTYP "MNIEJ, GRUBSZYCH WROGÓW" (A/B z nagraniem gry-wzorca). Jedno pokretlo, czytane w:
+	--   WaveService (countDiv -> mniej wrogow), CombatService (hpMul -> grubsi), CoreService (coreDmgMul ->
+	--   zagrozenie rdzenia bez zmian mimo mniej wrogow), EconomyService (kills*killReward*countDiv -> te same monety).
+	-- countDiv=hpMul -> CZAS czyszczenia fali ~ ten sam (mniej sztuk * wiecej HP = ta sama pula HP).
+	-- WYLACZ prototyp: ustaw wszystko na 1 (= oryginal, roj). Boss HP skaluje sie sam (hpMul w spawnie).
+	proto = { countDiv = 2, hpMul = 2, coreDmgMul = 2 },
+	interWaveDelay = 5.5, -- sekundy miedzy wyczyszczeniem fali a auto-startem nastepnej (konfetti + oddech)
 	bossHpVsPrevSoldier = 5, -- HP bossa = tyle x HP najsilniejszego zwyklego wroga z fali (n-1)
 	enemyTypes = {
 		-- model = wizual wroga (klient renderuje prawdziwy model z Assets.Units, strzela z broni + animacje).

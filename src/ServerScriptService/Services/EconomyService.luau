@@ -88,7 +88,9 @@ function EconomyService.AwardWave(player, waveNumber: number, kills: number): nu
 	if wc.bossWave and wc.bossWave > 0 and waveNumber % wc.bossWave == 0 then
 		base = base * (wc.bossRewardMult or 1) -- boss-fala: wieksza nagroda
 	end
-	local total = base + kills * GameConfig.Economy.killReward
+	-- PROTOTYP "mniej grubszych": mniej killi => killReward x countDiv, zeby monety za fale sie zgadzaly
+	local protoDiv = (GameConfig.Wave.proto and GameConfig.Wave.proto.countDiv) or 1
+	local total = base + kills * GameConfig.Economy.killReward * protoDiv
 	return EconomyService.Award(player, total, "wave")
 end
 

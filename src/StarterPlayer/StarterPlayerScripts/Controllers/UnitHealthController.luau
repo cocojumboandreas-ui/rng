@@ -101,8 +101,9 @@ function UnitHealthController.start()
 			if rec.gui then rec.gui.Enabled = false end
 			return -- Damage Counter OFF -> pomijamy pokazywanie/aktualizacje
 		end
-		if rec.gui and not rec.gui.Enabled then rec.gui.Enabled = true end
 		local pct = math.clamp(p.hpPct or 1, 0, 1)
+		-- pasek WIDOCZNY tylko gdy jednostka oberwala (pct<1). Pelne HP -> ukryj (koniec "zupy" pasków).
+		if rec.gui then rec.gui.Enabled = pct < 0.999 end
 		rec.fill.Size = UDim2.fromScale(pct, 1)
 		rec.fill.BackgroundColor3 = RED:Lerp(GREEN, pct)
 		local maxHp = p.maxHp or rec.maxHp
