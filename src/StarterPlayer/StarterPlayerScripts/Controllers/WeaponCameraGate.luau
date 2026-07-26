@@ -56,12 +56,14 @@ local function setShooting(on)
 	_busy = true
 	_shooting = on
 	if on then
-		Net.get("SetShootMode"):FireServer(true) -- serwer da bronie -> watcher equip
+		Net.get("SetShootMode"):FireServer(true) -- serwer da bronie RAZ na run (jesli jeszcze nie ma)
+		task.delay(0.2, function()
+			if _shooting then equipFirstWeapon() end -- WYJMIJ istniejaca/nowa bron (nie polegamy tylko na ChildAdded)
+		end)
 	else
-		unequipAll() -- NAJPIERW czysty unequip lokalnie (kit sprzata) — bron jeszcze istnieje
-		Net.get("SetShootMode"):FireServer(false) -- dopiero potem serwer zabiera bronie
+		unequipAll() -- CHOWA bron (unequip) + zwalnia kamere/celownik; bronie ZOSTAJA w plecaku (persystuja do konca runu)
 	end
-	task.delay(0.25, function() _busy = false end)
+	task.delay(0.3, function() _busy = false end)
 end
 
 local function showMessage()

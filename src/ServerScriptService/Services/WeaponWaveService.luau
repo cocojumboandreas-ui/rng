@@ -43,6 +43,19 @@ local function giveWeapons(player)
 	end
 end
 
+local function hasWeapons(player): boolean
+	for _, container in ipairs({ player:FindFirstChildOfClass("Backpack"), player.Character }) do
+		if container then
+			for _, t in ipairs(container:GetChildren()) do
+				if t:IsA("Tool") and t:GetAttribute("WR_WaveWeapon") then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
 local function waveActive(player): boolean
 	return _wave and _wave.GetPhase and _wave.GetPhase(player) == Enums.RunPhase.WaveActive or false
 end
@@ -53,8 +66,10 @@ function WeaponWaveService.Start()
 	_wave = ServiceRegistry.get("WaveService")
 
 	Net.get("SetShootMode").OnServerEvent:Connect(function(player, on)
-		removeWeapons(player) -- zawsze najpierw czysto (brak duplikatow)
-		if on == true and waveActive(player) then
+		-- Bronie dajemy RAZ na run i zostawiamy (NIE usuwamy-i-dajemy co toggle U — to psulo kit WeaponsSystem
+		-- przy re-equipie: kamera/celowanie ADS sypaly sie na starych, zniszczonych narzedziach). U tylko chowa/
+		-- wyjmuje (klient equip/unequip); bronie znikaja dopiero na KONIEC RUNU (WaveEnded reason!=Cleared).
+		if on == true and waveActive(player) and not hasWeapons(player) then
 			giveWeapons(player)
 		end
 	end)
