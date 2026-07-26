@@ -776,7 +776,9 @@ function BuildController.start()
 			_template.Visible = false
 		end
 		local btns = stroke and stroke:FindFirstChild("Buttons")
-		_tabBtns = { block = btns and btns:FindFirstChild("Blocks"), weapon = btns and btns:FindFirstChild("Weapons") }
+		-- UWAGA: przycisk taba jednostek w designerowym UI nazywa sie "Units" (nie "Weapons") -> szukamy obu,
+		-- inaczej weapon = nil -> klik w tab jednostek niepodpiety -> nie da sie wrocic z Blocks na jednostki.
+		_tabBtns = { block = btns and btns:FindFirstChild("Blocks"), weapon = btns and (btns:FindFirstChild("Units") or btns:FindFirstChild("Weapons")) }
 		if _tabBtns.block then _tabBtns.block.MouseButton1Click:Connect(function() setTab("block") end) end
 		if _tabBtns.weapon then _tabBtns.weapon.MouseButton1Click:Connect(function() setTab("weapon") end) end
 		local xBtn = root and root:FindFirstChild("X")
