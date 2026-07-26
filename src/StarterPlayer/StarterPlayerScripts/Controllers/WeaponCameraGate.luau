@@ -103,6 +103,13 @@ end
 function WeaponCameraGate.start()
 	local pg = LP:WaitForChild("PlayerGui")
 
+	-- UKRYJ domyslny hotbar/inventory broni (po U bronie sa w plecaku -> Roblox pokazywal pasek na dole).
+	-- Equip/unequip robimy programowo (U), gracz nie potrzebuje paska. Wylaczamy CoreGui Backpack.
+	local StarterGui = game:GetService("StarterGui")
+	pcall(function()
+		StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
+	end)
+
 	-- ── komunikat "Press [U] to shoot" ──
 	_msgGui = Instance.new("ScreenGui")
 	_msgGui.Name = "WR_ShootHint"; _msgGui.ResetOnSpawn = false; _msgGui.IgnoreGuiInset = true
