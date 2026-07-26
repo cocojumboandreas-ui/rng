@@ -31,6 +31,19 @@ local function releaseKitCamera()
 	end
 end
 
+-- WZNOW kamere kitu. KLUCZOWE przy re-equipie: kit po chowaniu zostawia camera.enabled=false
+-- i sam jej NIE wznawia na kolejnym equipie -> broe zalozona, ale kamera Custom (Twoj bug "2. raz U").
+-- Wymuszamy setEnabled(true) po kazdym zalozeniu broni.
+local function enableKitCamera()
+	local wsFolder = ReplicatedStorage:FindFirstChild("WeaponsSystem")
+	local mod = wsFolder and wsFolder:FindFirstChild("WeaponsSystem")
+	if not mod then return end
+	local ok, sys = pcall(require, mod)
+	if ok and type(sys) == "table" and sys.camera and type(sys.camera.setEnabled) == "function" then
+		pcall(function() sys.camera:setEnabled(true) end)
+	end
+end
+
 -- equip pierwszej broni WR -> kit sam przejmuje kamere/aiming/animacje
 local function equipFirstWeapon()
 	local char = LP.Character
@@ -39,7 +52,15 @@ local function equipFirstWeapon()
 	if char:FindFirstChildOfClass("Tool") then return end -- juz cos trzyma
 	local bp = LP:FindFirstChildOfClass("Backpack")
 	local tool = bp and bp:FindFirstChildWhichIsA("Tool")
-	if tool then hum:EquipTool(tool) end
+	if tool then
+		hum:EquipTool(tool)
+		-- po zalozeniu daj kitowi chwile na bind broni, potem WYMUS kamere (re-equip fix)
+		task.delay(0.3, function()
+			if _shooting and LP.Character and LP.Character:FindFirstChildOfClass("Tool") then
+				enableKitCamera()
+			end
+		end)
+	end
 end
 
 -- czysty unequip -> kit sam zatrzymuje animacje trzymania + zwalnia kamere + chowa celownik
