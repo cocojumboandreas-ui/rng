@@ -15,6 +15,7 @@ local Workspace = game:GetService("Workspace")
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
 local GridMath = require(Framework:WaitForChild("GridMath"))
+local EnemyFormation = require(Framework:WaitForChild("EnemyFormation")) -- pas boczny wspolny z serwerem
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
@@ -552,8 +553,8 @@ local function onEvents(payload)
 						maxHp = s.maxHp or 0, hpPct = 1, -- jawne HP: cur = maxHp * hpPct (hpPct z bufora sync)
 					weapon = _weaponByModel[model], -- {prof, part} rozpoznana bron
 						rig = _rigByModel[model], -- rig anim ruchu (nogi/kola/wirniki)
-						lane = laneForSpawn(s.isBoss), -- rozstaw na 9 KOLUMN placu (wachlarz, nie gesiego)
-						fwd = (math.random() - 0.5) * (s.isBoss and 3 or 9), -- rozstaw W GLAB (glebokosc linii; bylo 2.5=plasko)
+						lane = EnemyFormation.lane(s.id, s.isBoss, (GameConfig.Grid and GameConfig.Grid.cellSize) or 6), -- pas boczny DETERMINISTYCZNY z id -> IDENTYCZNY z serwerem (blokowanie)
+						fwd = EnemyFormation.fwd(s.id, s.isBoss), -- glebokosc DETERMINISTYCZNA z id -> zgodna z serwerem
 						animPhase = math.random() * 6.28, -- desync animacji
 						atkRange = et and et.atkRange or 14,
 						atkInt = et and et.atkRate and (1 / et.atkRate) or 1.5,
@@ -675,7 +676,7 @@ local function renderStep(dt)
 					end
 				end
 				-- rozstaw NARASTA od bramy: do SPREAD_START ida PROSTO/gesiego, potem rozchodza sie na plac
-				local spread = math.clamp((t - SPREAD_START) / SPREAD_RAMP, 0, 1)
+				local spread = EnemyFormation.spreadAt(t) -- WSPOLNY z serwerem (zgodnosc render<->blokowanie)
 				local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ
 				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * (e.lane * spread) + dir * (e.fwd * spread)
 				local pivot = CFrame.lookAlong(wpos, dir)

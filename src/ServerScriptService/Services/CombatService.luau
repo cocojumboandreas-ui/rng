@@ -17,6 +17,7 @@ local Signal = require(Framework:WaitForChild("Signal"))
 local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
 local Net = require(Framework:WaitForChild("Net"))
 local GridMath = require(Framework:WaitForChild("GridMath"))
+local EnemyFormation = require(Framework:WaitForChild("EnemyFormation"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
@@ -62,8 +63,8 @@ local function resolvePlot(key)
 end
 
 -- ── geometria ────────────────────────────────────────────────────────────────
--- pozycja swiata na polilinii pathNodes dla t∈[0,1] (rowno po segmentach; 2 wezly = lerp)
-local function enemyWorldPos(plot, t: number): Vector3
+-- SRODEK toru: pozycja swiata na polilinii pathNodes dla t∈[0,1] (rowno po segmentach)
+local function pathCenter(plot, t: number): Vector3
 	local nodes = plot.pathNodes
 	local n = nodes and #nodes or 0
 	if n == 0 then
@@ -80,6 +81,25 @@ local function enemyWorldPos(plot, t: number): Vector3
 	end
 	local frac = scaled - (i - 1)
 	return nodes[i].Position:Lerp(nodes[i + 1].Position, frac)
+end
+
+-- REALNA pozycja wroga: srodek toru + boczny pas (lane) i glebokosc (fwd) z rozlewem (EnemyFormation).
+-- Bez lane/fwd -> czysty srodek (do sprawdzen progresu, np. "przy rdzeniu"). MUSI byc zgodne z renderem klienta.
+local function enemyWorldPos(plot, t: number, lane: number?, fwd: number?): Vector3
+	local center = pathCenter(plot, t)
+	if (lane == nil or lane == 0) and (fwd == nil or fwd == 0) then
+		return center
+	end
+	local tt = math.clamp(t, 0, 1)
+	local ahead = pathCenter(plot, math.min(tt + 0.02, 1))
+	local d = ahead - center
+	if d.Magnitude < 1e-3 then
+		return center
+	end
+	local dir = d.Unit
+	local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ (jak render klienta)
+	local spread = EnemyFormation.spreadAt(tt)
+	return center + perp * ((lane or 0) * spread) + dir * ((fwd or 0) * spread)
 end
 
 local function towerWorldPos(plot, unitId: string, x: number, z: number): Vector3
@@ -132,6 +152,11 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 			coreTimer = et.coreAttackInterval,
 			atkDmg = atkDmg, -- atkDmg × waveAtkMult (zamrozony na spawnie, jak hp)
 			isBoss = isBoss, -- boss = zwykly wiersz z flaga (ta sama petla/pathing/core-dmg)
+			-- ROZLEW: boczny pas + glebokosc (deterministyczne z id -> klient renderuje IDENTYCZNIE).
+			-- Blokowanie/celowanie/dmg licza REALNA pozycje (nie srodek) -> bloki/jednostki na kazdej
+			-- kolumnie zatrzymuja wrogow tej kolumny (trzeba MUR przez szerokosc).
+			lane = EnemyFormation.lane(id, isBoss, GameConfig.Grid.cellSize),
+			fwd = EnemyFormation.fwd(id, isBoss),
 		}
 		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss, maxHp = hp }
 	end
@@ -274,16 +299,20 @@ local function step(dt: number)
 			for _, e in pairs(enemies) do
 				local et = GameConfig.Wave.enemyTypes[e.typeId]
 				local range = (et and et.atkRange) or 12 -- zasieg ostrzalu rdzenia = zasieg broni (BALANS: WaveConfig atkRange)
-				local epos = enemyWorldPos(plot, e.pathT)
+				-- "przy rdzeniu" liczymy ze SRODKA toru (progres wzdluz sciezki), zeby wrogowie z bocznych
+				-- kolumn tez doszli do rdzenia (inaczej skrajne pasy nigdy nie w zasiegu -> utkniecie na t=1).
+				local cpos = enemyWorldPos(plot, e.pathT)
+				-- REALNA pozycja (srodek + boczny pas) -> blokowanie/kolizja z placementami tej kolumny.
+				local epos = enemyWorldPos(plot, e.pathT, e.lane, e.fwd)
 				local atCore = false
 				if corePos then
-					local dx, dz = epos.X - corePos.X, epos.Z - corePos.Z
+					local dx, dz = cpos.X - corePos.X, cpos.Z - corePos.Z
 					if (dx * dx + dz * dz) <= range * range then atCore = true end
 				end
-				-- przeszkoda tuz przed wrogiem (na sciezce) -> stop (przenikanie zabronione)
+				-- przeszkoda tuz przed wrogiem (na jego REALNYM pasie) -> stop (przenikanie zabronione)
 				local blocked = false
 				if not atCore and e.pathT < 1 and #placeWorld > 0 then
-					local ahead = enemyWorldPos(plot, math.min(e.pathT + 0.02, 1))
+					local ahead = enemyWorldPos(plot, math.min(e.pathT + 0.02, 1), e.lane, e.fwd)
 					local fx, fz = ahead.X - epos.X, ahead.Z - epos.Z
 					local flen = math.sqrt(fx * fx + fz * fz)
 					if flen > 1e-3 then
@@ -314,7 +343,7 @@ local function step(dt: number)
 						local bestD = effRange * effRange
 						local best = nil
 						for _, e in pairs(enemies) do
-							local epos = enemyWorldPos(plot, e.pathT)
+							local epos = enemyWorldPos(plot, e.pathT, e.lane, e.fwd)
 							local dx, dz = epos.X - tpos.X, epos.Z - tpos.Z
 							local d2 = dx * dx + dz * dz
 							if d2 <= bestD then
@@ -363,7 +392,7 @@ local function step(dt: number)
 					if et and et.atkDmg then
 						e.unitTimer = (e.unitTimer or 0) - dt
 						if e.unitTimer <= 0 then
-							local epos = enemyWorldPos(plot, e.pathT)
+							local epos = enemyWorldPos(plot, e.pathT, e.lane, e.fwd)
 							local best, bestD = nil, (et.atkRange or 14) * (et.atkRange or 14)
 							for _, ui in ipairs(unitList) do
 								if uhp[ui.pid] then
