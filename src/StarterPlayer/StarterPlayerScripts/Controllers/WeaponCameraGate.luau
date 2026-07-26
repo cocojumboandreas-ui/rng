@@ -63,6 +63,27 @@ local function equipFirstWeapon()
 	end
 end
 
+-- klawisze 1-4 -> wybor broni (hotbar UKRYTY, ale przelaczanie 1234 dziala jak dawniej)
+local WEAPON_KEYS = {
+	[Enum.KeyCode.One] = "Pistol", [Enum.KeyCode.KeypadOne] = "Pistol",
+	[Enum.KeyCode.Two] = "AR", [Enum.KeyCode.KeypadTwo] = "AR",
+	[Enum.KeyCode.Three] = "Shotgun", [Enum.KeyCode.KeypadThree] = "Shotgun",
+	[Enum.KeyCode.Four] = "Sniper", [Enum.KeyCode.KeypadFour] = "Sniper",
+}
+local function equipWeaponByName(name)
+	local char = LP.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+	local held = char:FindFirstChildOfClass("Tool")
+	if held and held.Name == name then return end -- juz trzyma te bron
+	local bp = LP:FindFirstChildOfClass("Backpack")
+	local tool = (bp and bp:FindFirstChild(name)) or char:FindFirstChild(name)
+	if tool and tool:IsA("Tool") then
+		hum:EquipTool(tool) -- EquipTool sam chowa poprzednia
+		task.delay(0.25, function() if _shooting then enableKitCamera() end end) -- wymus kamere po zmianie
+	end
+end
+
 -- czysty unequip -> kit sam zatrzymuje animacje trzymania + zwalnia kamere + chowa celownik
 local function unequipAll()
 	local char = LP.Character
@@ -153,6 +174,9 @@ function WeaponCameraGate.start()
 		if gp then return end
 		if input.KeyCode == Enum.KeyCode.U and _waveActive then
 			setShooting(not _shooting)
+		elseif _shooting then
+			local wname = WEAPON_KEYS[input.KeyCode]
+			if wname then equipWeaponByName(wname) end -- 1-4 przelacza bron (pasek ukryty)
 		end
 	end)
 
