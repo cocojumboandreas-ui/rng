@@ -26,3 +26,6 @@ _backup*/
 og.png
 oooo.mp4
 *.mp4
+
+# Python bytecode cache (tools/)
+__pycache__/
