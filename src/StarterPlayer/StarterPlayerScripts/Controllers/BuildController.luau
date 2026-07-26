@@ -886,7 +886,7 @@ function BuildController.start()
 			-- nic nie stawiamy: podswietl wlasna jednostke pod kursorem (klik = edycja/przestawienie).
 			-- Tylko w trybie stawiania (w trybie Usun LPM kasuje, wiec bez hover-edycji).
 			if _mode == "place" then updateHover() else clearHover() end
-			if _cursorGui.Enabled then _cursorGui.Enabled = false end
+			if _cursorGui.Enabled then setCursor(false) end
 		end
 	end)
 end

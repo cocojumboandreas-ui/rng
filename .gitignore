@@ -29,3 +29,6 @@ oooo.mp4
 
 # Python bytecode cache (tools/)
 __pycache__/
+
+# Artefakty reconcyliacji driftu (lokalny slad)
+tools/_rescue/
