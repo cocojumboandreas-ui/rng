@@ -63,7 +63,12 @@ function WeaponWaveService.Start()
 	-- Opoznienie: daj klientowi chwile na CZYSTY unequip (kit chowa celownik + wraca animacja)
 	-- ZANIM zniszczymy narzedzia. Bez tego Destroy wyprzedza unequip -> celownik/kamera zwisaja.
 	if _wave and _wave.WaveEnded then
-		_wave.WaveEnded:Connect(function(player)
+		_wave.WaveEnded:Connect(function(player, reason)
+			-- FALE CIAGIEM: WaveEnded leci CO FALE (reason=Cleared) — NIE zabieraj broni miedzy falami.
+			-- Zabierz dopiero na KONIEC RUNU (reason inne niz Cleared: "core"/"stopped" z finishRun).
+			if reason == Enums.WaveEndReason.Cleared then
+				return
+			end
 			task.delay(0.4, function()
 				if player and player.Parent then
 					removeWeapons(player)

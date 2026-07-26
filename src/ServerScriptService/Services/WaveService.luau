@@ -188,10 +188,9 @@ function WaveService.GetPhase(player): string
 	return _phase[player] or Enums.RunPhase.Building
 end
 
-function WaveService.StartWave(player)
-	if WaveService.GetPhase(player) ~= Enums.RunPhase.Building then
-		return -- tylko z Building
-	end
+-- Rozpocznij fale wg data.waveNumber: spawn puli, faza WaveActive, reset rdzenia. BEZ bramki fazy —
+-- wolane i przez StartWave (pierwsza fala runu z Building), i przez endWave (fale leca CIAGIEM, bez przerwy).
+local function beginWave(player)
 	local data = _profile and _profile.GetProfile(player)
 	if not data then
 		return
@@ -201,12 +200,22 @@ function WaveService.StartWave(player)
 
 	_phase[player] = Enums.RunPhase.WaveActive
 	_run[player] = { kills = 0, pool = pool }
-	_core.ResetHP(player)
+	-- BEZ resetu HP rdzenia co fale: HP przechodzi miedzy falami (fale leca ciagiem). Reset tylko na START RUNU (StartWave).
 	for _, entry in ipairs(comp) do
 		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3] })
 	end
 	WaveService.WaveStarted:Fire(player, waveNumber, pool)
 	pushProgress(player, waveNumber, 0, pool)
+end
+
+-- Gracz klika "Rozpocznij fale" — TYLKO z fazy Building (start runu, przed pierwsza fala). Potem fale leca
+-- ciagiem az do padu rdzenia / recznego "Zakoncz fale", bez okna budowania miedzy nimi.
+function WaveService.StartWave(player)
+	if WaveService.GetPhase(player) ~= Enums.RunPhase.Building then
+		return -- tylko z Building (start runu)
+	end
+	_core.ResetHP(player) -- rdzen PELNY tylko na START RUNU; potem HP przechodzi miedzy falami (bez resetu co fale)
+	beginWave(player)
 end
 
 -- KONIEC CALEGO RUNU (baza padla / gracz przerwal recznie): podsumowanie max fala + max dmg + monety.
@@ -258,22 +267,15 @@ local function endWave(player, reason)
 		data.waveNumber = waveNumber + 1
 	end
 
-	_phase[player] = Enums.RunPhase.Building
-	_run[player] = nil
+	-- FALE CIAGIEM: NIE wracamy do fazy Building miedzy falami i NIE ma opoznienia. WaveEnded to tylko
+	-- kosmetyka (konfetti + "+Monet" na kliencie); zaraz po nim startuje nastepna fala. Buduj jest
+	-- niedostepny przez caly run (Building tylko przed 1. fala / po padzie rdzenia / po recznym stopie).
 	local summary = { coinsEarned = coinsEarned, kills = run.kills, waveNumber = waveNumber }
 	WaveService.WaveEnded:Fire(player, reason, summary)
 	if _waveEnded then
 		_waveEnded:FireClient(player, { plotId = plotIdOf(player), reason = reason, summary = summary })
 	end
-	-- AUTO-PROGRESJA (nieskonczone fale): wyczyszczono -> konfetti (klient na WaveEnded/Cleared)
-	-- -> po przerwie automatycznie startuje nastepna fala (n+1). Petla trwa do padu bazy / recznego stopu.
-	local d = GameConfig.Wave.interWaveDelay or 4
-	local gen = _runGen[player] or 0
-	task.delay(d, function()
-		if player and player.Parent and (_runGen[player] or 0) == gen and WaveService.GetPhase(player) == Enums.RunPhase.Building then
-			WaveService.StartWave(player)
-		end
-	end)
+	beginWave(player) -- nastepna fala (n+1) NATYCHMIAST, zostajemy w WaveActive (zero przerwy, zero okna budowania)
 end
 
 -- Gracz konczy run RECZNIE (przycisk „Zakończ falę") — w dowolnej fazie -> podsumowanie.

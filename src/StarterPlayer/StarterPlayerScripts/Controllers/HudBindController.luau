@@ -100,6 +100,52 @@ function HudBindController.start()
 	local indexBtn = resolve(sb, "LeftCanvas", "Buttons", "Index")
 	local storeBtn = resolve(sb, "LeftCanvas", "Buttons", "Store")
 	local buildBtn = resolve(sb, "BottomCanvas", "Buttons", "Build")
+
+	-- ── WAVE MODE: Buduj niedostepny podczas fali (fale leca ciagiem, brak okna budowania) ──
+	local _waveActive = false
+	-- toast (komunikat "nie mozna budowac w tej rundzie")
+	local toastGui = Instance.new("ScreenGui")
+	toastGui.Name = "WR_BuildToast"; toastGui.ResetOnSpawn = false; toastGui.IgnoreGuiInset = true
+	toastGui.DisplayOrder = 500; toastGui.Parent = pg
+	local toastLbl = Instance.new("TextLabel")
+	toastLbl.AnchorPoint = Vector2.new(0.5, 0); toastLbl.Position = UDim2.new(0.5, 0, 0.32, 0)
+	toastLbl.Size = UDim2.fromOffset(440, 46); toastLbl.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+	toastLbl.BackgroundTransparency = 0.12; toastLbl.BorderSizePixel = 0
+	toastLbl.Font = Enum.Font.GothamBold; toastLbl.TextSize = 20; toastLbl.TextColor3 = Color3.fromRGB(255, 120, 120)
+	toastLbl.Text = ""; toastLbl.TextTransparency = 1; toastLbl.Visible = false; toastLbl.Parent = toastGui
+	local tc = Instance.new("UICorner"); tc.CornerRadius = UDim.new(0, 10); tc.Parent = toastLbl
+	local tstk = Instance.new("UIStroke"); tstk.Color = Color3.fromRGB(255, 90, 90); tstk.Thickness = 1.5; tstk.Transparency = 0.4; tstk.Parent = toastLbl
+	local _toastTok = 0
+	local function showToast(text)
+		toastLbl.Text = text
+		toastLbl.Visible = true; toastLbl.TextTransparency = 1; toastLbl.BackgroundTransparency = 1
+		toastLbl.Position = UDim2.new(0.5, 0, 0.31, 0)
+		TweenService:Create(toastLbl, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			TextTransparency = 0, BackgroundTransparency = 0.12, Position = UDim2.new(0.5, 0, 0.32, 0),
+		}):Play()
+		_toastTok += 1
+		local tok = _toastTok
+		task.delay(1.6, function()
+			if tok ~= _toastTok then return end
+			TweenService:Create(toastLbl, TweenInfo.new(0.4), { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+			task.delay(0.4, function() if tok == _toastTok then toastLbl.Visible = false end end)
+		end)
+	end
+	-- przyciemnienie przycisku Build gdy fala trwa (nakladka; Active=false -> klik przechodzi do przycisku -> toast)
+	local buildDim = nil
+	if buildBtn then
+		buildDim = Instance.new("Frame")
+		buildDim.Name = "WR_BuildDim"; buildDim.Size = UDim2.fromScale(1, 1)
+		buildDim.BackgroundColor3 = Color3.new(0, 0, 0); buildDim.BackgroundTransparency = 0.5
+		buildDim.BorderSizePixel = 0; buildDim.ZIndex = 50; buildDim.Active = false; buildDim.Visible = false
+		local dc = Instance.new("UICorner"); dc.CornerRadius = UDim.new(0, 8); dc.Parent = buildDim
+		buildDim.Parent = buildBtn
+	end
+	local function setBuildLocked(locked)
+		_waveActive = locked
+		if buildDim then buildDim.Visible = locked end
+	end
+
 	if skillsBtn then
 		bindPress(skillsBtn)
 		skillsBtn.MouseButton1Click:Connect(function()
@@ -117,6 +163,10 @@ function HudBindController.start()
 	if buildBtn then
 		bindPress(buildBtn)
 		buildBtn.MouseButton1Click:Connect(function()
+			if _waveActive then
+				showToast("Nie można budować w tej rundzie")
+				return -- fala trwa -> Buduj zablokowany
+			end
 			local ctrl = require(Controllers:FindFirstChild("BuildController"))
 			if ctrl and ctrl.Toggle then ctrl.Toggle() end
 		end)
@@ -159,12 +209,15 @@ function HudBindController.start()
 		if type(p) == "table" then
 			showWave(p.waveNumber, p.killed, p.pool)
 			setWaveActiveUI(true) -- fala trwa -> pokaz "Zakoncz fale"
+			if not _waveActive then
+				setBuildLocked(true) -- pierwsza fala runu -> przyciemnij Buduj + zamknij panel jesli otwarty
+				local ctrl = require(Controllers:FindFirstChild("BuildController"))
+				if ctrl and ctrl.IsBuildMode and ctrl.IsBuildMode() and ctrl.Toggle then ctrl.Toggle() end
+			end
 		end
 	end)
-	Net.get("WaveEnded").OnClientEvent:Connect(function()
-		setWaveActiveUI(false) -- fala wyczyszczona -> tylko "Rozpocznij fale"
-		if waveInfo then waveInfo.Visible = false end
-	end)
+	-- FALE CIAGIEM: WaveEnded to tylko kosmetyka (konfetti/monety robi WaveFxController) — NIE odblokowuje
+	-- Buduj ani nie chowa "Wave X", bo zaraz leci nastepna fala. Odblokowanie dopiero na RunSummary (koniec runu).
 
 	-- ── MODAL PODSUMOWANIA RUNU (przeniesiony z HudController; SideButtons go nie ma) ──
 	local modalGui = Instance.new("ScreenGui")
@@ -209,6 +262,7 @@ function HudBindController.start()
 	Net.get("RunSummary").OnClientEvent:Connect(function(s)
 		if type(s) ~= "table" then return end
 		setWaveActiveUI(false) -- koniec runu -> tylko "Rozpocznij fale"
+		setBuildLocked(false) -- koniec runu -> Buduj znow dostepny (wracamy do fazy Building)
 		if waveInfo then waveInfo.Visible = false end
 		subL.Text = (s.reason == "core") and "Twoja baza została zniszczona" or "Przerwałeś falę"
 		waveVal.Text = fmt(s.maxWave or 0)

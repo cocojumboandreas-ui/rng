@@ -97,8 +97,8 @@ function WeaponCameraGate.start()
 
 	-- ── start fali (WaveProgress killed=0 na starcie) -> komunikat + tryb dostepny ──
 	Net.get("WaveProgress").OnClientEvent:Connect(function(p)
-		if type(p) == "table" and (p.killed == 0 or not _waveActive) then
-			_waveActive = true
+		if type(p) == "table" and not _waveActive then
+			_waveActive = true -- pierwsza fala runu; fale leca CIAGIEM -> zostaje true do konca runu (hint raz)
 			showMessage()
 		end
 	end)
@@ -114,7 +114,8 @@ function WeaponCameraGate.start()
 		end
 		if _msgGui then _msgGui.Enabled = false end
 	end
-	Net.get("WaveEnded").OnClientEvent:Connect(onWaveEnd)
+	-- FALE CIAGIEM: NIE konczymy trybu strzelania na WaveEnded (leci CO FALE) — tryb trwa przez caly run.
+	-- Koniec dopiero na RunSummary (pad rdzenia / reczny "Zakoncz fale").
 	Net.get("RunSummary").OnClientEvent:Connect(onWaveEnd)
 
 	-- ── klawisz U (tylko w fali) ──

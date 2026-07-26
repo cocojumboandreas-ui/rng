@@ -605,6 +605,16 @@ local function onSync(_plotId, buf)
 	end
 end
 
+-- echo trafienia gracza (S->C PlayerShotHit): "-N" NAD wrogiem OD RAZU, exact dmg z serwera.
+-- Niezaleznie od kwantyzacji hpPct w EnemySync -> dziala tez na grubych wrogach (gdzie -N gubi sie w sync).
+local function onPlayerShotHit(_plotId, id, dmg)
+	if type(id) ~= "number" or type(dmg) ~= "number" or dmg < 1 then return end
+	local e = _active[id % U16]
+	if not e or not e.shown then return end
+	local pos = e.model:GetPivot().Position + Vector3.new(0, (e.halfH or 2) + 1.2, 0)
+	popDamage(pos, dmg, dmg >= (e.maxHp or 0) * 0.25)
+end
+
 -- ── LOD ──────────────────────────────────────────────────────────────────────────
 local function updateFocus(now)
 	if now - _lodClock < 0.2 then return end
@@ -795,6 +805,7 @@ function EnemyRenderController.start()
 	end)
 	Net.get("EnemyEvents").OnClientEvent:Connect(onEvents)
 	Net.get("EnemySync").OnClientEvent:Connect(onSync)
+	Net.get("PlayerShotHit").OnClientEvent:Connect(onPlayerShotHit)
 	RunService.RenderStepped:Connect(renderStep)
 end
 

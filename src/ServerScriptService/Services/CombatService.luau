@@ -25,6 +25,7 @@ local CombatService = {}
 
 local _plot, _stat, _grid, _build, _level = nil, nil, nil, nil, nil
 local _enemySync, _enemyEvents, _bossHP, _unitHpNet = nil, nil, nil, nil
+local _playerShotHit = nil -- S->C echo trafienia gracza (liczba "-N" nad wrogiem)
 local _unitHp: { [any]: { [string]: number } } = {} -- player -> {placementId -> hp} (faza 5)
 local _unitHpSend: { [string]: number } = {} -- placementId -> os.clock ostatniego pushu HP (throttle)
 
@@ -485,9 +486,20 @@ function CombatService.PlayerHitEnemy(player, id)
 	local enemies = _enemies[player]
 	local e = enemies and enemies[id]
 	if not e then return end -- brak wroga (poza fala / zly id / juz martwy) -> ignoruj (anti-cheat lekki)
+	-- dmg PER BRON: serwer patrzy jaki Tool gracz trzyma (WR_WaveWeapons: Pistol/AR/Shotgun/Sniper) i bierze
+	-- dmg z SimConfig.playerWeaponDmg; brak wpisu / brak broni -> playerShotDmg. Server-authoritative (klient nie oszuka).
 	local dmg = GameConfig.Sim.playerShotDmg or 10
+	local perW = GameConfig.Sim.playerWeaponDmg
+	if perW and typeof(player) == "Instance" and player.Character then
+		local tool = player.Character:FindFirstChildOfClass("Tool")
+		if tool and perW[tool.Name] then dmg = perW[tool.Name] end
+	end
 	_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, e.hp))
 	e.hp -= dmg
+	-- liczba "-N" NAD wrogiem OD RAZU (exact dmg; niezaleznie od kwantyzacji hpPct w EnemySync -> dziala tez na tankach)
+	if _playerShotHit then
+		_playerShotHit:FireClient(player, e.plotId or 0, id, dmg)
+	end
 	if e.hp <= 0 then
 		enemies[id] = nil
 		queueDeath(player, id)
@@ -510,6 +522,7 @@ function CombatService.Start()
 	_enemyEvents = Net.get("EnemyEvents")
 	_bossHP = Net.get("BossHP")
 	_unitHpNet = Net.get("UnitHp")
+	_playerShotHit = Net.get("PlayerShotHit")
 
 	Net.get("PlayerHitEnemy").OnServerEvent:Connect(function(player, id)
 		CombatService.PlayerHitEnemy(player, tonumber(id))
