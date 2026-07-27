@@ -119,6 +119,7 @@ function SkillTreeController.start()
 
 	-- galezie "owned" -> pack pokazuje rank1 (reveal packa: dziecko widoczne gdy rodzic owned)
 	local function ownBranches()
+		NodeTreeClient.setIsNodeOwned("root", true) -- root owned -> 3 dzieci REALNE (ich dzieci = "?", reszta ukryta)
 		for id in pairs(nodes) do
 			if string.sub(id, 1, 2) == "b:" then
 				NodeTreeClient.setIsNodeOwned(id, true)
@@ -166,6 +167,15 @@ function SkillTreeController.start()
 						markOwned(skillId .. "#" .. k)
 					end
 				end
+			end)
+		end
+	end
+
+	-- NOWE drzewo (ids bez "#"): klik = ODSLONIECIE dzieci (client-side, na razie bez kosztu; buy-cost dojdzie potem)
+	for nodeId in pairs(nodes) do
+		if nodeId ~= "root" and not string.find(nodeId, "#", 1, true) then
+			NodeTreeClient.setPressedCallback(nodeId, function()
+				markOwned(nodeId)
 			end)
 		end
 	end

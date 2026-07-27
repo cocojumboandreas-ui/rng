@@ -1,34 +1,31 @@
---!strict
--- Content/Config/SkillConfig.luau — drzewko umiejetnosci (rankowane, pasywne), 2 waluty.
--- SCHEMA authored wg §4. UWAGA: SkillService jest POST-BRAMKA — tu tylko dane, brak logiki.
--- StatProfileService agreguje GENERYCZNIE po effect.{stat,perRank} -> nowy wezel = zero kodu serwera,
--- wystarczy zeby effect.stat byl jednym z pol Stats (StatBaseConfig).
--- `label` = krotka nazwa do UI drzewka (NodeTree). `branch` = grupowanie/layout.
+--!nonstrict
+-- Content/Config/SkillConfig.luau — koszty/kupno drzewa umiejetnosci (dane z SkillTreeData).
+-- FAZA: BEZ efektow (node bez `effect` -> StatProfile go pomija, zero zmiany Stats). Efekty dorobimy pozniej.
+-- maxRank=1 -> cost = base * 1^costExp = base (koszt = wprost z crafteru). currency: coin>0 -> Coins, roll>0 -> Rolls.
+-- Wezly 0/0 (informacyjne) NIE trafiaja tu -> niekupowalne (SkillService: NoSuchNode).
+local Config = script.Parent
+local SkillTreeData = require(Config:WaitForChild("SkillTreeData"))
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Enums = require(Shared:WaitForChild("Enums"))
-
 local C = Enums.Currency
 
-local SkillConfig = {
-	costExp = 1.5, -- cost(rank) = round(base * rank ^ costExp)  (liczone w SkillService)
-	nodes = {
-		-- ── ROLL (RNG) ──────────────────────────────────────────────────────
-		luck_1 = { branch = "Roll", label = "Szczescie", currency = C.Coins, maxRank = 5, base = 100, effect = { stat = "luck", perRank = 0.2 } },
-		fast_1 = { branch = "Roll", label = "Tempo rolki", currency = C.Rolls, maxRank = 3, base = 15, effect = { stat = "rollSpeed", perRank = -0.15 } },
-		mut_1 = { branch = "Roll", label = "Mutacja", currency = C.Rolls, maxRank = 3, base = 20, effect = { stat = "mutChance", perRank = 0.15 } },
-		variant_1 = { branch = "Roll", label = "Wariant", currency = C.Rolls, maxRank = 3, base = 30, effect = { stat = "variantLuck", perRank = 0.25 } },
+local nodes = {}
+for _, n in ipairs(SkillTreeData) do
+	local coin, roll = n.coin or 0, n.roll or 0
+	if n.id ~= "root" and (coin > 0 or roll > 0) then
+		nodes[n.id] = {
+			label = n.label,
+			currency = (coin > 0) and C.Coins or C.Rolls,
+			maxRank = 1,
+			base = (coin > 0) and coin or roll,
+			-- kupno tylko gdy RODZIC kupiony (progresja od podstaw; blokuje kupno "?" poza kolejnoscia)
+			prereqs = (n.parent ~= "root") and { [n.parent] = 1 } or nil,
+			-- BEZ `effect`: na razie zero mechaniki (StatProfile pomija). Efekty dorobimy per-wezel pozniej.
+		}
+	end
+end
 
-		-- ── BASE (ekonomia/obrona) ─────────────────────────────────────────
-		cells_1 = { branch = "Base", label = "Budzet cel", currency = C.Coins, maxRank = 4, base = 500, effect = { stat = "cellBudget", perRank = 5 } },
-		core_1 = { branch = "Base", label = "HP rdzenia", currency = C.Coins, maxRank = 3, base = 300, effect = { stat = "coreHP", perRank = 25 } },
-		coin_1 = { branch = "Base", label = "Monety", currency = C.Coins, maxRank = 5, base = 150, effect = { stat = "coinMult", perRank = 0.1 } },
-		offline_1 = { branch = "Base", label = "Offline", currency = C.Coins, maxRank = 4, base = 400, effect = { stat = "offlineRate", perRank = 5 } },
-
-		-- ── COMBAT (wieze) ─────────────────────────────────────────────────
-		dmg_1 = { branch = "Combat", label = "Obrazenia", currency = C.Coins, maxRank = 5, base = 200, effect = { stat = "dmgMult", perRank = 0.1 } },
-		fire_1 = { branch = "Combat", label = "Szybkostrz.", currency = C.Coins, maxRank = 5, base = 250, effect = { stat = "fireRateMult", perRank = 0.1 } },
-		range_1 = { branch = "Combat", label = "Zasieg", currency = C.Coins, maxRank = 4, base = 300, effect = { stat = "rangeMult", perRank = 0.08 } },
-	},
+return {
+	costExp = 1.0, -- maxRank=1, wiec cost = base (koszt wprost z projektu)
+	nodes = nodes,
 }
-
-return SkillConfig

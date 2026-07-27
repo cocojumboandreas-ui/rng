@@ -1,16 +1,17 @@
 --!nonstrict
--- Content/Config/SkillTreeLayout.luau
--- Drzewo umiejetnosci zaprojektowane w CRAFTERze (95 wezlow). Buduje liste wezlow dla packa NodeTree.
--- FAZA: WIDOCZNE, bez logiki kupna. Ids NIE maja "#", wiec SkillTreeController nie podpina zakupu
---   (parseNodeId wymaga "#") -> klik nic nie robi. Efekty/koszty-kupna dorobimy pozniej (SkillConfig).
--- Ten sam pack NodeTree renderuje to swoim stylem (nie ruszamy wygladu). inheritVisibility=true na
---   WSZYSTKICH -> cale drzewo widoczne od razu (bez czekania na zakup rodzica).
--- 0 monet i 0 kostek = wezel INFORMACYJNY (naglowek sekcji) -> bez ceny.
-local COIN = "rbxassetid://5684864491" -- ikona monety
-local DICE = "rbxassetid://92190657341460" -- ikona kostki
-local CLOVER = "rbxassetid://123550318368193" -- ikona koniczyny (luck)
+-- Content/Config/SkillTreeLayout.luau — buduje liste wezlow dla packa NodeTree z SkillTreeData (95 wezlow).
+-- Id wezla = "<origId>#1" (poza rootem) -> SkillTreeController podpina kupno (parseNodeId wymaga "#");
+--   klik -> SkillPurchase(origId) -> SkillService (koszt+zapis). Kupno = markOwned -> pack odslania dzieci.
+-- Widocznosc: root -> 3 bezposrednie dzieci widoczne od startu (inheritVisibility=true); reszta odslania sie
+--   gdy rodzic "owned" (kupiony). 0/0 = wezel informacyjny (bez ceny, niekupowalny -> SkillService NoSuchNode).
+-- Ceny pack sam skraca do K/M. Nie ruszamy wygladu packa.
+local Config = script.Parent
+local SkillTreeData = require(Config:WaitForChild("SkillTreeData"))
 
--- kierunki heksa (konwencja packa: X * sqrt3*halfW, Y * halfH)
+local COIN = "rbxassetid://5684864491"
+local DICE = "rbxassetid://92190657341460"
+local CLOVER = "rbxassetid://123550318368193"
+
 local DIR = {
 	Gora = Vector2.new(0, -2),
 	Dol = Vector2.new(0, 2),
@@ -20,104 +21,9 @@ local DIR = {
 	DolPrawo = Vector2.new(1, 1),
 }
 
--- DANE z crafteru: id, parent, dir, label, koszt monety, koszt kostki.
-local RAW = {
-	{ id="root", parent=nil, dir=nil, label="DRZEWO Umiejetnosci", coin=0, roll=0 },
-	{ id="n2", parent="root", dir="DolLewo", label="Automatic Roll", coin=250, roll=0 },
-	{ id="n3", parent="n2", dir="GoraLewo", label="Rozwijanie w trybie offline", coin=5000, roll=0 },
-	{ id="n4", parent="n2", dir="Dol", label="Zlote rolki", coin=1100, roll=0 },
-	{ id="n5", parent="n4", dir="DolLewo", label="Automatic wave", coin=5000, roll=0 },
-	{ id="n6", parent="n4", dir="DolPrawo", label="Zlote rolki I", coin=10000, roll=0 },
-	{ id="n7", parent="n6", dir="Dol", label="Zlote rolki II", coin=25000, roll=0 },
-	{ id="n8", parent="n7", dir="DolLewo", label="Diamentowe rolki", coin=100000, roll=0 },
-	{ id="n9", parent="n7", dir="DolPrawo", label="Zlote rolki III", coin=65000, roll=0 },
-	{ id="n10", parent="n9", dir="Dol", label="Zlote rolki IV", coin=150000, roll=0 },
-	{ id="n11", parent="n8", dir="Dol", label="Diamentowe rolki I", coin=1500000, roll=0 },
-	{ id="n12", parent="n11", dir="Dol", label="Diamentowe rolki II", coin=2500000, roll=0 },
-	{ id="n13", parent="n12", dir="DolLewo", label="Diamentowe rolki III", coin=5000000, roll=0 },
-	{ id="n14", parent="n13", dir="Dol", label="Diamentowe rolki IV", coin=8000000, roll=0 },
-	{ id="n15", parent="n12", dir="DolPrawo", label="Teczowe rolki", coin=4000000, roll=0 },
-	{ id="n16", parent="n15", dir="Dol", label="Teczowe rolki I", coin=6500000, roll=0 },
-	{ id="n17", parent="n16", dir="Dol", label="Teczowe rolki II", coin=8500000, roll=0 },
-	{ id="n20", parent="n17", dir="DolPrawo", label="Teczowe rolki III", coin=10000000, roll=0 },
-	{ id="n21", parent="n20", dir="DolPrawo", label="Teczowe rolki IV", coin=12000000, roll=0 },
-	{ id="n22", parent="n3", dir="DolLewo", label="Rolki offline I", coin=15000, roll=0 },
-	{ id="n23", parent="n22", dir="DolLewo", label="Rolki offline II", coin=120000, roll=0 },
-	{ id="n27", parent="n23", dir="DolLewo", label="Rolki offline III", coin=1100000, roll=0 },
-	{ id="n28", parent="n27", dir="Dol", label="Rolki offline IV", coin=3500000, roll=0 },
-	{ id="n29", parent="n28", dir="Dol", label="Rolki offline V", coin=5500000, roll=0 },
-	{ id="n30", parent="n29", dir="Dol", label="Rolki offline VI", coin=8000000, roll=0 },
-	{ id="n31", parent="root", dir="DolPrawo", label="Szybkie rolki I", coin=0, roll=15 },
-	{ id="n32", parent="n31", dir="GoraPrawo", label="Szansa koniczyny I", coin=0, roll=50 },
-	{ id="n33", parent="n31", dir="DolPrawo", label="Szybkie rolki II", coin=0, roll=75 },
-	{ id="n34", parent="n33", dir="DolPrawo", label="Szybkie rolki III", coin=0, roll=180 },
-	{ id="n35", parent="n34", dir="Dol", label="Szybkie rolki IV", coin=0, roll=360 },
-	{ id="n36", parent="n35", dir="Dol", label="Szybkie rolki V", coin=0, roll=720 },
-	{ id="n37", parent="n36", dir="Dol", label="Szybkie rolki VI", coin=0, roll=1500 },
-	{ id="n39", parent="n34", dir="GoraPrawo", label="Bonus I", coin=0, roll=120 },
-	{ id="n40", parent="n39", dir="DolPrawo", label="Bonus II", coin=0, roll=250 },
-	{ id="n41", parent="n40", dir="GoraPrawo", label="Power Punch I", coin=0, roll=300 },
-	{ id="n42", parent="n41", dir="DolPrawo", label="Power Punch II", coin=0, roll=550 },
-	{ id="n43", parent="n40", dir="Dol", label="Bonus III", coin=0, roll=520 },
-	{ id="n44", parent="n43", dir="Dol", label="Bonusowy szal I", coin=0, roll=750 },
-	{ id="n45", parent="n44", dir="Dol", label="Bonusowy szal II", coin=0, roll=1100 },
-	{ id="n46", parent="n45", dir="Dol", label="Bonusowy Szal III", coin=0, roll=2500 },
-	{ id="n47", parent="n42", dir="Dol", label="Power Punch III", coin=0, roll=820 },
-	{ id="n48", parent="n47", dir="Dol", label="Electric shot I", coin=0, roll=1100 },
-	{ id="n49", parent="n48", dir="Dol", label="Electric shot II", coin=0, roll=2500 },
-	{ id="n50", parent="n49", dir="Dol", label="Electric shot III", coin=0, roll=5000 },
-	{ id="n51", parent="n32", dir="GoraPrawo", label="Szansa konicznyny II", coin=0, roll=120 },
-	{ id="n52", parent="n51", dir="GoraPrawo", label="Szansa konicznyny III", coin=0, roll=250 },
-	{ id="n53", parent="n52", dir="Gora", label="x16 koniczyna", coin=0, roll=1500 },
-	{ id="n54", parent="n52", dir="GoraPrawo", label="Podwojny rol", coin=0, roll=350 },
-	{ id="n55", parent="n54", dir="GoraPrawo", label="Podwojny rol I", coin=0, roll=650 },
-	{ id="n56", parent="n55", dir="Gora", label="Podwojny rol II", coin=0, roll=850 },
-	{ id="n57", parent="n52", dir="DolPrawo", label="Szal koniczyny I", coin=0, roll=350 },
-	{ id="n58", parent="n57", dir="DolPrawo", label="Szal Konciznyny II", coin=0, roll=750 },
-	{ id="n59", parent="n58", dir="GoraPrawo", label="Szal koniczyn III", coin=0, roll=1500 },
-	{ id="n60", parent="n59", dir="DolPrawo", label="Potega koncizyn I", coin=0, roll=5000 },
-	{ id="n61", parent="n60", dir="GoraPrawo", label="Potega koninczyn II", coin=0, roll=7500 },
-	{ id="n62", parent="n61", dir="DolPrawo", label="Potega koniczyn III", coin=0, roll=15000 },
-	{ id="n63", parent="n53", dir="Gora", label="x32 koniczyna", coin=0, roll=4000 },
-	{ id="n64", parent="n63", dir="Gora", label="x64 konciznyna", coin=0, roll=10000 },
-	{ id="n65", parent="n56", dir="Gora", label="Podwojny rol III", coin=0, roll=1500 },
-	{ id="n66", parent="n65", dir="Gora", label="Podwojny rol IV", coin=0, roll=3000 },
-	{ id="n67", parent="n66", dir="Gora", label="Podwojny rol V", coin=0, roll=5000 },
-	{ id="n68", parent="n67", dir="Gora", label="Podwojny rol VI", coin=0, roll=8000 },
-	{ id="n69", parent="n3", dir="Gora", label="Sekcja Bazy", coin=0, roll=0 },
-	{ id="n70", parent="root", dir="Gora", label="Szczescie I", coin=100, roll=0 },
-	{ id="n71", parent="n70", dir="Gora", label="Szczescie II", coin=800, roll=0 },
-	{ id="n73", parent="n70", dir="GoraPrawo", label="Sekcja PRO gracza", coin=0, roll=0 },
-	{ id="n74", parent="n71", dir="GoraPrawo", label="Szczescie Przyjaciol I", coin=2500, roll=0 },
-	{ id="n75", parent="n71", dir="GoraLewo", label="Szczescie III", coin=2500, roll=0 },
-	{ id="n76", parent="n75", dir="GoraLewo", label="Mocne szczescie I", coin=15000, roll=0 },
-	{ id="n78", parent="n76", dir="Gora", label="Ogniste obiekty", coin=150000, roll=0 },
-	{ id="n79", parent="n76", dir="DolLewo", label="Mocne szczescie II", coin=40000, roll=0 },
-	{ id="n80", parent="n79", dir="DolLewo", label="Mocne szczescie III", coin=75000, roll=0 },
-	{ id="n81", parent="n80", dir="DolLewo", label="Potezne szczescie I", coin=200000, roll=0 },
-	{ id="n82", parent="n81", dir="DolLewo", label="Potezne szczescie II", coin=500000, roll=0 },
-	{ id="n83", parent="n82", dir="GoraLewo", label="Obiekty kosmiczne", coin=750000, roll=0 },
-	{ id="n84", parent="n82", dir="DolLewo", label="Potezne szczescie III", coin=1200000, roll=0 },
-	{ id="n85", parent="n84", dir="Dol", label="Piekielne szczescie I", coin=3500000, roll=0 },
-	{ id="n86", parent="n85", dir="Dol", label="Piekielne szczescie II", coin=6000000, roll=0 },
-	{ id="n87", parent="n86", dir="Dol", label="Piekielne szczescie III", coin=7500000, roll=0 },
-	{ id="n88", parent="n87", dir="DolLewo", label="Szczescie Boga I", coin=10000000, roll=0 },
-	{ id="n89", parent="n88", dir="DolLewo", label="Szczescie Boga II", coin=12000000, roll=0 },
-	{ id="n90", parent="n89", dir="DolLewo", label="Szczescie Boga III", coin=15000000, roll=0 },
-	{ id="n91", parent="n83", dir="GoraLewo", label="Kosmiczne szczescie I", coin=1500000, roll=0 },
-	{ id="n92", parent="n91", dir="GoraLewo", label="Kosmiczne szczescie II", coin=3000000, roll=0 },
-	{ id="n93", parent="n92", dir="GoraLewo", label="Kosmiczne szczescie III", coin=7500000, roll=0 },
-	{ id="n94", parent="n93", dir="GoraLewo", label="Kosmiczne szczescie IV", coin=15000000, roll=0 },
-	{ id="n95", parent="n78", dir="GoraLewo", label="Ogniste szczescie I", coin=500000, roll=0 },
-	{ id="n96", parent="n95", dir="GoraLewo", label="Ogniste szczescie II", coin=1500000, roll=0 },
-	{ id="n97", parent="n96", dir="GoraLewo", label="Ogniste szczescie III", coin=3000000, roll=0 },
-	{ id="n98", parent="n97", dir="GoraLewo", label="Ogniste szczescie IV", coin=8000000, roll=0 },
-	{ id="n99", parent="n74", dir="Gora", label="Szczescie Przyjaciol II", coin=15000, roll=0 },
-	{ id="n100", parent="n99", dir="Gora", label="Szczescie Przyjaciol III", coin=40000, roll=0 },
-	{ id="n101", parent="n100", dir="Gora", label="Szczescie Przyjaciol IV", coin=200000, roll=0 },
-	{ id="n102", parent="n101", dir="GoraPrawo", label="Szczescie Przyjaciol V", coin=3000000, roll=0 },
-	{ id="n103", parent="n102", dir="GoraPrawo", label="Szczescie Przyjaciol VI", coin=7500000, roll=0 },
-}
+local function nid(id: string): string
+	return (id == "root") and "root" or (id .. "#1")
+end
 
 -- ikona wg tematu (koniczyna dla luck/szczescia/koniczyn, kostka dla rolek, inaczej moneta)
 local function iconFor(n)
@@ -132,7 +38,7 @@ local function iconFor(n)
 end
 
 local Nodes = {}
-for _, n in ipairs(RAW) do
+for _, n in ipairs(SkillTreeData) do
 	if n.id == "root" then
 		Nodes.root = { icon = "", text = "DRZEWO UMIEJETNOSCI" }
 	else
@@ -142,14 +48,15 @@ for _, n in ipairs(RAW) do
 		elseif (n.roll or 0) > 0 then
 			price = { quantity = n.roll, currencyIcon = DICE }
 		end
-		Nodes[n.id] = {
-			parentNodeId = n.parent or "root",
+		Nodes[nid(n.id)] = {
+			parentNodeId = nid(n.parent or "root"),
 			direction = DIR[n.dir] or DIR.Dol,
 			icon = iconFor(n),
-			text = "", -- nazwa idzie w headerText (jak w oryginalnym layoucie); hex zostaje czysty (ikona)
+			text = "",
 			headerText = n.label,
-			price = price, -- nil dla wezlow 0/0 (informacyjne, bez ceny)
-			inheritVisibility = true, -- CALE drzewo widoczne od razu
+			price = price, -- nil dla 0/0 (informacyjne)
+			-- widocznosc liczy zmodyfikowany canShowNode packa: root(owned) -> 3 dzieci REALNE, ich dzieci jako "?"
+			inheritVisibility = false, -- tylko dzieci roota widoczne od startu
 		}
 	end
 end
