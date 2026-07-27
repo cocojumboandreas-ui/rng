@@ -107,6 +107,10 @@ function SkillTreeController.start()
 		barFill.Size = UDim2.new(frac, 0, 1, 0)
 		coinsL.Text = "🪙 " .. fmt(coins)
 		rollsL.Text = "🎲 " .. fmt(rolls)
+		-- WR: przekaz salda do packa -> ceny wezlow na czerwono gdy nie stac (pack koloruje gdy drzewo otwarte)
+		pcall(function()
+			if NodeTreeClient.setBalances then NodeTreeClient.setBalances(coins, rolls) end
+		end)
 	end
 
 	local function markOwned(id: string)
@@ -222,6 +226,9 @@ function SkillTreeController.start()
 			syncOwned()
 		end
 		NodeTreeClient.setIsTreeVisible(willOpen)
+		if willOpen then
+			refreshHeader() -- po otwarciu koloruj ceny wg sald (nie stac -> czerwony)
+		end
 	end
 	SkillTreeController.Toggle = doToggle -- HUD ziomka (SideButtons.Skills) wola to
 	openBtn.Visible = false -- stary temp guzik ukryty; logika drzewka zostaje
@@ -258,12 +265,40 @@ function SkillTreeController.start()
 		end
 	end
 
+	-- WR: tryb umiejetnosci = tylko drzewo. Wylacz sterowanie postacia (ruch); tlo drzewa pochlania klik.
+	local Controls
+	local savedWS = 16
+	pcall(function()
+		Controls = require(Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")):GetControls()
+	end)
+
 	NodeTreeClient.treeVisibilityChanged:Connect(function(isVisible)
 		header.Visible = isVisible
 		closeBtn.Visible = isVisible
 		openBtn.Visible = false -- temp guzik "Umiejetnosci" ZAWSZE ukryty (otwiera przycisk Skills ziomka w HUD)
 		setHudHidden(isVisible)
 		if isVisible then
+			if Controls then Controls:Disable() end -- STOP ruchu postaci w trybie umiejetnosci
+			local bf0 = ntGui:FindFirstChild("BackgroundFrame")
+			if bf0 then bf0.Active = true end -- pochlaniaj klik w tlo (nie leci na plansze/postac)
+				-- MODAL: pelnoekranowy TextButton pod wezlami. Frame+Active NIE daje gameProcessedEvent,
+				-- dopiero GuiButton pochlania klik (gp=true) i zeruje Mouse.Target -> plansza/swiat nie lapie.
+				local block = ntGui:FindFirstChild("WR_ClickBlock")
+				if not block then
+					block = Instance.new("TextButton")
+					block.Name = "WR_ClickBlock"
+					block.Size = UDim2.fromScale(1, 1)
+					block.BackgroundTransparency = 1
+					block.Text = ""
+					block.AutoButtonColor = false
+					block.ZIndex = 1 -- pod MainFrame (ZIndex 2) -> wezly dalej klikalne
+					block.Active = true
+					block.Selectable = false
+					block.Parent = ntGui
+				end
+				block.Visible = true
+			local hum0 = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if hum0 then savedWS = hum0.WalkSpeed; hum0.WalkSpeed = 0 end -- 100% stop ruchu (fallback gdyby controls nie zlapaly)
 			task.delay(0.35, function()
 				local bf = ntGui:FindFirstChild("BackgroundFrame")
 				if bf and NodeTreeClient.isTreeVisible() then
@@ -280,6 +315,11 @@ function SkillTreeController.start()
 				Enum.UserInputType.MouseButton2
 			)
 		else
+			if Controls then Controls:Enable() end -- przywroc sterowanie po zamknieciu drzewa
+			local hum1 = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+			if hum1 then hum1.WalkSpeed = savedWS end -- przywroc predkosc chodu
+				local block = ntGui:FindFirstChild("WR_ClickBlock")
+				if block then block.Visible = false end -- zdejmij modal-blocker
 			panning = false
 			ContextActionService:UnbindAction("WR_TreePanSink")
 		end

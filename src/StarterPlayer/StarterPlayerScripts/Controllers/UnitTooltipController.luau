@@ -217,6 +217,16 @@ function UnitTooltip.start()
 
 	-- lazy ref do BuildController (tryb budowania ma wlasny hover -> tam nie pokazujemy naszej karty)
 	local BuildController
+	-- lazy ref do NodeTreeClient (drzewo umiejetnosci) -> w trybie umiejetnosci NIE pokazujemy karty/otoczki
+	local NodeTreeClient
+	local function treeOpen()
+		if not NodeTreeClient then
+			local nt = ReplicatedStorage:FindFirstChild("NodeTree")
+			local mod = nt and nt:FindFirstChild("NodeTreeClient")
+			if mod then NodeTreeClient = require(mod) end
+		end
+		return NodeTreeClient and NodeTreeClient.isTreeVisible and NodeTreeClient.isTreeVisible() or false
+	end
 	local function inBuildMode()
 		if not BuildController then
 			local c = script.Parent:FindFirstChild("BuildController")
@@ -226,7 +236,7 @@ function UnitTooltip.start()
 	end
 
 	RunService.RenderStepped:Connect(function()
-		if _waveActive or inBuildMode() then -- karta swiata TYLKO w TRYBIE WOLNYM
+		if _waveActive or inBuildMode() or treeOpen() then -- karta swiata TYLKO w TRYBIE WOLNYM (nie w umiejetnosciach)
 			hideAll()
 			return
 		end
