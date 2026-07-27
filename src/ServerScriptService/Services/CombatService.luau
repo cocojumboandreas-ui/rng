@@ -137,28 +137,44 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	_enemies[player] = _enemies[player] or {}
 	local enemies = _enemies[player]
 
+	-- CELOWANIE W KOLUMNY: wrogowie nie rozlewaja sie rowno — dostaja KOLUMNE CELU z zestawu fali
+	-- (round-robin po id -> rowny podzial). Boss trzyma srodek. lane = dokladne wyrownanie do kolumny siatki.
+	local width = GameConfig.Grid.width
+	local cellSize = GameConfig.Grid.cellSize
+	local centerCol = math.ceil(width / 2)
+	local targetCols = spec.targetCols
+	if not targetCols or #targetCols == 0 then targetCols = { centerCol } end
+	-- ROZNE TEMPA: deterministyczny mnoznik predkosci per-wrog z id (klient interpoluje z sync -> brak desync).
+	local sj = GameConfig.Wave.speedJitter
+
 	local spawnList = {}
 	for i = 1, spec.count do
 		_nextEnemyId += 1
 		local id = _nextEnemyId
+		local col = isBoss and centerCol or targetCols[((id - 1) % #targetCols) + 1]
+		local speedMul = 1
+		if sj then
+			local f = id * 0.7548776662466927
+			speedMul = sj.min + (f - math.floor(f)) * (sj.max - sj.min)
+		end
 		enemies[id] = {
 			id = id,
 			typeId = spec.enemyTypeId,
 			hp = hp,
 			maxHp = hp,
 			pathT = -(i - 1) * stagger, -- staggered wejscie (formacja)
-			speed = et.speed,
+			speed = et.speed * speedMul, -- rozne tempa (mnoznik z id)
 			plotId = plotId,
 			coreTimer = et.coreAttackInterval,
 			atkDmg = atkDmg, -- atkDmg × waveAtkMult (zamrozony na spawnie, jak hp)
 			isBoss = isBoss, -- boss = zwykly wiersz z flaga (ta sama petla/pathing/core-dmg)
-			-- ROZLEW: boczny pas + glebokosc (deterministyczne z id -> klient renderuje IDENTYCZNIE).
-			-- Blokowanie/celowanie/dmg licza REALNA pozycje (nie srodek) -> bloki/jednostki na kazdej
-			-- kolumnie zatrzymuja wrogow tej kolumny (trzeba MUR przez szerokosc).
-			lane = EnemyFormation.lane(id, isBoss, GameConfig.Grid.cellSize),
+			col = col, -- kolumna celu (1..width); klient dostaje ja w spawnList i liczy IDENTYCZNY lane
+			-- lane = boczny offset dokladnie nad kolumna celu; glebokosc (fwd) deterministyczna z id (nie gesiego w kolumnie).
+			-- Blokowanie/celowanie/dmg licza REALNA pozycje (nie srodek) -> bloki/jednostki na kolumnie celu zatrzymuja wroga.
+			lane = EnemyFormation.laneForColumn(col, width, cellSize),
 			fwd = EnemyFormation.fwd(id, isBoss),
 		}
-		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss, maxHp = hp }
+		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss, maxHp = hp, col = col }
 	end
 	if _enemyEvents then
 		_enemyEvents:FireAllClients({ plotId = plotId, spawns = spawnList, deaths = {} })

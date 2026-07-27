@@ -37,6 +37,17 @@ function EnemyFormation.fwd(id: number, isBoss: boolean?): number
 	return (frac(id * ALT) - 0.5) * (isBoss and 3 or 9)
 end
 
+-- BOCZNY offset dla KONKRETNEJ KOLUMNY CELU (1..width) — DOKLADNE wyrownanie do kolumny siatki bazy,
+-- zeby wrog stanal dokladnie nad kolumna, w ktorej gracz stawia bloki. BEZ LANE_SCALE (to nie kosmetyczny
+-- wachlarz, tylko realny cel). center = srodkowa kolumna (width nieparzysty -> jedna, np. 9 -> 5).
+-- Znak (ktora strona) obsluguje perp renderu/serwera — serwer i klient uzywaja tej samej konwencji.
+function EnemyFormation.laneForColumn(col: number, width: number?, cellSize: number?): number
+	local w = width or 9
+	local cs = cellSize or 6
+	local center = (w + 1) / 2 -- 9 -> 5.0
+	return (col - center) * cs
+end
+
 -- narastanie rozstawu wzdluz sciezki t∈[0,1]: 0 przy bramie (gesiego) -> 1 na placu (pelny wachlarz).
 function EnemyFormation.spreadAt(t: number): number
 	return math.clamp((t - EnemyFormation.SPREAD_START) / EnemyFormation.SPREAD_RAMP, 0, 1)

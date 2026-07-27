@@ -94,6 +94,46 @@ local function applyProto(comp)
 	return out, pool
 end
 
+-- ── HARMONOGRAM ATAKU (nowy system fal) ────────────────────────────────────────
+-- LICZBA wrogow na fale: fala1/2 jawne, potem baseCount + (n-3)*countStep, clamp do countCap.
+local function waveCount(waveNumber: number): number
+	local a = GameConfig.Wave.attack
+	if not a then return 0 end
+	if a.counts[waveNumber] then return a.counts[waveNumber] end
+	local n = math.max(3, waveNumber)
+	return math.min(a.countCap, a.baseCount + (n - 3) * a.countStep)
+end
+
+-- ILE kolumn celu na fale: fala1/2 jawne, potem colsBase (do colsHoldUntil), dalej +colsStep, clamp do szerokosci.
+local function activeColCount(waveNumber: number): number
+	local a = GameConfig.Wave.attack
+	local width = GameConfig.Grid.width
+	if not a then return width end
+	if a.colsBaseWaves[waveNumber] then return a.colsBaseWaves[waveNumber] end
+	if waveNumber <= a.colsHoldUntil then return a.colsBase end
+	return math.min(width, a.colsBase + (waveNumber - a.colsHoldUntil) * a.colsStep)
+end
+
+-- KTORE kolumny (1..width) atakuje fala — od srodka NA ZEWNATRZ, na przemian lewo/prawo.
+-- kolejnosc dokladania: center, center-1, center+1, center-2, center+2, ... (9 -> 5,4,6,3,7,2,8,1,9).
+local function columnsFor(waveNumber: number): { number }
+	local width = GameConfig.Grid.width
+	local center = math.ceil(width / 2) -- 9 -> 5
+	local k = math.clamp(activeColCount(waveNumber), 1, width)
+	local order = { center }
+	local i = 1
+	while #order < width do
+		local l, r = center - i, center + i
+		if l >= 1 then order[#order + 1] = l end
+		if r <= width then order[#order + 1] = r end
+		i += 1
+	end
+	local chosen = {}
+	for j = 1, k do chosen[j] = order[j] end
+	table.sort(chosen)
+	return chosen
+end
+
 -- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count[,hpOverride]}}, poolSize, formation)
 local function waveComposition(waveNumber: number)
 	-- boss-fala: 1 boss (HP = 5x zolnierz z fali n-1) + podklad wrogow (tier maxTier-1)
@@ -112,21 +152,24 @@ local function waveComposition(waveNumber: number)
 		local sc, pool = applyProto(comp) -- proto: mniej wrogow (boss zawsze zostaje bo min 1)
 		return sc, pool, { cols = 6 }
 	end
-	-- jawna fala (np. [1]) — bez zmian
+	-- jawna fala (np. [1]) — TYPY z configu, ale LICZBA z harmonogramu (waveCount), skalowana proporcjonalnie.
 	local w = GameConfig.Wave.waves[waveNumber]
 	if w then
-		local pool = 0
-		for _, e in ipairs(w.composition) do
-			pool += e[2]
+		local N = waveCount(waveNumber)
+		local total = 0
+		for _, e in ipairs(w.composition) do total += e[2] end
+		local comp, acc = {}, 0
+		for idx, e in ipairs(w.composition) do
+			local cnt = (idx == #w.composition) and (N - acc) or math.floor(N * e[2] / math.max(1, total))
+			acc += cnt
+			comp[#comp + 1] = { e[1], math.max(0, cnt), e[3] }
 		end
-		local sc, scPool = applyProto(w.composition) -- proto: mniej wrogow (kopia, nie mutuje configu)
-		return sc, scPool, w.formation
+		return comp, N, w.formation
 	end
 	-- generowana wzorem: FODDER FLOOR (staly udzial najnizszych tierow) + reszta na tiery okna z ODWROCONYMI
 	-- wagami (nizszy tier = wieksza waga). Efekt: roj taniego miesa + rzadkie elity = tekstura TD. Fodder floor
 	-- dziala NIEZALEZNIE od okna top-N, wiec na falach 60+ (okno tier 3-6) roj tieru 1-2 dalej istnieje.
-	local s = GameConfig.Wave.scaling
-	local pool = math.floor(s.poolBase + waveNumber * s.poolPerWave)
+	local pool = waveCount(waveNumber) -- LICZBA z harmonogramu (nie stara formula poolBase); typy dalej z tierow
 	local maxTier = maxTierFor(waveNumber)
 	local window = GameConfig.Wave.tierWindow or 3
 	local lowTier = math.max(1, maxTier - window + 1)
@@ -169,8 +212,7 @@ local function waveComposition(waveNumber: number)
 	end
 	push(lowTier, waveNumber + lowTier, elitePool - eliteUsed) -- najnizszy tier okna = reszta -> dominuje
 
-	local sc, scPool = applyProto(comp) -- proto: mniej wrogow (kopia)
-	return sc, scPool, { cols = 6 }
+	return comp, pool, { cols = 6 } -- BEZ applyProto: liczba jest juz doslowna (waveCount)
 end
 
 local function plotIdOf(player): number
@@ -201,8 +243,10 @@ local function beginWave(player)
 	_phase[player] = Enums.RunPhase.WaveActive
 	_run[player] = { kills = 0, pool = pool }
 	-- BEZ resetu HP rdzenia co fale: HP przechodzi miedzy falami (fale leca ciagiem). Reset tylko na START RUNU (StartWave).
+	-- KOLUMNY CELU tej fali (srodek->zewnatrz). CombatService przydziela je wrogom round-robin (boss=srodek).
+	local targetCols = columnsFor(waveNumber)
 	for _, entry in ipairs(comp) do
-		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3] })
+		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3], targetCols = targetCols })
 	end
 	WaveService.WaveStarted:Fire(player, waveNumber, pool)
 	pushProgress(player, waveNumber, 0, pool)

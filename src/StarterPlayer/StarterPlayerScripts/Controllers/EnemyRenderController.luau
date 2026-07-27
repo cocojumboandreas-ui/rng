@@ -553,7 +553,10 @@ local function onEvents(payload)
 						maxHp = s.maxHp or 0, hpPct = 1, -- jawne HP: cur = maxHp * hpPct (hpPct z bufora sync)
 					weapon = _weaponByModel[model], -- {prof, part} rozpoznana bron
 						rig = _rigByModel[model], -- rig anim ruchu (nogi/kola/wirniki)
-						lane = EnemyFormation.lane(s.id, s.isBoss, (GameConfig.Grid and GameConfig.Grid.cellSize) or 6), -- pas boczny DETERMINISTYCZNY z id -> IDENTYCZNY z serwerem (blokowanie)
+						-- pas boczny = KOLUMNA CELU z serwera (s.col) -> IDENTYCZNY lane co serwer (blokowanie/wyrownanie do kolumny).
+						-- fallback (brak col, stary pakiet) -> deterministyczny lane z id.
+						lane = s.col and EnemyFormation.laneForColumn(s.col, (GameConfig.Grid and GameConfig.Grid.width) or 9, (GameConfig.Grid and GameConfig.Grid.cellSize) or 6)
+							or EnemyFormation.lane(s.id, s.isBoss, (GameConfig.Grid and GameConfig.Grid.cellSize) or 6),
 						fwd = EnemyFormation.fwd(s.id, s.isBoss), -- glebokosc DETERMINISTYCZNA z id -> zgodna z serwerem
 						animPhase = math.random() * 6.28, -- desync animacji
 						atkRange = et and et.atkRange or 14,

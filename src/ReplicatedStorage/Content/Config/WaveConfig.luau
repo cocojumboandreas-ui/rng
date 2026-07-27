@@ -27,7 +27,28 @@ local WaveConfig = {
 	--   zagrozenie rdzenia bez zmian mimo mniej wrogow), EconomyService (kills*killReward*countDiv -> te same monety).
 	-- countDiv=hpMul -> CZAS czyszczenia fali ~ ten sam (mniej sztuk * wiecej HP = ta sama pula HP).
 	-- WYLACZ prototyp: ustaw wszystko na 1 (= oryginal, roj). Boss HP skaluje sie sam (hpMul w spawnie).
-	proto = { countDiv = 2, hpMul = 2, coreDmgMul = 2 },
+	-- countDiv=1: liczba wrogow jest teraz DOSLOWNA z `attack` (nizej) — NIE dziel jej. hpMul/coreDmgMul
+	-- zostaja (feel "malo GRUBSZYCH wrogow" pasuje do malych liczb harmonogramu).
+	proto = { countDiv = 1, hpMul = 2, coreDmgMul = 2 },
+	-- ── HARMONOGRAM ATAKU (nowy system fal) ──────────────────────────────────────
+	-- Wrogowie NIE rozlewaja sie rowno na cala szerokosc — celuja w KOLUMNY srodkowe bazy (9 kolumn),
+	-- a zasieg atakowanych kolumn ROSNIE z numerem fali (od srodka na zewnatrz). Liczba wrogow tez rosnie.
+	-- LICZBA WROGOW/FALE:  fala1=4, fala2=7, fala3=8, potem +countStep az do countCap.
+	-- KOLUMNY CELU (baza 9 szeroka, srodek=5):
+	--   fala1={5}, fala2={4,5}, fala3..colsHoldUntil={4,5,6},
+	--   potem +colsStep kolumny/fale na przemian L/P: {3,4,5,6} -> {3..7} -> {2..7} -> ... -> {1..9}.
+	attack = {
+		counts = { [1] = 4, [2] = 7 }, -- jawne liczby dla fal poczatkowych (reszta z formuly)
+		baseCount = 8, -- liczba wrogow na fali 3
+		countStep = 1, -- +tyle wrogow na kazda kolejna fale (od fali 3)
+		countCap = 40, -- SUFIT liczby wrogow (fala nie przekroczy tego)
+		colsBaseWaves = { [1] = 1, [2] = 2 }, -- ile kolumn celu (jawne dla fal poczatkowych)
+		colsBase = 3, -- liczba kolumn celu od fali 3 (srodek: {4,5,6})
+		colsHoldUntil = 8, -- do tej fali trzyma colsBase kolumn; potem rozszerza
+		colsStep = 1, -- +tyle kolumn na fale po colsHoldUntil (clamp do szerokosci bazy)
+	},
+	-- ROZNE TEMPA: kazdy wrog dostaje deterministyczny mnoznik predkosci z tego przedzialu (nie ida rowno).
+	speedJitter = { min = 0.75, max = 1.30 },
 	interWaveDelay = 5.5, -- sekundy miedzy wyczyszczeniem fali a auto-startem nastepnej (konfetti + oddech)
 	bossHpVsPrevSoldier = 5, -- HP bossa = tyle x HP najsilniejszego zwyklego wroga z fali (n-1)
 	enemyTypes = {
