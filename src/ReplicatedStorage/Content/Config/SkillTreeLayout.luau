@@ -40,7 +40,7 @@ end
 local Nodes = {}
 for _, n in ipairs(SkillTreeData) do
 	if n.id == "root" then
-		Nodes.root = { icon = "", text = "DRZEWO UMIEJETNOSCI" }
+		Nodes.root = { icon = "", text = "DRZEWO" .. string.char(10) .. "UMIEJETNOSCI" }
 	else
 		local price = nil
 		if (n.coin or 0) > 0 then
@@ -54,6 +54,7 @@ for _, n in ipairs(SkillTreeData) do
 			icon = iconFor(n),
 			text = "",
 			headerText = n.label,
+			desc = n.desc, -- opis do podgladu (tooltip) — czyta go zmodyfikowany pack
 			price = price, -- nil dla 0/0 (informacyjne)
 			-- widocznosc liczy zmodyfikowany canShowNode packa: root(owned) -> 3 dzieci REALNE, ich dzieci jako "?"
 			inheritVisibility = false, -- tylko dzieci roota widoczne od startu

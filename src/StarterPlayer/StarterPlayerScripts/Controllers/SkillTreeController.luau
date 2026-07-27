@@ -12,6 +12,8 @@ local ContextActionService = game:GetService("ContextActionService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
+local SkillConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("SkillConfig"))
+local C = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Enums")).Currency
 
 local SkillTreeController = {}
 
@@ -54,6 +56,39 @@ function SkillTreeController.start()
 		end
 	end
 	local coins, rolls = 0, 0
+
+	-- WR: badge przy Skills = ile umiejetnosci gracz moze TERAZ kupic (prereq spelniony + stac + niekupione)
+	local function skillBadgeCount(): number
+		local cnt = 0
+		for id, node in pairs(SkillConfig.nodes) do
+			if not ownedIds[id .. "#1"] then
+				local prereqOk = true
+				if node.prereqs then
+					for reqId in pairs(node.prereqs) do
+						if not ownedIds[reqId .. "#1"] then prereqOk = false break end
+					end
+				end
+				if prereqOk then
+					local bal = (node.currency == C.Coins) and coins or rolls
+					if bal >= (node.base or 0) then cnt += 1 end
+				end
+			end
+		end
+		return cnt
+	end
+	local function updateSkillBadge()
+		local pg = Players.LocalPlayer:FindFirstChild("PlayerGui")
+		local sb = pg and pg:FindFirstChild("SideButtons")
+		local bc = sb and sb:FindFirstChild("BottomCanvas")
+		local btns = bc and bc:FindFirstChild("Buttons")
+		local skills = btns and btns:FindFirstChild("Skills")
+		local notify = skills and skills:FindFirstChild("Notify")
+		if not notify then return end
+		local n = skillBadgeCount()
+		local lbl = notify:FindFirstChild("Text")
+		if lbl and lbl:IsA("TextLabel") then lbl.Text = tostring(n) end
+		notify.Visible = n > 0
+	end
 
 	-- ── naglowek + zamknij (osobne GUI nad drzewkiem) ──
 	local gui = Instance.new("ScreenGui")
@@ -111,6 +146,7 @@ function SkillTreeController.start()
 		pcall(function()
 			if NodeTreeClient.setBalances then NodeTreeClient.setBalances(coins, rolls) end
 		end)
+		updateSkillBadge() -- WR: badge Skills = ile mozna teraz kupic
 	end
 
 	local function markOwned(id: string)
