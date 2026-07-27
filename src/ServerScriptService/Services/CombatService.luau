@@ -306,8 +306,9 @@ local function step(dt: number)
 			for _, pl in pairs(placements) do
 				placeWorld[#placeWorld + 1] = towerWorldPos(plot, pl.unitId, pl.x, pl.z)
 			end
-			local blockAhead = GameConfig.Sim.blockAhead or 2.5
-			local blockR2 = (GameConfig.Sim.blockRadius or 4) ^ 2
+			-- STANDOFF: wrog staje ~1 stud PRZED blokiem/jednostka na SWOIM pasie i strzela (nie przenika, nie biegnie w nia).
+			local blockStop = GameConfig.Sim.blockStopDist or 5.5 -- dystans SRODEK-SRODEK stopu
+			local blockLaneHalf2 = (GameConfig.Sim.blockLaneHalf or 3.6) ^ 2 -- (max boczne odchylenie od pasa)^2
 
 			-- 1) ruch — wrog biegnie do bazy. STOP gdy: (a) w zasiegu broni od rdzenia (ostrzeliwuje rdzen),
 			-- (b) przed nim stoi blok/jednostka — NIE przenika, musi ja zniszczyc zeby isc dalej.
@@ -332,10 +333,14 @@ local function step(dt: number)
 					local fx, fz = ahead.X - epos.X, ahead.Z - epos.Z
 					local flen = math.sqrt(fx * fx + fz * fz)
 					if flen > 1e-3 then
-						local px, pz = epos.X + (fx / flen) * blockAhead, epos.Z + (fz / flen) * blockAhead
+						local dirx, dirz = fx / flen, fz / flen -- kierunek ruchu wroga (styczna sciezki na jego pasie)
 						for _, up in ipairs(placeWorld) do
-							local ddx, ddz = up.X - px, up.Z - pz
-							if ddx * ddx + ddz * ddz <= blockR2 then blocked = true; break end
+							local rx, rz = up.X - epos.X, up.Z - epos.Z
+							local along = rx * dirx + rz * dirz -- ile PRZED wrogiem wzdluz ruchu (<0 = za nim)
+								if along > 0 and along <= blockStop then
+									local lx, lz = rx - dirx * along, rz - dirz * along -- boczne odchylenie od pasa
+									if (lx * lx + lz * lz) <= blockLaneHalf2 then blocked = true; break end
+								end
 						end
 					end
 				end

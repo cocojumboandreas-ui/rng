@@ -18,6 +18,8 @@ local Workspace = game:GetService("Workspace")
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Signal = require(Framework:WaitForChild("Signal"))
 local Net = require(Framework:WaitForChild("Net"))
+local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry")) -- runtime lookup GridService (zajetosc kratek)
+local GridMath = require(Framework:WaitForChild("GridMath"))
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
@@ -266,15 +268,71 @@ local function releasePlot(playerKey: any)
 	PlotService.PlotReleased:Fire(playerKey, id)
 end
 
+-- SPAWN NIEZALEZNY OD BLOKOW: kratki zajete przez postawione jednostki gracza (footprint * warstwy).
+-- Gdy gracz zabuduje srodek, postac NIE moze tam spawnowac (grzezla w blokach) -> szukamy wolnej kratki.
+local function occupiedCells(player)
+	local occ = {}
+	local grid = ServiceRegistry.get("GridService")
+	if not grid or not grid.GetPlacements then
+		return occ
+	end
+	for _, p in pairs(grid.GetPlacements(player)) do
+		local u = GameConfig.Units[p.unitId]
+		local fp = (u and u.footprint) or { w = 1, d = 1 }
+		for dx = 0, fp.w - 1 do
+			for dz = 0, fp.d - 1 do
+				occ[GridMath.key(p.x + dx, p.z + dz)] = true
+			end
+		end
+	end
+	return occ
+end
+
+-- WOLNA kratka spawnu. Srodek wolny -> srodek. Zabudowany -> odsuwamy gracza W BOK (lewo/prawo w tym
+-- samym rzedzie) do NAJBLIZSZEJ wolnej kratki, ktora ma tez WOLNY BUFOR od strony srodka (>=1 pusty kafel
+-- miedzy graczem a sciana) -> gracz nie laduje przyklejony do bloków (efektywnie ~2 kafle od srodka).
+-- Gdy caly rzad zablokowany -> fallback: najblizsza wolna kratka pierscieniami. Zwraca (cellX, cellZ) 1-indeks.
+local function spawnCellFor(plot, player): (number, number)
+	local w, d = plot.gridSize.X, plot.gridSize.Y
+	local cx0, cz0 = math.ceil(w / 2), math.ceil(d / 2) -- kratka srodkowa (9x12 -> 5,6)
+	local occ = player and occupiedCells(player) or {}
+	local function free(x, z): boolean
+		return x >= 1 and x <= w and z >= 1 and z <= d and not occ[GridMath.key(x, z)]
+	end
+	if free(cx0, cz0) then
+		return cx0, cz0
+	end
+	-- W BOK z buforem: kratka celu wolna I kratka blizej srodka (bufor) wolna -> odstep od sciany.
+	for off = 1, w do
+		if free(cx0 + off, cz0) and free(cx0 + off - 1, cz0) then
+			return cx0 + off, cz0 -- w prawo
+		end
+		if free(cx0 - off, cz0) and free(cx0 - off + 1, cz0) then
+			return cx0 - off, cz0 -- w lewo
+		end
+	end
+	-- caly rzad spawnu zablokowany -> najblizsza jakakolwiek wolna kratka (pierscienie na zewnatrz)
+	for r = 1, math.max(w, d) do
+		for dx = -r, r do
+			for dz = -r, r do
+				if math.max(math.abs(dx), math.abs(dz)) == r and free(cx0 + dx, cz0 + dz) then
+					return cx0 + dx, cz0 + dz
+				end
+			end
+		end
+	end
+	return cx0, cz0 -- wszystko zajete (skrajnie rzadkie) -> srodek
+end
+
 -- ── spawn gracza na SWOIM placu (nigdy na globalnym SpawnLocation / osi baz wroga Z=0) ──
--- CFrame spawnu = srodek siatki plotu, tuz nad kaflami, patrzac w strone nadchodzacych wrogow
--- (faceDirection). Stary PlotAssignment robil to sam; PlotService przejmuje.
-local function plotSpawnCFrame(plot): CFrame
+-- CFrame spawnu = WOLNA kratka blisko srodka siatki, tuz nad kaflami, patrzac w strone nadchodzacych wrogow
+-- (faceDirection). Omija postawione bloki (spawn niezalezny od zabudowy).
+local function plotSpawnCFrame(plot, player): CFrame
 	local o = plot.gridOrigin
 	local cs = GameConfig.Grid.cellSize
-	local w, d = plot.gridSize.X, plot.gridSize.Y
-	local center = o.Position + Vector3.new(cs * w * 0.5, 0, cs * d * 0.5)
-	local spawnPos = Vector3.new(center.X, o.Position.Y + 5, center.Z) -- ~5 studow nad kaflami
+	local cx, cz = spawnCellFor(plot, player)
+	-- srodek kratki (cx,cz) w swiecie, ~5 studow nad kaflami
+	local spawnPos = o.Position + Vector3.new(cs * (cx - 0.5), 5, cs * (cz - 0.5))
 	return CFrame.lookAlong(spawnPos, plot.faceDirection)
 end
 
@@ -292,7 +350,7 @@ local function positionCharacter(player: Player, char: Model)
 		char:WaitForChild("HumanoidRootPart", 5)
 	end
 	if char.PrimaryPart or char:FindFirstChild("HumanoidRootPart") then
-		char:PivotTo(plotSpawnCFrame(plot))
+		char:PivotTo(plotSpawnCFrame(plot, player)) -- omija zabudowane kratki (spawn niezalezny od blokow)
 	end
 end
 
@@ -375,7 +433,7 @@ end
 function PlotService._SpawnCFrameForTest(plotId: number): CFrame?
 	ensureBuilt()
 	local plot = _plots[plotId]
-	return plot and plotSpawnCFrame(plot) or nil
+	return plot and plotSpawnCFrame(plot, nil) or nil
 end
 function PlotService._AssignForTest(key: any): number?
 	return assignPlot(key)

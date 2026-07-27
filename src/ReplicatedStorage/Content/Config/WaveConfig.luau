@@ -29,7 +29,7 @@ local WaveConfig = {
 	-- WYLACZ prototyp: ustaw wszystko na 1 (= oryginal, roj). Boss HP skaluje sie sam (hpMul w spawnie).
 	-- countDiv=1: liczba wrogow jest teraz DOSLOWNA z `attack` (nizej) — NIE dziel jej. hpMul/coreDmgMul
 	-- zostaja (feel "malo GRUBSZYCH wrogow" pasuje do malych liczb harmonogramu).
-	proto = { countDiv = 1, hpMul = 2, coreDmgMul = 2 },
+	proto = { countDiv = 1, hpMul = 2, coreDmgMul = 1 },
 	-- ── HARMONOGRAM ATAKU (nowy system fal) ──────────────────────────────────────
 	-- Wrogowie NIE rozlewaja sie rowno na cala szerokosc — celuja w KOLUMNY srodkowe bazy (9 kolumn),
 	-- a zasieg atakowanych kolumn ROSNIE z numerem fali (od srodka na zewnatrz). Liczba wrogow tez rosnie.
