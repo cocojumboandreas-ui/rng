@@ -3,7 +3,7 @@
 -- Drzewko umiejetnosci na packu NodeTree — DOMYSLNY wyglad i zachowanie packa (reveal po zakupie).
 -- Sekcje: LUCK / COMBAT / DEFEND / DICE UPDATE (nazwy w SkillTreeLayout). Pack sam renderuje wezly.
 -- Ekonomia + efekty = serwer (SkillService): klik "<skillId>#<rank>" -> SkillPurchase(skillId) (RF).
--- Nasze: HUD "Umiejetnosci" toggle, naglowek (postep X/Y + salda 🪙/🎲 na zywo), Zamknij,
+-- Nasze: HUD "Umiejetnosci" toggle, naglowek (pasek postepu X/Y + salda z ikonami na zywo), Zamknij,
 --   nawigacja (scroll zoom = pack, RMB trzymany = pan), polprzezroczyste tlo. Sync odporny na desync.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -98,50 +98,76 @@ function SkillTreeController.start()
 	gui.DisplayOrder = 50
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
+	-- naglowek jak na obrazku (liczbys.png): pasek postepu + salda z ikonami z Offline Earnings
+	local COIN_ICON = "rbxassetid://79510076315488"
+	local DICE_ICON = "rbxassetid://83517758689278"
+
 	local header = Instance.new("Frame")
-	header.Size = UDim2.fromOffset(320, 64)
+	header.Size = UDim2.fromOffset(460, 96)
 	header.AnchorPoint = Vector2.new(0.5, 0)
-	header.Position = UDim2.new(0.5, 0, 0, 10)
-	header.BackgroundColor3 = Color3.fromRGB(18, 18, 26)
-	header.BackgroundTransparency = 0.1
+	header.Position = UDim2.new(0.5, 0, 0, 46)
+	header.BackgroundTransparency = 1 -- bez ciemnego pudelka
 	header.BorderSizePixel = 0
 	header.Visible = false
 	header.Parent = gui
-	local hcorner = Instance.new("UICorner"); hcorner.CornerRadius = UDim.new(0, 12); hcorner.Parent = header
 
+	-- pasek: posiadane / max umiejetnosci
 	local barBG = Instance.new("Frame")
-	barBG.Size = UDim2.new(1, -24, 0, 8); barBG.Position = UDim2.fromOffset(12, 10)
-	barBG.BackgroundColor3 = Color3.fromRGB(45, 45, 60); barBG.BorderSizePixel = 0; barBG.Parent = header
+	barBG.Size = UDim2.fromOffset(300, 28); barBG.AnchorPoint = Vector2.new(0.5, 0)
+	barBG.Position = UDim2.new(0.5, 0, 0, 0)
+	barBG.BackgroundColor3 = Color3.fromRGB(18, 20, 28); barBG.BorderSizePixel = 0; barBG.Parent = header
 	local bbc = Instance.new("UICorner"); bbc.CornerRadius = UDim.new(1, 0); bbc.Parent = barBG
+	local bbs = Instance.new("UIStroke"); bbs.Color = Color3.fromRGB(8, 10, 16); bbs.Thickness = 2; bbs.Parent = barBG
 	local barFill = Instance.new("Frame")
-	barFill.Size = UDim2.new(0, 0, 1, 0); barFill.BackgroundColor3 = Color3.fromRGB(90, 200, 120)
+	barFill.Size = UDim2.new(0, 0, 1, 0); barFill.BackgroundColor3 = Color3.fromRGB(70, 150, 255)
 	barFill.BorderSizePixel = 0; barFill.Parent = barBG
 	local bfc = Instance.new("UICorner"); bfc.CornerRadius = UDim.new(1, 0); bfc.Parent = barFill
+	local bfg = Instance.new("UIGradient")
+	bfg.Color = ColorSequence.new(Color3.fromRGB(130, 205, 255), Color3.fromRGB(45, 120, 235))
+	bfg.Rotation = 90; bfg.Parent = barFill
+	local progL = Instance.new("TextLabel")
+	progL.Size = UDim2.fromScale(1, 1); progL.BackgroundTransparency = 1
+	progL.Font = Enum.Font.GothamBold; progL.TextSize = 18; progL.TextColor3 = Color3.new(1, 1, 1)
+	progL.Text = "0/0"; progL.ZIndex = 2; progL.Parent = barBG
+	local pls = Instance.new("UIStroke"); pls.Color = Color3.fromRGB(14, 16, 22); pls.Thickness = 2.2; pls.Parent = progL
 
-	local function mkLabel(parent, size, pos, txt, color, xa)
+	-- wiersz sald: [moneta] kwota    [kostka] kwota
+	local row = Instance.new("Frame")
+	row.Size = UDim2.fromOffset(460, 52); row.AnchorPoint = Vector2.new(0.5, 0)
+	row.Position = UDim2.new(0.5, 0, 0, 40); row.BackgroundTransparency = 1; row.Parent = header
+	local rl = Instance.new("UIListLayout")
+	rl.FillDirection = Enum.FillDirection.Horizontal; rl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	rl.VerticalAlignment = Enum.VerticalAlignment.Center; rl.Padding = UDim.new(0, 8)
+	rl.SortOrder = Enum.SortOrder.LayoutOrder; rl.Parent = row
+	local function mkIcon(img, order)
+		local ic = Instance.new("ImageLabel")
+		ic.Size = UDim2.fromOffset(42, 42); ic.BackgroundTransparency = 1; ic.Image = img
+		ic.LayoutOrder = order; ic.Parent = row
+	end
+	local function mkAmt(order)
 		local l = Instance.new("TextLabel")
-		l.Size = size; l.Position = pos; l.BackgroundTransparency = 1
-		l.TextColor3 = color or Color3.new(1, 1, 1)
-		l.Font = Enum.Font.GothamBold; l.TextSize = 16; l.Text = txt
-		l.TextXAlignment = xa or Enum.TextXAlignment.Center
-		l.Parent = parent
+		l.AutomaticSize = Enum.AutomaticSize.X; l.Size = UDim2.fromOffset(0, 46)
+		l.BackgroundTransparency = 1; l.Font = Enum.Font.GothamBold; l.TextSize = 30
+		l.TextColor3 = Color3.new(1, 1, 1); l.Text = "0"; l.LayoutOrder = order; l.Parent = row
+		local s = Instance.new("UIStroke"); s.Color = Color3.fromRGB(14, 16, 22); s.Thickness = 2.6; s.Parent = l
 		return l
 	end
-
-	local progL = mkLabel(header, UDim2.fromOffset(120, 24), UDim2.fromOffset(12, 26), "0 / 0", Color3.fromRGB(200, 220, 255), Enum.TextXAlignment.Left)
-	local coinsL = mkLabel(header, UDim2.fromOffset(95, 24), UDim2.new(1, -190, 0, 26), "🪙 0", Color3.fromRGB(255, 215, 90))
-	local rollsL = mkLabel(header, UDim2.fromOffset(95, 24), UDim2.new(1, -95, 0, 26), "🎲 0", Color3.new(1, 1, 1))
+	mkIcon(COIN_ICON, 1)
+	local coinsL = mkAmt(2)
+	local gap = Instance.new("Frame"); gap.Size = UDim2.fromOffset(28, 1); gap.BackgroundTransparency = 1; gap.LayoutOrder = 3; gap.Parent = row
+	mkIcon(DICE_ICON, 4)
+	local rollsL = mkAmt(5)
 
 	local function refreshHeader()
 		local owned = 0
 		for _ in pairs(ownedIds) do
 			owned += 1
 		end
-		progL.Text = ("%d / %d"):format(owned, totalRankNodes)
+		progL.Text = ("%d/%d"):format(owned, totalRankNodes)
 		local frac = totalRankNodes > 0 and (owned / totalRankNodes) or 0
 		barFill.Size = UDim2.new(frac, 0, 1, 0)
-		coinsL.Text = "🪙 " .. fmt(coins)
-		rollsL.Text = "🎲 " .. fmt(rolls)
+		coinsL.Text = fmt(coins)
+		rollsL.Text = fmt(rolls)
 		-- WR: przekaz salda do packa -> ceny wezlow na czerwono gdy nie stac (pack koloruje gdy drzewo otwarte)
 		pcall(function()
 			if NodeTreeClient.setBalances then NodeTreeClient.setBalances(coins, rolls) end
@@ -247,14 +273,16 @@ function SkillTreeController.start()
 	openBtn.Parent = gui
 	local oc = Instance.new("UICorner"); oc.CornerRadius = UDim.new(0, 10); oc.Parent = openBtn
 
+	-- Zamknij: dol-srodek (jak na calyw.png)
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromOffset(120, 40); closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.Position = UDim2.new(1, -16, 0, 16)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 55, 55); closeBtn.TextColor3 = Color3.new(1, 1, 1)
-	closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 16; closeBtn.Text = "✕ Zamknij"
+	closeBtn.Size = UDim2.fromOffset(220, 58); closeBtn.AnchorPoint = Vector2.new(0.5, 1)
+	closeBtn.Position = UDim2.new(0.5, 0, 1, -20)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(222, 60, 60); closeBtn.TextColor3 = Color3.new(1, 1, 1)
+	closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 24; closeBtn.Text = "Zamknij"
 	closeBtn.Visible = false
 	closeBtn.Parent = gui
-	local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 10); cc.Parent = closeBtn
+	local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 12); cc.Parent = closeBtn
+	local cst = Instance.new("UIStroke"); cst.Color = Color3.fromRGB(120, 22, 22); cst.Thickness = 3; cst.Parent = closeBtn
 
 	local function doToggle()
 		local willOpen = not NodeTreeClient.isTreeVisible()
@@ -317,22 +345,22 @@ function SkillTreeController.start()
 			if Controls then Controls:Disable() end -- STOP ruchu postaci w trybie umiejetnosci
 			local bf0 = ntGui:FindFirstChild("BackgroundFrame")
 			if bf0 then bf0.Active = true end -- pochlaniaj klik w tlo (nie leci na plansze/postac)
-				-- MODAL: pelnoekranowy TextButton pod wezlami. Frame+Active NIE daje gameProcessedEvent,
-				-- dopiero GuiButton pochlania klik (gp=true) i zeruje Mouse.Target -> plansza/swiat nie lapie.
-				local block = ntGui:FindFirstChild("WR_ClickBlock")
-				if not block then
-					block = Instance.new("TextButton")
-					block.Name = "WR_ClickBlock"
-					block.Size = UDim2.fromScale(1, 1)
-					block.BackgroundTransparency = 1
-					block.Text = ""
-					block.AutoButtonColor = false
-					block.ZIndex = 1 -- pod MainFrame (ZIndex 2) -> wezly dalej klikalne
-					block.Active = true
-					block.Selectable = false
-					block.Parent = ntGui
-				end
-				block.Visible = true
+			-- MODAL: pelnoekranowy TextButton pod wezlami. Frame+Active NIE daje gameProcessedEvent,
+			-- dopiero GuiButton pochlania klik (gp=true) i zeruje Mouse.Target -> plansza/swiat nie lapie.
+			local block = ntGui:FindFirstChild("WR_ClickBlock")
+			if not block then
+				block = Instance.new("TextButton")
+				block.Name = "WR_ClickBlock"
+				block.Size = UDim2.fromScale(1, 1)
+				block.BackgroundTransparency = 1
+				block.Text = ""
+				block.AutoButtonColor = false
+				block.ZIndex = 1 -- pod MainFrame (ZIndex 2) -> wezly dalej klikalne
+				block.Active = true
+				block.Selectable = false
+				block.Parent = ntGui
+			end
+			block.Visible = true
 			local hum0 = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if hum0 then savedWS = hum0.WalkSpeed; hum0.WalkSpeed = 0 end -- 100% stop ruchu (fallback gdyby controls nie zlapaly)
 			task.delay(0.35, function()
@@ -354,8 +382,8 @@ function SkillTreeController.start()
 			if Controls then Controls:Enable() end -- przywroc sterowanie po zamknieciu drzewa
 			local hum1 = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if hum1 then hum1.WalkSpeed = savedWS end -- przywroc predkosc chodu
-				local block = ntGui:FindFirstChild("WR_ClickBlock")
-				if block then block.Visible = false end -- zdejmij modal-blocker
+			local block = ntGui:FindFirstChild("WR_ClickBlock")
+			if block then block.Visible = false end -- zdejmij modal-blocker
 			panning = false
 			ContextActionService:UnbindAction("WR_TreePanSink")
 		end
