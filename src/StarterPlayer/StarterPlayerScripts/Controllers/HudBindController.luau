@@ -227,7 +227,7 @@ function HudBindController.start()
 	dim.Size = UDim2.fromScale(1, 1); dim.BackgroundColor3 = Color3.new(0, 0, 0); dim.BackgroundTransparency = 0.4
 	dim.BorderSizePixel = 0; dim.Parent = modalGui
 	local panel = Instance.new("Frame")
-	panel.Size = UDim2.fromOffset(360, 300); panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
+	panel.Size = UDim2.fromOffset(360, 440); panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
 	panel.BackgroundColor3 = Color3.fromRGB(28, 28, 38); panel.BorderSizePixel = 0; panel.Parent = modalGui
 	local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 16); pc.Parent = panel
 	local pst = Instance.new("UIStroke"); pst.Color = Color3.fromRGB(255, 215, 90); pst.Thickness = 2; pst.Transparency = 0.3; pst.Parent = panel
@@ -251,6 +251,9 @@ function HudBindController.start()
 	local waveVal = statRow(96, "🌊 Najdalsza fala", Color3.fromRGB(120, 200, 255))
 	local dmgVal = statRow(134, "⚔️ Zadane obrażenia", Color3.fromRGB(255, 150, 120))
 	local coinVal = statRow(172, "🪙 Zarobione monety", Color3.fromRGB(255, 215, 90))
+	local hsVal = statRow(210, "🎯 Headshoty", Color3.fromRGB(255, 90, 90))
+	local pdmgVal = statRow(248, "🔫 Obrażenia gracza", Color3.fromRGB(255, 200, 120))
+	local pkillVal = statRow(286, "💀 Zabici przez gracza", Color3.fromRGB(200, 160, 255))
 	local okBtn = Instance.new("TextButton")
 	okBtn.Size = UDim2.fromOffset(200, 46); okBtn.AnchorPoint = Vector2.new(0.5, 1); okBtn.Position = UDim2.new(0.5, 0, 1, -20)
 	okBtn.BackgroundColor3 = Color3.fromRGB(70, 170, 60); okBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -268,6 +271,9 @@ function HudBindController.start()
 		waveVal.Text = fmt(s.maxWave or 0)
 		dmgVal.Text = fmt(s.damage or 0)
 		coinVal.Text = fmt(s.coins or 0)
+		hsVal.Text = fmt(s.headshots or 0)
+		pdmgVal.Text = fmt(s.playerDamage or 0)
+		pkillVal.Text = fmt(s.playerKills or 0)
 		modalGui.Enabled = true
 	end)
 end

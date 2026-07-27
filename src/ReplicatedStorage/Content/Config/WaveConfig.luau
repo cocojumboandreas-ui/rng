@@ -45,7 +45,8 @@ local WaveConfig = {
 		colsBaseWaves = { [1] = 1, [2] = 2 }, -- ile kolumn celu (jawne dla fal poczatkowych)
 		colsBase = 3, -- liczba kolumn celu od fali 3 (srodek: {4,5,6})
 		colsHoldUntil = 8, -- do tej fali trzyma colsBase kolumn; potem rozszerza
-		colsStep = 1, -- +tyle kolumn na fale po colsHoldUntil (clamp do szerokosci bazy)
+		colsStep = 1, -- +tyle kolumn na krok rozszerzania (clamp do szerokosci bazy)
+		colsEvery = 2, -- co ile fal +colsStep kolumny (2 = lagodna rampa: pelne 9 dopiero ~fala 19, nie 14)
 	},
 	-- ROZNE TEMPA: kazdy wrog dostaje deterministyczny mnoznik predkosci z tego przedzialu (nie ida rowno).
 	speedJitter = { min = 0.75, max = 1.30 },
@@ -91,7 +92,19 @@ local WaveConfig = {
 	tierEvery = 6, -- (DEPRECATED — maxTier przewiązane teraz do bossWave, nie tierEvery)
 	tierWindow = 4, -- ile ostatnich (najwyzszych) tierow jest aktywnych w mixie fali (4 -> np. fala 21 = tier 1-4)
 	bossTiers = { "boss", "boss5", "boss6" }, -- k-ta boss-fala (20,40,60...) -> ten boss (k>#-> ostatni)
-	bossWave = 20, -- INTERWAL: co 20. fala = boss (20, 40, 60...)
+	bossWave = 20, -- INTERWAL: co 20. fala = DUZY boss (20, 40, 60...)
+	miniBossEvery = 5, -- co ile fal MINI-BOSS: elita najwyzszego tieru renderowana jako boss (+pasek HP), DOKLEJANA do zwyklej fali. Pomijane gdy fala = duzy boss (co 20). Landmark retencyjny co 5 fal.
+	miniBossHpMult = 2.5, -- HP mini-bossa = tyle x najsilniejszy zwykly zolnierz TEJ fali (duzy boss = bossHpVsPrevSoldier=5x -> mini ~pol duzego)
+	-- NAZWY BOSSOW/MINI-BOSSOW: "<ranga> <nazwa>" na pasku bossa (np. "General Skibidi"). Zwykli wrogowie
+	-- NIE maja napisu nad glowa (schowany). Ranga rosnie z fala; duzy boss = zawsze najwyzsza (General).
+	-- nazwy = najbardziej znane wsrod dzieciakow (brainrot/meme) — PODMIEN dowolnie, to Twoj brand.
+	bossNames = {
+		ranks = { "Kapral", "Sierzant", "Chorazy", "Porucznik", "Kapitan", "Major", "Pulkownik", "General" },
+		names = {
+			"Skibidi", "Sigma", "Rizzler", "Gyatt", "Tralalero", "Bombardiro", "Tung Tung",
+			"Chimpanzini", "Cappuccino", "Ballerina", "Sahur", "Ohio", "Sussy", "Bombombini",
+		},
+	},
 	bossRewardMult = 3, -- boss-fala daje x nagrody normalnej fali n
 	bossGrunts = 10, -- kompozycja boss-fali = 1 boss + tylu wrogow podkladu (tier maxTier-1)
 	-- KOMPOZYCJA fali generowanej wzorem (WaveService.waveComposition): ODWROCONE wagi + FODDER FLOOR.

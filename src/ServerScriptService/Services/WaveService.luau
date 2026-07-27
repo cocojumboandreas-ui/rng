@@ -19,7 +19,7 @@ local GameConfig = require(
 
 local WaveService = {}
 
-local _combat, _core, _economy, _stat, _profile, _plot = nil, nil, nil, nil, nil, nil
+local _combat, _core, _economy, _stat, _profile, _plot, _build = nil, nil, nil, nil, nil, nil, nil
 local _waveProgress, _waveEnded, _bossDefeated, _runSummary = nil, nil, nil, nil
 local _phase: { [any]: string } = {} -- player -> RunPhase (domyslnie Building)
 local _run: { [any]: any } = {} -- player -> {kills, pool} podczas WaveActive
@@ -111,7 +111,8 @@ local function activeColCount(waveNumber: number): number
 	if not a then return width end
 	if a.colsBaseWaves[waveNumber] then return a.colsBaseWaves[waveNumber] end
 	if waveNumber <= a.colsHoldUntil then return a.colsBase end
-	return math.min(width, a.colsBase + (waveNumber - a.colsHoldUntil) * a.colsStep)
+	-- +colsStep kolumny co colsEvery fal (lagodna rampa) — clamp do szerokosci bazy
+	return math.min(width, a.colsBase + math.ceil((waveNumber - a.colsHoldUntil) / (a.colsEvery or 1)) * a.colsStep)
 end
 
 -- KTORE kolumny (1..width) atakuje fala — od srodka NA ZEWNATRZ, na przemian lewo/prawo.
@@ -134,7 +135,25 @@ local function columnsFor(waveNumber: number): { number }
 	return chosen
 end
 
--- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count[,hpOverride]}}, poolSize, formation)
+-- MINI-BOSS: co miniBossEvery fal (ale NIE gdy fala = duzy boss co bossWave). Landmark retencyjny.
+local function isMiniBossWave(waveNumber: number): boolean
+	local every = GameConfig.Wave.miniBossEvery
+	return every ~= nil and every > 0 and waveNumber > 0 and (waveNumber % every == 0) and not isBossWave(waveNumber)
+end
+
+-- doklej mini-bossa do zwyklej kompozycji: 1 elita najwyzszego aktywnego tieru, HP = miniBossHpMult x
+-- najsilniejszy zolnierz tej fali, renderowana JAKO boss (4. pole = forceBoss -> wieksza + pasek HP + srodek).
+local function appendMiniBoss(comp, pool: number, waveNumber: number)
+	if not isMiniBossWave(waveNumber) then
+		return comp, pool
+	end
+	local mbType = pickTierType(maxTierFor(waveNumber), waveNumber + 99)
+	local mbHp = (GameConfig.Wave.miniBossHpMult or 2.5) * referenceSoldierHp(waveNumber)
+	comp[#comp + 1] = { mbType, 1, mbHp, true }
+	return comp, pool + 1
+end
+
+-- sklad fali z WaveConfig(waveNumber): zwraca (composition {{typeId,count[,hpOverride[,forceBoss]]}}, poolSize, formation)
 local function waveComposition(waveNumber: number)
 	-- boss-fala: 1 boss (HP = 5x zolnierz z fali n-1) + podklad wrogow (tier maxTier-1)
 	if isBossWave(waveNumber) then
@@ -164,7 +183,8 @@ local function waveComposition(waveNumber: number)
 			acc += cnt
 			comp[#comp + 1] = { e[1], math.max(0, cnt), e[3] }
 		end
-		return comp, N, w.formation
+		local c, p = appendMiniBoss(comp, N, waveNumber)
+		return c, p, w.formation
 	end
 	-- generowana wzorem: FODDER FLOOR (staly udzial najnizszych tierow) + reszta na tiery okna z ODWROCONYMI
 	-- wagami (nizszy tier = wieksza waga). Efekt: roj taniego miesa + rzadkie elity = tekstura TD. Fodder floor
@@ -212,7 +232,8 @@ local function waveComposition(waveNumber: number)
 	end
 	push(lowTier, waveNumber + lowTier, elitePool - eliteUsed) -- najnizszy tier okna = reszta -> dominuje
 
-	return comp, pool, { cols = 6 } -- BEZ applyProto: liczba jest juz doslowna (waveCount)
+	local c, p = appendMiniBoss(comp, pool, waveNumber) -- co 5 fal doklej mini-bossa (nie na falach duzego bossa)
+	return c, p, { cols = 6 } -- BEZ applyProto: liczba jest juz doslowna (waveCount)
 end
 
 local function plotIdOf(player): number
@@ -246,9 +267,10 @@ local function beginWave(player)
 	-- KOLUMNY CELU tej fali (srodek->zewnatrz). CombatService przydziela je wrogom round-robin (boss=srodek).
 	local targetCols = columnsFor(waveNumber)
 	for _, entry in ipairs(comp) do
-		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3], targetCols = targetCols })
+		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3], targetCols = targetCols, forceBoss = entry[4] })
 	end
-	WaveService.WaveStarted:Fire(player, waveNumber, pool)
+	WaveService.WaveStarted:Fire(player, waveNumber, pool) -- -> BuildService.SettleStacks (grawitacja); snapshot bazy PO niej
+	if _build and _build.SnapshotBase then _build.SnapshotBase(player) end -- stan bazy na START fali (do restore po fali)
 	pushProgress(player, waveNumber, 0, pool)
 end
 
@@ -271,15 +293,18 @@ local function finishRun(player, reason: string)
 	local rs = _runStats[player] or { maxWave = 0, coins = 0 }
 	local maxWave = math.max(rs.maxWave or 0, waveNumber)
 	local damage = (_combat and _combat.GetRunDamage and _combat.GetRunDamage(player)) or 0
+	local pstats = (_combat and _combat.GetPlayerRunStats and _combat.GetPlayerRunStats(player)) or { damage = 0, headshots = 0, kills = 0 } -- staty gracza PRZED ClearPlot (zeruje je)
 
 	_combat.ClearPlot(player) -- czysci wrogow (i zeruje runDamage — dlatego czytamy damage wyzej)
+	if _build and _build.RestoreBase then _build.RestoreBase(player) end -- koniec runu: odtworz baze zniszczona w ostatniej fali (cala na nastepny run)
 	_core.ResetHP(player)
 	if data then data.waveNumber = 1 end
 	_phase[player] = Enums.RunPhase.Building
 	_run[player] = nil
 	_runStats[player] = nil
 
-	local summary = { reason = reason, maxWave = maxWave, damage = math.floor(damage + 0.5), coins = math.floor((rs.coins or 0) + 0.5) }
+	local summary = { reason = reason, maxWave = maxWave, damage = math.floor(damage + 0.5), coins = math.floor((rs.coins or 0) + 0.5),
+		headshots = pstats.headshots, playerDamage = pstats.damage, playerKills = pstats.kills }
 	WaveService.WaveEnded:Fire(player, reason, summary)
 	if _runSummary then
 		_runSummary:FireClient(player, summary)
@@ -319,6 +344,10 @@ local function endWave(player, reason)
 	if _waveEnded then
 		_waveEnded:FireClient(player, { plotId = plotIdOf(player), reason = reason, summary = summary })
 	end
+	-- "WSZYSTKO ODNOWIONE": odtworz jednostki/bloki zniszczone w tej fali + reset HP ocalalych do pelna,
+	-- ZANIM ruszy nastepna fala (beginWave zrobi swiezy snapshot juz odnowionej bazy).
+	if _build and _build.RestoreBase then _build.RestoreBase(player) end
+	if _combat.ResetUnitHp then _combat.ResetUnitHp(player) end
 	beginWave(player) -- nastepna fala (n+1) NATYCHMIAST, zostajemy w WaveActive (zero przerwy, zero okna budowania)
 end
 
@@ -376,6 +405,7 @@ function WaveService.Start()
 	_stat = ServiceRegistry.get("StatProfileService")
 	_profile = ServiceRegistry.get("ProfileService")
 	_plot = ServiceRegistry.get("PlotService")
+	_build = ServiceRegistry.get("BuildService") -- snapshot/restore bazy per fala ("wszystko odnowione")
 	_waveProgress = Net.get("WaveProgress")
 	_waveEnded = Net.get("WaveEnded")
 	_bossDefeated = Net.get("BossDefeated")

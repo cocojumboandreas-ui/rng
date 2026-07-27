@@ -29,6 +29,7 @@ local BuildService = {}
 
 local _inv, _grid, _plot, _wave, _profile = nil, nil, nil, nil, nil
 local _models: { [any]: { [string]: Instance } } = {} -- player -> {placementId -> Model}
+local _snapshot: { [any]: any } = {} -- player -> {pid -> placementCopy} — stan bazy na START fali (restore po fali)
 local _unitsFolder: Folder? = nil
 
 -- ── helpers czyste ───────────────────────────────────────────────────────────
@@ -389,6 +390,54 @@ function BuildService.KillUnit(player, placementId: string): boolean
 	return true
 end
 
+-- SNAPSHOT bazy na START fali: kopiujemy WSZYSTKIE placementy (pelne dane). WaveService wola to w beginWave
+-- PO SettleStacks (warstwy juz ustabilizowane). Restore po fali odtwarza zniszczone do TEGO stanu.
+function BuildService.SnapshotBase(player)
+	local data = _profile and _profile.GetProfile(player)
+	if not data or not data.placements then
+		_snapshot[player] = nil
+		return
+	end
+	local snap = {}
+	for pid, p in pairs(data.placements) do
+		snap[pid] = { itemId = p.itemId, x = p.x, z = p.z, mut = p.mut, variant = p.variant, rot = p.rot, layer = p.layer }
+	end
+	_snapshot[player] = snap
+end
+
+-- RESTORE bazy po fali: odtwarza jednostki/bloki ZNISZCZONE w trakcie fali (te ze snapshotu, ktorych juz nie ma).
+-- Inventory NIE ruszamy (jednostka byla skonsumowana przy stawianiu; KillUnit nie refundowal -> restore = te same
+-- skonsumowane sztuki wracaja na pole). Odtwarzamy od DOLU (warstwa) jak RestorePlot. HP resetuje CombatService.ResetUnitHp.
+function BuildService.RestoreBase(player)
+	local snap = _snapshot[player]
+	if not snap then
+		return
+	end
+	local data = _profile and _profile.GetProfile(player)
+	if not data then
+		return
+	end
+	data.placements = data.placements or {}
+	local order = {}
+	for pid, p in pairs(snap) do
+		if data.placements[pid] == nil then -- zniszczony w fali -> odtworz
+			order[#order + 1] = { pid = pid, p = p }
+		end
+	end
+	if #order == 0 then
+		return
+	end
+	table.sort(order, function(a, b)
+		return (a.p.layer or 0) < (b.p.layer or 0)
+	end)
+	for _, e in ipairs(order) do
+		data.placements[e.pid] = { itemId = e.p.itemId, x = e.p.x, z = e.p.z, mut = e.p.mut, variant = e.p.variant, rot = e.p.rot, layer = e.p.layer }
+		_grid.Occupy(player, e.pid, e.p.itemId, e.p.x, e.p.z, e.p.layer) -- dokladna warstwa (bez re-check budzetu: restore, nie nowe stawianie)
+		spawnModel(player, e.p.itemId, e.pid, e.p.x, e.p.z, e.p.rot)
+	end
+	BuildService.PlacementChanged:Fire(player)
+end
+
 function BuildService.Init()
 	BuildService.PlacementChanged = Signal.new() -- (player)
 end
@@ -488,6 +537,7 @@ function BuildService.Start()
 			end
 		end
 		_models[player] = nil
+		_snapshot[player] = nil
 	end)
 end
 

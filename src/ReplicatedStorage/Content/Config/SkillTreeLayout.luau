@@ -1,142 +1,156 @@
 --!nonstrict
 -- Content/Config/SkillTreeLayout.luau
--- Generuje liste wezlow dla packa NodeTree z naszego SkillConfig.
--- Kazdy rankowany skill -> LANCUCH wezlow (rank1 -> rank2 -> ...), kupowany po kolei.
--- NodeTree.Configs.Nodes jest shimem: `return require(...SkillTreeLayout)`.
--- Kontrakt wezla (NodeTree.Configs.Types): parentNodeId, direction, icon, text,
---   price{quantity,currencyIcon}, headerText, inheritVisibility.
--- Id wezla ranku = "<skillId>#<rank>" (klient parsuje -> skillId do SkillPurchase).
-local Config = script.Parent
-local SkillConfig = require(Config:WaitForChild("SkillConfig"))
-local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
-local Enums = require(Shared:WaitForChild("Enums"))
+-- Drzewo umiejetnosci zaprojektowane w CRAFTERze (95 wezlow). Buduje liste wezlow dla packa NodeTree.
+-- FAZA: WIDOCZNE, bez logiki kupna. Ids NIE maja "#", wiec SkillTreeController nie podpina zakupu
+--   (parseNodeId wymaga "#") -> klik nic nie robi. Efekty/koszty-kupna dorobimy pozniej (SkillConfig).
+-- Ten sam pack NodeTree renderuje to swoim stylem (nie ruszamy wygladu). inheritVisibility=true na
+--   WSZYSTKICH -> cale drzewo widoczne od razu (bez czekania na zakup rodzica).
+-- 0 monet i 0 kostek = wezel INFORMACYJNY (naglowek sekcji) -> bez ceny.
+local COIN = "rbxassetid://5684864491" -- ikona monety
+local DICE = "rbxassetid://92190657341460" -- ikona kostki
+local CLOVER = "rbxassetid://123550318368193" -- ikona koniczyny (luck)
 
--- ikony walut (textureId decali z Creator Store): moneta / kostka
-local CURRENCY_ICON = {
-	[Enums.Currency.Coins] = "rbxassetid://5684864491",
-	[Enums.Currency.Rolls] = "rbxassetid://92190657341460",
-}
-
--- ikony tematyczne (textureId): koniczyna/kostka/moneta/miecz/tarcza
-local IC = {
-	clover = "rbxassetid://123550318368193",
-	dice = "rbxassetid://92190657341460",
-	coin = "rbxassetid://5684864491",
-	sword = "rbxassetid://7485051715",
-	shield = "rbxassetid://11322093465",
-}
--- ikona per skill
-local SKILL_ICON = {
-	luck_1 = IC.clover, mut_1 = IC.clover, variant_1 = IC.clover,
-	fast_1 = IC.dice,
-	coin_1 = IC.coin, offline_1 = IC.coin,
-	dmg_1 = IC.sword, fire_1 = IC.sword, range_1 = IC.sword,
-	cells_1 = IC.shield, core_1 = IC.shield,
-}
--- ikona per galaz (b:*)
-local BRANCH_ICON = {
-	LUCK = IC.clover, DICE = IC.dice, COMBAT = IC.sword, DEFEND = IC.shield,
+-- kierunki heksa (konwencja packa: X * sqrt3*halfW, Y * halfH)
+local DIR = {
+	Gora = Vector2.new(0, -2),
+	Dol = Vector2.new(0, 2),
+	GoraLewo = Vector2.new(-1, -1),
+	GoraPrawo = Vector2.new(1, -1),
+	DolLewo = Vector2.new(-1, 1),
+	DolPrawo = Vector2.new(1, 1),
 }
 
--- kierunki hex (jak w packu: X * sqrt(3)*halfW, Y * halfH)
-local Side = {
-	bottom = Vector2.new(0, 2),
-	top = Vector2.new(0, -2),
-	bottomLeft = Vector2.new(-1, 1),
-	bottomRight = Vector2.new(1, 1),
-	topLeft = Vector2.new(-1, -1),
-	topRight = Vector2.new(1, -1),
+-- DANE z crafteru: id, parent, dir, label, koszt monety, koszt kostki.
+local RAW = {
+	{ id="root", parent=nil, dir=nil, label="DRZEWO Umiejetnosci", coin=0, roll=0 },
+	{ id="n2", parent="root", dir="DolLewo", label="Automatic Roll", coin=250, roll=0 },
+	{ id="n3", parent="n2", dir="GoraLewo", label="Rozwijanie w trybie offline", coin=5000, roll=0 },
+	{ id="n4", parent="n2", dir="Dol", label="Zlote rolki", coin=1100, roll=0 },
+	{ id="n5", parent="n4", dir="DolLewo", label="Automatic wave", coin=5000, roll=0 },
+	{ id="n6", parent="n4", dir="DolPrawo", label="Zlote rolki I", coin=10000, roll=0 },
+	{ id="n7", parent="n6", dir="Dol", label="Zlote rolki II", coin=25000, roll=0 },
+	{ id="n8", parent="n7", dir="DolLewo", label="Diamentowe rolki", coin=100000, roll=0 },
+	{ id="n9", parent="n7", dir="DolPrawo", label="Zlote rolki III", coin=65000, roll=0 },
+	{ id="n10", parent="n9", dir="Dol", label="Zlote rolki IV", coin=150000, roll=0 },
+	{ id="n11", parent="n8", dir="Dol", label="Diamentowe rolki I", coin=1500000, roll=0 },
+	{ id="n12", parent="n11", dir="Dol", label="Diamentowe rolki II", coin=2500000, roll=0 },
+	{ id="n13", parent="n12", dir="DolLewo", label="Diamentowe rolki III", coin=5000000, roll=0 },
+	{ id="n14", parent="n13", dir="Dol", label="Diamentowe rolki IV", coin=8000000, roll=0 },
+	{ id="n15", parent="n12", dir="DolPrawo", label="Teczowe rolki", coin=4000000, roll=0 },
+	{ id="n16", parent="n15", dir="Dol", label="Teczowe rolki I", coin=6500000, roll=0 },
+	{ id="n17", parent="n16", dir="Dol", label="Teczowe rolki II", coin=8500000, roll=0 },
+	{ id="n20", parent="n17", dir="DolPrawo", label="Teczowe rolki III", coin=10000000, roll=0 },
+	{ id="n21", parent="n20", dir="DolPrawo", label="Teczowe rolki IV", coin=12000000, roll=0 },
+	{ id="n22", parent="n3", dir="DolLewo", label="Rolki offline I", coin=15000, roll=0 },
+	{ id="n23", parent="n22", dir="DolLewo", label="Rolki offline II", coin=120000, roll=0 },
+	{ id="n27", parent="n23", dir="DolLewo", label="Rolki offline III", coin=1100000, roll=0 },
+	{ id="n28", parent="n27", dir="Dol", label="Rolki offline IV", coin=3500000, roll=0 },
+	{ id="n29", parent="n28", dir="Dol", label="Rolki offline V", coin=5500000, roll=0 },
+	{ id="n30", parent="n29", dir="Dol", label="Rolki offline VI", coin=8000000, roll=0 },
+	{ id="n31", parent="root", dir="DolPrawo", label="Szybkie rolki I", coin=0, roll=15 },
+	{ id="n32", parent="n31", dir="GoraPrawo", label="Szansa koniczyny I", coin=0, roll=50 },
+	{ id="n33", parent="n31", dir="DolPrawo", label="Szybkie rolki II", coin=0, roll=75 },
+	{ id="n34", parent="n33", dir="DolPrawo", label="Szybkie rolki III", coin=0, roll=180 },
+	{ id="n35", parent="n34", dir="Dol", label="Szybkie rolki IV", coin=0, roll=360 },
+	{ id="n36", parent="n35", dir="Dol", label="Szybkie rolki V", coin=0, roll=720 },
+	{ id="n37", parent="n36", dir="Dol", label="Szybkie rolki VI", coin=0, roll=1500 },
+	{ id="n39", parent="n34", dir="GoraPrawo", label="Bonus I", coin=0, roll=120 },
+	{ id="n40", parent="n39", dir="DolPrawo", label="Bonus II", coin=0, roll=250 },
+	{ id="n41", parent="n40", dir="GoraPrawo", label="Power Punch I", coin=0, roll=300 },
+	{ id="n42", parent="n41", dir="DolPrawo", label="Power Punch II", coin=0, roll=550 },
+	{ id="n43", parent="n40", dir="Dol", label="Bonus III", coin=0, roll=520 },
+	{ id="n44", parent="n43", dir="Dol", label="Bonusowy szal I", coin=0, roll=750 },
+	{ id="n45", parent="n44", dir="Dol", label="Bonusowy szal II", coin=0, roll=1100 },
+	{ id="n46", parent="n45", dir="Dol", label="Bonusowy Szal III", coin=0, roll=2500 },
+	{ id="n47", parent="n42", dir="Dol", label="Power Punch III", coin=0, roll=820 },
+	{ id="n48", parent="n47", dir="Dol", label="Electric shot I", coin=0, roll=1100 },
+	{ id="n49", parent="n48", dir="Dol", label="Electric shot II", coin=0, roll=2500 },
+	{ id="n50", parent="n49", dir="Dol", label="Electric shot III", coin=0, roll=5000 },
+	{ id="n51", parent="n32", dir="GoraPrawo", label="Szansa konicznyny II", coin=0, roll=120 },
+	{ id="n52", parent="n51", dir="GoraPrawo", label="Szansa konicznyny III", coin=0, roll=250 },
+	{ id="n53", parent="n52", dir="Gora", label="x16 koniczyna", coin=0, roll=1500 },
+	{ id="n54", parent="n52", dir="GoraPrawo", label="Podwojny rol", coin=0, roll=350 },
+	{ id="n55", parent="n54", dir="GoraPrawo", label="Podwojny rol I", coin=0, roll=650 },
+	{ id="n56", parent="n55", dir="Gora", label="Podwojny rol II", coin=0, roll=850 },
+	{ id="n57", parent="n52", dir="DolPrawo", label="Szal koniczyny I", coin=0, roll=350 },
+	{ id="n58", parent="n57", dir="DolPrawo", label="Szal Konciznyny II", coin=0, roll=750 },
+	{ id="n59", parent="n58", dir="GoraPrawo", label="Szal koniczyn III", coin=0, roll=1500 },
+	{ id="n60", parent="n59", dir="DolPrawo", label="Potega koncizyn I", coin=0, roll=5000 },
+	{ id="n61", parent="n60", dir="GoraPrawo", label="Potega koninczyn II", coin=0, roll=7500 },
+	{ id="n62", parent="n61", dir="DolPrawo", label="Potega koniczyn III", coin=0, roll=15000 },
+	{ id="n63", parent="n53", dir="Gora", label="x32 koniczyna", coin=0, roll=4000 },
+	{ id="n64", parent="n63", dir="Gora", label="x64 konciznyna", coin=0, roll=10000 },
+	{ id="n65", parent="n56", dir="Gora", label="Podwojny rol III", coin=0, roll=1500 },
+	{ id="n66", parent="n65", dir="Gora", label="Podwojny rol IV", coin=0, roll=3000 },
+	{ id="n67", parent="n66", dir="Gora", label="Podwojny rol V", coin=0, roll=5000 },
+	{ id="n68", parent="n67", dir="Gora", label="Podwojny rol VI", coin=0, roll=8000 },
+	{ id="n69", parent="n3", dir="Gora", label="Sekcja Bazy", coin=0, roll=0 },
+	{ id="n70", parent="root", dir="Gora", label="Szczescie I", coin=100, roll=0 },
+	{ id="n71", parent="n70", dir="Gora", label="Szczescie II", coin=800, roll=0 },
+	{ id="n73", parent="n70", dir="GoraPrawo", label="Sekcja PRO gracza", coin=0, roll=0 },
+	{ id="n74", parent="n71", dir="GoraPrawo", label="Szczescie Przyjaciol I", coin=2500, roll=0 },
+	{ id="n75", parent="n71", dir="GoraLewo", label="Szczescie III", coin=2500, roll=0 },
+	{ id="n76", parent="n75", dir="GoraLewo", label="Mocne szczescie I", coin=15000, roll=0 },
+	{ id="n78", parent="n76", dir="Gora", label="Ogniste obiekty", coin=150000, roll=0 },
+	{ id="n79", parent="n76", dir="DolLewo", label="Mocne szczescie II", coin=40000, roll=0 },
+	{ id="n80", parent="n79", dir="DolLewo", label="Mocne szczescie III", coin=75000, roll=0 },
+	{ id="n81", parent="n80", dir="DolLewo", label="Potezne szczescie I", coin=200000, roll=0 },
+	{ id="n82", parent="n81", dir="DolLewo", label="Potezne szczescie II", coin=500000, roll=0 },
+	{ id="n83", parent="n82", dir="GoraLewo", label="Obiekty kosmiczne", coin=750000, roll=0 },
+	{ id="n84", parent="n82", dir="DolLewo", label="Potezne szczescie III", coin=1200000, roll=0 },
+	{ id="n85", parent="n84", dir="Dol", label="Piekielne szczescie I", coin=3500000, roll=0 },
+	{ id="n86", parent="n85", dir="Dol", label="Piekielne szczescie II", coin=6000000, roll=0 },
+	{ id="n87", parent="n86", dir="Dol", label="Piekielne szczescie III", coin=7500000, roll=0 },
+	{ id="n88", parent="n87", dir="DolLewo", label="Szczescie Boga I", coin=10000000, roll=0 },
+	{ id="n89", parent="n88", dir="DolLewo", label="Szczescie Boga II", coin=12000000, roll=0 },
+	{ id="n90", parent="n89", dir="DolLewo", label="Szczescie Boga III", coin=15000000, roll=0 },
+	{ id="n91", parent="n83", dir="GoraLewo", label="Kosmiczne szczescie I", coin=1500000, roll=0 },
+	{ id="n92", parent="n91", dir="GoraLewo", label="Kosmiczne szczescie II", coin=3000000, roll=0 },
+	{ id="n93", parent="n92", dir="GoraLewo", label="Kosmiczne szczescie III", coin=7500000, roll=0 },
+	{ id="n94", parent="n93", dir="GoraLewo", label="Kosmiczne szczescie IV", coin=15000000, roll=0 },
+	{ id="n95", parent="n78", dir="GoraLewo", label="Ogniste szczescie I", coin=500000, roll=0 },
+	{ id="n96", parent="n95", dir="GoraLewo", label="Ogniste szczescie II", coin=1500000, roll=0 },
+	{ id="n97", parent="n96", dir="GoraLewo", label="Ogniste szczescie III", coin=3000000, roll=0 },
+	{ id="n98", parent="n97", dir="GoraLewo", label="Ogniste szczescie IV", coin=8000000, roll=0 },
+	{ id="n99", parent="n74", dir="Gora", label="Szczescie Przyjaciol II", coin=15000, roll=0 },
+	{ id="n100", parent="n99", dir="Gora", label="Szczescie Przyjaciol III", coin=40000, roll=0 },
+	{ id="n101", parent="n100", dir="Gora", label="Szczescie Przyjaciol IV", coin=200000, roll=0 },
+	{ id="n102", parent="n101", dir="GoraPrawo", label="Szczescie Przyjaciol V", coin=3000000, roll=0 },
+	{ id="n103", parent="n102", dir="GoraPrawo", label="Szczescie Przyjaciol VI", coin=7500000, roll=0 },
 }
 
--- 4 galezie w rogach root; kazdy skill startuje z innego kierunku, lancuch idzie wspolnym `chain`.
-local LAYOUT = {
-	{
-		id = "LUCK",
-		label = "LUCK",
-		dir = Side.topLeft,
-		chain = Side.topLeft,
-		skills = {
-			{ skill = "luck_1", start = Side.top },
-			{ skill = "mut_1", start = Side.topLeft },
-			{ skill = "variant_1", start = Side.bottomLeft },
-		},
-	},
-	{
-		id = "DICE",
-		label = "DICE UPDATE",
-		dir = Side.topRight,
-		chain = Side.topRight,
-		skills = {
-			{ skill = "fast_1", start = Side.top },
-			{ skill = "coin_1", start = Side.topRight },
-			{ skill = "offline_1", start = Side.bottomRight },
-		},
-	},
-	{
-		id = "COMBAT",
-		label = "COMBAT",
-		dir = Side.bottomRight,
-		chain = Side.bottomRight,
-		skills = {
-			{ skill = "dmg_1", start = Side.bottom },
-			{ skill = "fire_1", start = Side.bottomRight },
-			{ skill = "range_1", start = Side.topRight },
-		},
-	},
-	{
-		id = "DEFEND",
-		label = "DEFEND",
-		dir = Side.bottomLeft,
-		chain = Side.bottomLeft,
-		skills = {
-			{ skill = "cells_1", start = Side.bottom },
-			{ skill = "core_1", start = Side.bottomLeft },
-		},
-	},
-}
-
-local function costFor(node, rank)
-	return math.round(node.base * rank ^ SkillConfig.costExp)
+-- ikona wg tematu (koniczyna dla luck/szczescia/koniczyn, kostka dla rolek, inaczej moneta)
+local function iconFor(n)
+	local l = string.lower(n.label or "")
+	if string.find(l, "konicz") or string.find(l, "szczesc") then
+		return CLOVER
+	end
+	if string.find(l, "rol") or (n.roll or 0) > 0 then
+		return DICE
+	end
+	return COIN
 end
 
 local Nodes = {}
-
--- root wymagany przez pack
-Nodes["root"] = { icon = "", text = "DRZEWO\nUMIEJĘTNOŚCI" }
-
-for bi, branch in ipairs(LAYOUT) do
-	local branchNodeId = "b:" .. branch.id
-	Nodes[branchNodeId] = {
-		parentNodeId = "root",
-		direction = branch.dir,
-		icon = BRANCH_ICON[branch.id] or "",
-		text = branch.label,
-		inheritVisibility = true, -- pokaz zawsze gdy root widoczny
-		wrBranch = branch.id, -- pole nasze (pack ignoruje) -> kolor w controllerze
-		wrBranchIdx = bi, -- kolejnosc galezi (progresywne odkrywanie)
-	}
-
-	for si, entry in ipairs(branch.skills) do
-		local skillId = entry.skill
-		local node = SkillConfig.nodes[skillId]
-		if node then
-			local currencyIcon = CURRENCY_ICON[node.currency] or ""
-			for rank = 1, node.maxRank do
-				local nodeId = skillId .. "#" .. rank
-				Nodes[nodeId] = {
-					parentNodeId = (rank == 1) and branchNodeId or (skillId .. "#" .. (rank - 1)),
-					direction = (rank == 1) and entry.start or branch.chain,
-					icon = SKILL_ICON[skillId] or "",
-					text = tostring(rank),
-					headerText = (rank == 1) and node.label or nil,
-					price = { quantity = costFor(node, rank), currencyIcon = currencyIcon },
-					wrBranch = branch.id, -- galaz skilla (kolor + gating)
-					wrBranchIdx = bi, -- kolejnosc galezi
-					wrSkillIdx = si, -- kolejnosc skilla w galezi (odkrywaj po kolei)
-					inheritVisibility = false, -- odkrywaj rank po ranku (po zakupie poprzedniego)
-				}
-			end
+for _, n in ipairs(RAW) do
+	if n.id == "root" then
+		Nodes.root = { icon = "", text = "DRZEWO UMIEJETNOSCI" }
+	else
+		local price = nil
+		if (n.coin or 0) > 0 then
+			price = { quantity = n.coin, currencyIcon = COIN }
+		elseif (n.roll or 0) > 0 then
+			price = { quantity = n.roll, currencyIcon = DICE }
 		end
+		Nodes[n.id] = {
+			parentNodeId = n.parent or "root",
+			direction = DIR[n.dir] or DIR.Dol,
+			icon = iconFor(n),
+			text = "", -- nazwa idzie w headerText (jak w oryginalnym layoucie); hex zostaje czysty (ikona)
+			headerText = n.label,
+			price = price, -- nil dla wezlow 0/0 (informacyjne, bez ceny)
+			inheritVisibility = true, -- CALE drzewo widoczne od razu
+		}
 	end
 end
 

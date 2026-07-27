@@ -39,6 +39,9 @@ local _synthPlotId: { [any]: number } = {} -- syntetyczny klucz -> plotId (harne
 local _lastStepMs = 0 -- czas ostatniego kroku symulacji [ms] (instrumentacja bramki)
 local _syncBytes = 0 -- bajty EnemySync od ostatniego odczytu (KB/s bramki)
 local _runDamage: { [any]: number } = {} -- player -> suma obrazen zadanych wrogom w runie (do podsumowania; overkill nieliczony)
+local _playerDmg: { [any]: number } = {} -- player -> obrazenia zadane przez GRACZA (bron FPS) w runie (summary)
+local _playerHS: { [any]: number } = {} -- player -> liczba headshotow gracza w runie (summary)
+local _playerKills: { [any]: number } = {} -- player -> liczba wrogow zabitych przez gracza (bron FPS) w runie (summary)
 
 -- FIX P0: klamra anty-spirala-smierci na nadganianiu akumulatora (+ rate-limit warna).
 local MAX_STEPS_PER_FRAME = 3 -- max krokow symulacji na 1 Heartbeat; nadwyzka = PORZUCONY dlug (gra zwalnia, nie umiera)
@@ -120,6 +123,18 @@ local function waveAtkMult(waveNumber: number): number
 	return (GameConfig.Wave.scaling.dmgGrowth or 1) ^ (waveNumber - 1)
 end
 
+-- Nazwa bossa/mini-bossa: "<ranga> <nazwa>". Duzy boss = najwyzsza ranga (General); mini = ranga rosnie z fala.
+-- Deterministyczna z id (stabilna, nie miga). Pule w WaveConfig.bossNames (podmienialne). Zwykli wrogowie: brak nazwy.
+local function bossNameFor(waveNumber: number, id: number, isBigBoss: boolean): string
+	local bn = GameConfig.Wave.bossNames
+	if not bn or not bn.ranks or not bn.names or #bn.ranks == 0 or #bn.names == 0 then
+		return "BOSS"
+	end
+	local rankIdx = isBigBoss and #bn.ranks or math.clamp(1 + math.floor(waveNumber / 8), 1, #bn.ranks - 1)
+	local nameIdx = (id % #bn.names) + 1
+	return bn.ranks[rankIdx] .. " " .. bn.names[nameIdx]
+end
+
 -- ── API (§3.9) ────────────────────────────────────────────────────────────────
 function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	local et = GameConfig.Wave.enemyTypes[spec.enemyTypeId]
@@ -130,7 +145,8 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	local protoHp = (GameConfig.Wave.proto and GameConfig.Wave.proto.hpMul) or 1 -- PROTOTYP: grubsi wrogowie
 	local hp = (spec.hpOverride or (et.hp * waveHpMult(waveNumber))) * protoHp -- boss: jawne HP (5x zolnierz z fali n-1) tez x hpMul
 	local atkDmg = (et.atkDmg or 0) * waveAtkMult(waveNumber) -- obrazenia jednostek skalowane z fala
-	local isBoss = et.isBoss or false
+	local isBigBoss = et.isBoss or false -- prawdziwy DUZY boss (typ z isBoss); mini-boss to forceBoss na elicie
+	local isBoss = spec.forceBoss or isBigBoss -- isBoss: render bossa (wieksza + pasek HP + srodek + nazwa)
 	local stagger = GameConfig.Sim.spawnStagger or 0.03
 	local plot = resolvePlot(player)
 	local plotId = plot and plot.plotId or 0
@@ -168,6 +184,8 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 			coreTimer = et.coreAttackInterval,
 			atkDmg = atkDmg, -- atkDmg × waveAtkMult (zamrozony na spawnie, jak hp)
 			isBoss = isBoss, -- boss = zwykly wiersz z flaga (ta sama petla/pathing/core-dmg)
+			bossName = isBoss and bossNameFor(waveNumber, id, isBigBoss) or nil, -- "<ranga> <nazwa>" na pasku bossa
+			isBigBoss = isBigBoss, -- true TYLKO dla DUZEGO bossa (co 20 fal) -> klient robi shake ekranu ("boss wbija")
 			col = col, -- kolumna celu (1..width); klient dostaje ja w spawnList i liczy IDENTYCZNY lane
 			-- lane = boczny offset dokladnie nad kolumna celu; glebokosc (fwd) deterministyczna z id (nie gesiego w kolumnie).
 			-- Blokowanie/celowanie/dmg licza REALNA pozycje (nie srodek) -> bloki/jednostki na kolumnie celu zatrzymuja wroga.
@@ -221,14 +239,38 @@ function CombatService.ClearPlot(player)
 	_deaths[player] = nil
 	_unitHp[player] = nil
 	_runDamage[player] = nil
+	_playerDmg[player] = nil
+	_playerHS[player] = nil
+	_playerKills[player] = nil
 end
 
 -- suma obrazen zadanych wrogom w biezacym runie (WaveService czyta do podsumowania PRZED ClearPlot)
 function CombatService.GetRunDamage(player): number
 	return _runDamage[player] or 0
 end
+
+-- Statystyki GRACZA (bron FPS) w runie do podsumowania: obrazenia / headshoty / zabojstwa. WaveService czyta PRZED ClearPlot.
+function CombatService.GetPlayerRunStats(player)
+	return {
+		damage = math.floor((_playerDmg[player] or 0) + 0.5),
+		headshots = _playerHS[player] or 0,
+		kills = _playerKills[player] or 0,
+	}
+end
 function CombatService.ResetRunDamage(player)
 	_runDamage[player] = nil
+end
+
+-- RESET HP jednostek gracza (WaveService po fali: "wszystko odnowione" -> ocalale wracaja do pelnego HP).
+-- Czysci _unitHp (re-init do maxHp przy nastepnym kroku 2b) + throttle-timestampy paskow HP.
+function CombatService.ResetUnitHp(player)
+	local uhp = _unitHp[player]
+	if uhp then
+		for pid in pairs(uhp) do
+			_unitHpSend[pid] = nil
+		end
+	end
+	_unitHp[player] = nil
 end
 
 -- ── tick ──────────────────────────────────────────────────────────────────────
@@ -486,7 +528,7 @@ local function step(dt: number)
 			if _bossHP then
 				for _, e in pairs(enemies) do
 					if e.isBoss then
-						_bossHP:FireClient(player, { plotId = plot.plotId, hp = e.hp, maxHp = e.maxHp })
+						_bossHP:FireClient(player, { plotId = plot.plotId, hp = e.hp, maxHp = e.maxHp, name = e.bossName, big = e.isBigBoss })
 					end
 				end
 			end
@@ -531,7 +573,7 @@ end
 
 -- gracz trafil wroga z broni FPS (WeaponsSystem onHit -> Net.PlayerHitEnemy). -playerShotDmg HP.
 -- Gated: dziala TYLKO gdy wrog o tym id istnieje na plocie gracza (czyli w trakcie fali).
-function CombatService.PlayerHitEnemy(player, id)
+function CombatService.PlayerHitEnemy(player, id, isHead)
 	if type(id) ~= "number" then return end
 	local enemies = _enemies[player]
 	local e = enemies and enemies[id]
@@ -544,15 +586,22 @@ function CombatService.PlayerHitEnemy(player, id)
 		local tool = player.Character:FindFirstChildOfClass("Tool")
 		if tool and perW[tool.Name] then dmg = perW[tool.Name] end
 	end
-	_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, e.hp))
+	if isHead then -- HEAD SHOT: bonus obrazen (echo "-N" tez wyzsze) + licznik do summary
+		dmg = dmg * (GameConfig.Sim.headshotMult or 1)
+		_playerHS[player] = (_playerHS[player] or 0) + 1
+	end
+	local eff = math.min(dmg, math.max(0, e.hp)) -- efektywne obrazenia (bez overkill)
+	_runDamage[player] = (_runDamage[player] or 0) + eff
+	_playerDmg[player] = (_playerDmg[player] or 0) + eff -- obrazenia GRACZA (bron FPS) do summary
 	e.hp -= dmg
 	-- liczba "-N" NAD wrogiem OD RAZU (exact dmg; niezaleznie od kwantyzacji hpPct w EnemySync -> dziala tez na tankach)
 	if _playerShotHit then
-		_playerShotHit:FireClient(player, e.plotId or 0, id, dmg)
+		_playerShotHit:FireClient(player, e.plotId or 0, id, dmg, isHead) -- isHead -> klient pokaze popup HEAD SHOT
 	end
 	if e.hp <= 0 then
 		enemies[id] = nil
 		queueDeath(player, id)
+		_playerKills[player] = (_playerKills[player] or 0) + 1 -- zabojstwa GRACZA (bron FPS) do summary
 		CombatService.EnemyDied:Fire(player, e.typeId)
 	end
 end
@@ -574,8 +623,8 @@ function CombatService.Start()
 	_unitHpNet = Net.get("UnitHp")
 	_playerShotHit = Net.get("PlayerShotHit")
 
-	Net.get("PlayerHitEnemy").OnServerEvent:Connect(function(player, id)
-		CombatService.PlayerHitEnemy(player, tonumber(id))
+	Net.get("PlayerHitEnemy").OnServerEvent:Connect(function(player, id, isHead)
+		CombatService.PlayerHitEnemy(player, tonumber(id), isHead == true)
 	end)
 
 	RunService.Heartbeat:Connect(function(dt)

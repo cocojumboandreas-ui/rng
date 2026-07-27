@@ -11,6 +11,7 @@ local EnemyFormation = {}
 EnemyFormation.LANE_SCALE = 0.9   -- zwezenie rozstawu bocznego (0.9 = szeroki wachlarz na cala szerokosc placu)
 EnemyFormation.SPREAD_START = 0.13 -- do tego t (od bramy) ida PROSTO/gesiego (jeszcze bez rozejscia)
 EnemyFormation.SPREAD_RAMP = 0.22  -- odcinek t na ktorym narasta pelny rozstaw (t: START -> START+RAMP)
+EnemyFormation.CONVERGE_START = 0.80 -- od tego t wrogowie ZWEZAJA sie z powrotem do SRODKA (zejscie PRZED RDZEN: boczni scho­dza na srodek)
 
 local BASE_COLS = 9
 local PHI = 0.6180339887498949 -- do deterministycznego "jittera" z id
@@ -50,7 +51,13 @@ end
 
 -- narastanie rozstawu wzdluz sciezki t∈[0,1]: 0 przy bramie (gesiego) -> 1 na placu (pelny wachlarz).
 function EnemyFormation.spreadAt(t: number): number
-	return math.clamp((t - EnemyFormation.SPREAD_START) / EnemyFormation.SPREAD_RAMP, 0, 1)
+	local ramp = math.clamp((t - EnemyFormation.SPREAD_START) / EnemyFormation.SPREAD_RAMP, 0, 1) -- brama (0) -> plac (pelny wachlarz, 1)
+	local cs = EnemyFormation.CONVERGE_START
+	if cs and cs < 1 and t > cs then
+		-- PRZED RDZENIEM: rozstaw wraca do 0 -> boczni schodza do srodka, wszyscy zbijaja sie przed rdzeniem
+		return ramp * math.clamp((1 - t) / (1 - cs), 0, 1)
+	end
+	return ramp
 end
 
 return EnemyFormation

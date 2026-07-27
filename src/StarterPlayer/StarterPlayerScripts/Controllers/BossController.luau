@@ -53,14 +53,30 @@ function BossController.start()
 			progress.Size = UDim2.new(math.clamp(frac, 0, 1), 0, progH.Scale, progH.Offset)
 		end
 	end
+	-- ── SHAKE EKRANU "boss wbija" (TYLKO duzy boss co 20 fal; mini-boss NIE trzesie) ──
+	local Workspace = game:GetService("Workspace")
+	local _shakeStart, _shakeDur, _shakeAmp = 0, 0, 0
+	local _bigShaken = false -- shake RAZ na pojawienie sie danego duzego bossa (reset w hide)
+	local function startShake(amp, dur) _shakeAmp = amp; _shakeDur = dur; _shakeStart = os.clock() end
+	RunService:BindToRenderStep("WR_BossShake", Enum.RenderPriority.Camera.Value + 1, function()
+		local cam = Workspace.CurrentCamera
+		if not cam then return end
+		local t = (os.clock() - _shakeStart) / math.max(_shakeDur, 0.01)
+		if t >= 1 then return end -- po czasie: brak offsetu (kamera nietknieta)
+		local decay = _shakeAmp * (1 - t) -- amplituda opada do 0 (punch -> wygasa)
+		local n = os.clock() * 22
+		cam.CFrame = cam.CFrame * CFrame.Angles(math.rad(math.noise(n, 0.5) * decay), math.rad(math.noise(0.5, n) * decay), math.rad(math.noise(n, n) * decay * 0.4))
+	end)
+
 	local function show() bossBar.Visible = true end
-	local function hide() bossBar.Visible = false end
+	local function hide() bossBar.Visible = false; _bigShaken = false end
 
 	Net.get("BossHP").OnClientEvent:Connect(function(p)
 		if not p or not p.maxHp or p.maxHp <= 0 then return end
 		setFrac(p.hp / p.maxHp)
 		setText(bossHP, ("%d / %d"):format(math.max(0, math.floor(p.hp + 0.5)), math.floor(p.maxHp + 0.5)))
-		if bossName and (tostring(bossName.Text) == "" or bossName.Text == nil) then setText(bossName, "BOSS") end
+		if bossName then setText(bossName, p.name or "BOSS") end -- "<ranga> <nazwa>" z serwera (np. General Skibidi)
+		if p.big and not _bigShaken then _bigShaken = true; startShake(3.5, 0.6) end -- DUZY boss wbija -> trzasnij ekranem (mini NIE)
 		show()
 		_lastHP = os.clock()
 	end)
