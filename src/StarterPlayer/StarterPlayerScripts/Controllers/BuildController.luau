@@ -28,6 +28,8 @@ local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
 local BuildController = {}
 
 local LP = Players.LocalPlayer
+-- MOBILNY tryb: dotyk bez klawiatury -> pokazujemy przyciski Accept/Rotate/Cancel zamiast podpowiedzi PC.
+local IS_MOBILE = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 local GREEN = Color3.fromRGB(80, 220, 100)
 local RED = Color3.fromRGB(220, 70, 70)
 local WHITE = Color3.fromRGB(255, 255, 255) -- obrys jak przy najechaniu na Start Wave (bialy, swiecacy)
@@ -65,6 +67,7 @@ local _counter, _tabBtns = nil, nil
 local fitListRows -- forward-decl (uzywane w _refreshPanel, definiowane nizej)
 local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
 local _pcControls = nil -- BottomRightCanvas.PcControls (Place/Rotate/Cancel — pokaz tylko gdy stawiamy)
+local _mobileControls = nil -- BuildMode.MobileControls (dotykowe Accept/Rotate/Cancel — tylko na telefonie)
 local _activeTab = "weapon"
 
 -- crosshair (celownik) + pulsujacy obrys
@@ -401,8 +404,10 @@ local function setCursor(active)
 	if _cursorGui then _cursorGui.Enabled = active end
 end
 
+-- pokaz podpowiedzi/przyciski wg platformy: PC -> PcControls, telefon -> MobileControls (dotykowe)
 local function setPcControls(vis)
-	if _pcControls then _pcControls.Visible = vis end
+	if _pcControls then _pcControls.Visible = vis and not IS_MOBILE end
+	if _mobileControls then _mobileControls.Visible = vis and IS_MOBILE end
 end
 
 -- ── akcje ──
@@ -808,6 +813,19 @@ function BuildController.start()
 		-- napis PC (Kliknij-Umiesc / R-Obroc / X-Anuluj) — pokaz tylko gdy cos stawiamy
 		local brc = buildMode:FindFirstChild("BottomRightCanvas")
 		_pcControls = brc and brc:FindFirstChild("PcControls")
+		-- DOTYKOWE przyciski (Accept/Rotate/Cancel) przeniesione z _dev do BuildMode.MobileControls.
+		-- Ta sama akcja co PC: Accept=postaw, Rotate=obrot, Cancel=anuluj. Pokazywane tylko na telefonie.
+		_mobileControls = buildMode:FindFirstChild("MobileControls")
+		if _mobileControls then
+			local function wireMobile(childName, fn)
+				local f = _mobileControls:FindFirstChild(childName)
+				local btn = f and (f:FindFirstChild("Button") or (f:IsA("GuiButton") and f)) or nil
+				if btn and btn:IsA("GuiButton") then btn.MouseButton1Click:Connect(fn) end
+			end
+			wireMobile("Accept", function() if _sel and _cell and validAt(_cell.x, _cell.z) then place() end end)
+			wireMobile("Rotate", function() if _sel then _rot = (_rot + 90) % 360; makeGhost() end end)
+			wireMobile("Cancel", function() if _sel then cancelSelection() end end)
+		end
 		setPcControls(false)
 		buildMode.Enabled = false
 	else
