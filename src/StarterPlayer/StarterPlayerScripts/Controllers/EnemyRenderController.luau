@@ -560,6 +560,166 @@ local function dropWeapon(model, groundY)
 	end)
 end
 
+-- ── WRAKI POJAZDOW (jeep/czolg/heli/jet): rozbicie + ogien + dym + odlamki ──────────
+local VEHICLES = { Jeep = true, Tank = true, Helicopter = true, Jet = true }
+local WRECK_LIE = 3.0 -- ile sekund plonacy wrak lezy zanim zniknie
+
+-- obroc czesc wokol punktu w swiecie (do "zlamania" lufy/wirnika bez Motor6D)
+local function bendPart(part, pivotPoint, axis, angle)
+	if axis.Magnitude < 1e-4 then return end
+	local R = CFrame.fromAxisAngle(axis.Unit, angle)
+	part.CFrame = (CFrame.new(pivotPoint) * R * CFrame.new(-pivotPoint)) * part.CFrame
+end
+
+-- odlamek (kolo/wirnik/skrzydlo) wylatuje w luku i koziolkujac laduje obok wraku
+local function tossPiece(part, groundY, spread, spin)
+	part.Anchored = true; part.CanCollide = false; part.CanQuery = false; part.CanTouch = false; part.CastShadow = false
+	local from = part.Position
+	local rotOnly = part.CFrame.Rotation
+	local to = Vector3.new(from.X + (math.random() - 0.5) * spread, groundY + part.Size.Y * 0.5, from.Z + (math.random() - 0.5) * spread)
+	task.spawn(function()
+		local t0 = os.clock(); local dur = 0.5 + math.random() * 0.25
+		while part.Parent do
+			local a = math.min((os.clock() - t0) / dur, 1)
+			local p = from:Lerp(to, a) + Vector3.new(0, math.sin(a * math.pi) * 2.2, 0)
+			part.CFrame = CFrame.new(p) * rotOnly * CFrame.Angles(a * spin.X, a * spin.Y, a * spin.Z)
+			if a >= 1 then break end
+			RunService.Heartbeat:Wait()
+		end
+	end)
+end
+
+-- podpal wrak: ogien + dym + swiatlo na korpusie (skala wg wielkosci modelu)
+local function igniteWreck(clone, scale)
+	local body = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
+	if not body then return end
+	local fire = Instance.new("Fire")
+	fire.Heat = 15; fire.Size = math.clamp(scale * 0.6, 4, 20)
+	fire.Color = Color3.fromRGB(255, 130, 30); fire.SecondaryColor = Color3.fromRGB(140, 45, 0)
+	fire.Parent = body
+	local smoke = Instance.new("Smoke")
+	smoke.Color = Color3.fromRGB(45, 45, 45); smoke.Opacity = 0.6; smoke.RiseVelocity = 8
+	smoke.Size = math.clamp(scale * 0.8, 5, 22); smoke.Parent = body
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 140, 50); light.Brightness = 4
+	light.Range = math.clamp(scale * 2, 10, 36); light.Parent = body
+end
+
+-- wygas wrak (plynnie przezroczysty + zgas ogien/swiatlo), potem usun
+local function fadeWreck(clone, dur)
+	for _, d in ipairs(clone:GetDescendants()) do
+		if d:IsA("BasePart") then
+			TweenService:Create(d, TweenInfo.new(dur), { Transparency = 1 }):Play()
+		elseif d:IsA("Fire") or d:IsA("Smoke") then
+			d.Enabled = false
+		elseif d:IsA("PointLight") then
+			TweenService:Create(d, TweenInfo.new(dur), { Brightness = 0 }):Play()
+		end
+	end
+	task.delay(dur + 0.15, function() if clone.Parent then clone:Destroy() end end)
+end
+
+-- polamaj czesci pojazdu wg typu (po wyladowaniu; klon nie jest juz PivotTo'wany)
+local function breakVehicle(clone, modelName, groundY)
+	local body = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
+	local center = body and body.Position or clone:GetPivot().Position
+	if modelName == "Tank" then
+		local cannon = findExact(clone, "Cannon")
+		if cannon then
+			local dir = cannon.CFrame.LookVector
+			local len = math.max(cannon.Size.X, cannon.Size.Y, cannon.Size.Z)
+			local e1 = cannon.Position + dir * len * 0.5
+			local e2 = cannon.Position - dir * len * 0.5
+			local inner = ((e1 - center).Magnitude < (e2 - center).Magnitude) and e1 or e2
+			bendPart(cannon, inner, cannon.CFrame.RightVector, math.rad(44)) -- lufa zlamana w dol
+		end
+		local belt = findExact(clone, "Belt") or findExact(clone, "Wheels")
+		if belt then -- kawalek pekniętej gasienicy wypada obok
+			local chunk = Instance.new("Part")
+			chunk.Size = Vector3.new(2.4, 1.2, 5.5); chunk.Color = Color3.fromRGB(28, 28, 32); chunk.Material = Enum.Material.Metal
+			local side = (math.random() > 0.5) and 1 or -1
+			chunk.CFrame = belt.CFrame * CFrame.new(side * belt.Size.X * 0.5, -belt.Size.Y * 0.25, 0)
+			chunk.Parent = clone
+			tossPiece(chunk, groundY, 6, Vector3.new(6, 3, 4))
+		end
+	elseif modelName == "Helicopter" then
+		local prop = findExact(clone, "Propeller")
+		if prop then -- glowny wirnik zgiety + opada na korpus (zlamane smigla)
+			bendPart(prop, prop.Position, prop.CFrame.LookVector, math.rad(30))
+			prop.CFrame = prop.CFrame * CFrame.new(0, -0.5, 0)
+		end
+		local tail = findExact(clone, "BackPropeller")
+		if tail then tossPiece(tail, groundY, 7, Vector3.new(9, 6, 3)) end -- wirnik ogonowy urywa sie
+	elseif modelName == "Jet" then
+		local dark = findExact(clone, "DarkPart") or body
+		if body then -- brak osobnej czesci skrzydla -> proxy urwanego skrzydla pada obok
+			local side = (math.random() > 0.5) and 1 or -1
+			local wing = Instance.new("Part")
+			wing.Size = Vector3.new(16, 1, 5); wing.Material = Enum.Material.Metal
+			wing.Color = (dark and dark.Color) or Color3.fromRGB(70, 75, 85)
+			wing.CFrame = body.CFrame * CFrame.new(side * body.Size.X * 0.3, 0, -3)
+			wing.Parent = clone
+			tossPiece(wing, groundY, 9, Vector3.new(4, 6, 9))
+		end
+	elseif modelName == "Jeep" then
+		local wheel
+		for _, d in ipairs(clone:GetDescendants()) do
+			if d:IsA("BasePart") and (d.Name:lower():find("wheel") or d.Name:lower():find("tire")) then wheel = d; break end
+		end
+		if wheel then tossPiece(wheel, groundY, 6, Vector3.new(10, 4, 6)) end -- kolo odpada
+	end
+end
+
+-- SMIERC pojazdu: klon-wrak PLYNNIE (TweenService) rozbija sie z przechylem, pali+dymi, lamie
+-- sie (lufa/wirnik/skrzydlo/kolo), lezy WRECK_LIE s i wygasa. Oryginal wraca do puli od razu.
+local function vehicleWreck(e)
+	local orig = e.model
+	local poolKey = e.poolKey
+	local halfH = e.halfH or 2
+	local start = orig:GetPivot()
+	local clone = orig:Clone()
+	for _, d in ipairs(clone:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = true; d.CanCollide = false; d.CanQuery = false; d.CanTouch = false; d.CastShadow = false
+		elseif d:IsA("BillboardGui") or d:IsA("Highlight") or d:IsA("Humanoid") or d:IsA("Script") or d:IsA("LocalScript") then
+			d:Destroy() -- zdejmij pasek HP / otoczki / napisy / skrypty
+		end
+	end
+	clone:SetAttribute("WR_EnemyId", nil)
+	if not clone.PrimaryPart then clone.PrimaryPart = clone:FindFirstChildWhichIsA("BasePart") end
+	clone.Parent = _fxFolder
+	release(orig, poolKey) -- oryginal natychmiast do puli
+	if not clone.PrimaryPart then clone:Destroy(); return end
+	-- znajdz ziemie pod wrakiem (heli/jet startuja wysoko nad ziemia)
+	local rp = RaycastParams.new()
+	rp.FilterType = Enum.RaycastFilterType.Exclude
+	rp.FilterDescendantsInstances = { clone, _folder, _fxFolder }
+	local hit = Workspace:Raycast(start.Position + Vector3.new(0, 2, 0), Vector3.new(0, -600, 0), rp)
+	local surfaceY = hit and hit.Position.Y or (start.Position.Y - halfH)
+	local _, yaw = start:ToOrientation()
+	local roll = math.rad(10 + math.random() * 12) * ((math.random() > 0.5) and 1 or -1)
+	local pitch = math.rad(4 + math.random() * 8)
+	local groundPos = Vector3.new(start.Position.X, surfaceY + halfH * 0.9, start.Position.Z)
+	local fallen = CFrame.new(groundPos) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, roll)
+	local flying = (e.modelName == "Helicopter" or e.modelName == "Jet")
+	local dur = flying and 0.7 or 0.45
+	task.spawn(function()
+		local cv = Instance.new("CFrameValue"); cv.Value = start
+		local conn = cv:GetPropertyChangedSignal("Value"):Connect(function()
+			if clone.Parent then clone:PivotTo(cv.Value) end
+		end)
+		local tw = TweenService:Create(cv, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Value = fallen })
+		tw:Play(); tw.Completed:Wait()
+		conn:Disconnect(); cv:Destroy()
+		if not clone.Parent then return end
+		local ext = clone:GetExtentsSize()
+		igniteWreck(clone, math.max(ext.X, ext.Y, ext.Z))
+		breakVehicle(clone, e.modelName, surfaceY)
+		task.wait(WRECK_LIE)
+		if clone.Parent then fadeWreck(clone, 0.6) end
+	end)
+end
+
 -- SMIERC wroga: wyprostuj poze + upusc bron, potem PLYNNIE (TweenService) padnij NA PLECY, lezy 2s, znika.
 local function deathFall(e)
 	local model = e.model
@@ -729,7 +889,11 @@ local function onEvents(payload)
 		if e then
 			if e.shown then
 				coinDrop(e.model:GetPivot().Position, e.halfH) -- monety na ziemie + magnes do gracza
-				deathFall(e) -- pada na plecy, po 2s znika (release trzymany w deathFall)
+				if VEHICLES[e.modelName] then
+					vehicleWreck(e) -- pojazd: rozbija sie, pali, dymi, lamie sie (klon; oryginal do puli od razu)
+				else
+					deathFall(e) -- zolnierz: pada na plecy, po 2s znika (release trzymany w deathFall)
+				end
 			else
 				release(e.model, e.poolKey) -- niewidoczny (inny plot) -> od razu do puli
 			end
