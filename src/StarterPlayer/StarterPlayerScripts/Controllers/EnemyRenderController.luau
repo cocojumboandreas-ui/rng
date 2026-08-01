@@ -670,6 +670,37 @@ local function breakVehicle(clone, modelName, groundY)
 	end
 end
 
+-- WYBUCH pojazdu w miejscu smierci: puff Explosion (wizual, bez fizyki/dmg) + jasny blysk + fala uderzeniowa
+local function vehicleExplosion(pos, scale)
+	local ex = Instance.new("Explosion")
+	ex.Position = pos
+	ex.BlastPressure = 0 -- czysto wizualny (nie rozrzuca budowli/jednostek)
+	ex.DestroyJointRadiusPercent = 0
+	ex.BlastRadius = math.clamp(scale, 6, 22)
+	ex.Parent = _fxFolder
+	boom(pos, Color3.fromRGB(255, 160, 50), math.clamp(scale * 0.7, 6, 16)) -- blysk + swiatlo (heavy-capped)
+	if heavyTake() then -- fala uderzeniowa: plaski pierscien rozszerza sie i zanika
+		local ring = Instance.new("Part")
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Anchored = true; ring.CanCollide = false; ring.CanQuery = false; ring.CanTouch = false; ring.CastShadow = false
+		ring.Material = Enum.Material.Neon; ring.Color = Color3.fromRGB(255, 190, 90); ring.Transparency = 0.2
+		ring.Size = Vector3.new(0.5, 2, 2)
+		ring.CFrame = CFrame.new(pos + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, 0, math.rad(90)) -- os cylindra -> pionowo (dysk plasko)
+		ring.Parent = _fxFolder
+		task.spawn(function()
+			local t0 = os.clock(); local dur = 0.35; local maxR = math.clamp(scale * 1.8, 10, 40)
+			while ring.Parent do
+				local a = math.min((os.clock() - t0) / dur, 1)
+				local r = 2 + a * maxR
+				ring.Size = Vector3.new(0.5, r, r); ring.Transparency = 0.2 + a * 0.8
+				if a >= 1 then break end
+				RunService.Heartbeat:Wait()
+			end
+			ring:Destroy(); heavyGive()
+		end)
+	end
+end
+
 -- SMIERC pojazdu: klon-wrak PLYNNIE (TweenService) rozbija sie z przechylem, pali+dymi, lamie
 -- sie (lufa/wirnik/skrzydlo/kolo), lezy WRECK_LIE s i wygasa. Oryginal wraca do puli od razu.
 local function vehicleWreck(e)
@@ -690,6 +721,8 @@ local function vehicleWreck(e)
 	clone.Parent = _fxFolder
 	release(orig, poolKey) -- oryginal natychmiast do puli
 	if not clone.PrimaryPart then clone:Destroy(); return end
+	local ext0 = clone:GetExtentsSize()
+	vehicleExplosion(start.Position, math.max(ext0.X, ext0.Y, ext0.Z)) -- WYBUCH w miejscu smierci
 	-- znajdz ziemie pod wrakiem (heli/jet startuja wysoko nad ziemia)
 	local rp = RaycastParams.new()
 	rp.FilterType = Enum.RaycastFilterType.Exclude
