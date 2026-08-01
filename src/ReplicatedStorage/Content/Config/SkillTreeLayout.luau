@@ -25,13 +25,13 @@ local function nid(id: string): string
 	return (id == "root") and "root" or (id .. "#1")
 end
 
--- ikona wg tematu (koniczyna dla luck/szczescia/koniczyn, kostka dla rolek, inaczej moneta)
+-- ikona wg tematu (koniczyna dla clover/luck, kostka dla rolek, inaczej moneta)
 local function iconFor(n)
 	local l = string.lower(n.label or "")
-	if string.find(l, "konicz") or string.find(l, "szczesc") then
+	if string.find(l, "clover") or string.find(l, "luck") then
 		return CLOVER
 	end
-	if string.find(l, "rol") or (n.roll or 0) > 0 then
+	if string.find(l, "roll") or (n.roll or 0) > 0 then
 		return DICE
 	end
 	return COIN
@@ -40,7 +40,7 @@ end
 local Nodes = {}
 for _, n in ipairs(SkillTreeData) do
 	if n.id == "root" then
-		Nodes.root = { icon = "", text = "DRZEWO" .. string.char(10) .. "UMIEJETNOSCI" }
+		Nodes.root = { icon = "", text = "SKILL" .. string.char(10) .. "TREE" }
 	else
 		local price = nil
 		if (n.coin or 0) > 0 then

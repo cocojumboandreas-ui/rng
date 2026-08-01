@@ -52,7 +52,7 @@ local function onPlayerAdded(player: Player)
 	})
 
 	if profile == nil then
-		player:Kick("[war-rng] Nie udalo sie zaladowac profilu. Sprobuj ponownie.")
+		player:Kick("[war-rng] Failed to load your profile. Please try again.")
 		return
 	end
 
@@ -61,7 +61,7 @@ local function onPlayerAdded(player: Player)
 
 	profile.OnSessionEnd:Connect(function()
 		_profiles[player] = nil
-		player:Kick("[war-rng] Profil zwolniony (sesja przejeta przez inny serwer lub zamknieta).")
+		player:Kick("[war-rng] Profile released (session taken over by another server or closed).")
 	end)
 
 	if player.Parent == Players then

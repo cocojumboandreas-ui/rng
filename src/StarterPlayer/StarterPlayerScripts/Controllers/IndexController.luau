@@ -194,11 +194,11 @@ local function refreshLevelUpBtn(unitId)
 	local level = _levels[unitId] or 0
 	if not _pw.levelUp then return end
 	if level >= GameConfig.Level.maxLevel then
-		setText(_pw.levelUp, "Poziom MAX")
+		setText(_pw.levelUp, "MAX Level")
 		_pw.levelUp.BackgroundColor3 = Color3.fromRGB(70, 74, 86)
 	else
 		local cost = costOf(unitId, level)
-		setText(_pw.levelUp, "Ulepsz — " .. fmtNum(cost))
+		setText(_pw.levelUp, "Upgrade — " .. fmtNum(cost))
 		_pw.levelUp.BackgroundColor3 = (_coins >= cost) and Color3.fromRGB(80, 165, 95) or Color3.fromRGB(150, 70, 70)
 	end
 end
@@ -216,7 +216,7 @@ function IndexController._selectUnit(unitId)
 	setText(_pw.name, u.displayName or unitId)
 	setText(_pw.rarity, ("%s · 1 in %d"):format(tier.name, u.rarityN))
 	if _pw.rarity then _pw.rarity.TextColor3 = TIER_COLOR[tier.revealTier] or Color3.new(1, 1, 1) end
-	setText(_pw.levelInfo, "Poziom " .. level)
+	setText(_pw.levelInfo, "Level " .. level)
 
 	-- 3D ikona w detalu
 	if _pw.iconHolder then
@@ -237,14 +237,14 @@ function IndexController._selectUnit(unitId)
 		setText(_pw.atk, fmtNum(curDmg))
 		setText(_pw.hp, fmtNum(u.hp or 0))
 		setText(_pw.change1, ("⚔ %s → %s"):format(fmtNum(curDmg), fmtNum(nextDmg)))
-		setText(_pw.change2, ("Szybkostrzelnosc %s/s"):format(tostring(u.combat.fireRate or "-")))
+		setText(_pw.change2, ("Fire rate %s/s"):format(tostring(u.combat.fireRate or "-")))
 	else
 		local curHp = math.floor((u.hp or 0) * mult + 0.5)
 		local nextHp = math.floor((u.hp or 0) * multNext + 0.5)
 		setText(_pw.atk, "-")
 		setText(_pw.hp, fmtNum(curHp))
 		setText(_pw.change1, ("❤ %s → %s"):format(fmtNum(curHp), fmtNum(nextHp)))
-		setText(_pw.change2, u.def and ("Pancerz " .. u.def) or "")
+		setText(_pw.change2, u.def and ("Armor " .. u.def) or "")
 	end
 	refreshLevelUpBtn(unitId)
 end
@@ -270,12 +270,12 @@ local function refreshBottom()
 		setText(_bottom.infoText, ("%d%% / %d%%"):format(math.floor(pct + 0.5), nt.pct))
 		if _bottom.claimBtn then
 			if nt.reached then
-				setText(_bottom.claimLbl or _bottom.claimBtn, ("ODBIERZ +%.1f"):format(nt.luck))
+				setText(_bottom.claimLbl or _bottom.claimBtn, ("CLAIM +%.1f"):format(nt.luck))
 				_bottom.claimBtn.BackgroundColor3 = Color3.fromRGB(80, 170, 90)
 				_bottom.claimBtn.AutoButtonColor = true
 				_bottom.claimBtn.Active = true
 			else
-				setText(_bottom.claimLbl or _bottom.claimBtn, ("Do %d%%"):format(nt.pct))
+				setText(_bottom.claimLbl or _bottom.claimBtn, ("To %d%%"):format(nt.pct))
 				_bottom.claimBtn.BackgroundColor3 = Color3.fromRGB(60, 62, 74)
 				_bottom.claimBtn.AutoButtonColor = false
 				_bottom.claimBtn.Active = false
@@ -287,7 +287,7 @@ local function refreshBottom()
 		end
 		setText(_bottom.infoText, "100%")
 		if _bottom.claimBtn then
-			setText(_bottom.claimLbl or _bottom.claimBtn, "Wszystko odebrane")
+			setText(_bottom.claimLbl or _bottom.claimBtn, "All claimed")
 			_bottom.claimBtn.BackgroundColor3 = Color3.fromRGB(55, 85, 60)
 			_bottom.claimBtn.AutoButtonColor = false
 			_bottom.claimBtn.Active = false
@@ -424,7 +424,7 @@ function IndexController.start()
 				renderGrid() -- staty na slocie tez sie zmienily
 			else
 				local reason = type(res) == "table" and res.reason or "?"
-				setText(_pw.levelUp, (reason == "NotEnoughCoins") and "Brak monet!" or (reason == "MaxLevel" and "Poziom MAX" or "Blad"))
+				setText(_pw.levelUp, (reason == "NotEnoughCoins") and "Not enough coins!" or (reason == "MaxLevel" and "MAX Level" or "Error"))
 				task.delay(0.9, function()
 					if _selUnit == unitId then refreshLevelUpBtn(unitId) end
 				end)

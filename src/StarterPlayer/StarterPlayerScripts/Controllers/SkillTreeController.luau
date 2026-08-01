@@ -269,7 +269,7 @@ function SkillTreeController.start()
 	openBtn.Size = UDim2.fromOffset(150, 54); openBtn.AnchorPoint = Vector2.new(0, 1)
 	openBtn.Position = UDim2.new(0.5, 130, 1, -32)
 	openBtn.BackgroundColor3 = Color3.fromRGB(88, 60, 140); openBtn.TextColor3 = Color3.new(1, 1, 1)
-	openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 15; openBtn.Text = "🌳 Umiejętności"
+	openBtn.Font = Enum.Font.GothamBold; openBtn.TextSize = 15; openBtn.Text = "🌳 Skills"
 	openBtn.Parent = gui
 	local oc = Instance.new("UICorner"); oc.CornerRadius = UDim.new(0, 10); oc.Parent = openBtn
 
@@ -278,7 +278,7 @@ function SkillTreeController.start()
 	closeBtn.Size = UDim2.fromOffset(220, 58); closeBtn.AnchorPoint = Vector2.new(0.5, 1)
 	closeBtn.Position = UDim2.new(0.5, 0, 1, -20)
 	closeBtn.BackgroundColor3 = Color3.fromRGB(222, 60, 60); closeBtn.TextColor3 = Color3.new(1, 1, 1)
-	closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 24; closeBtn.Text = "Zamknij"
+	closeBtn.Font = Enum.Font.GothamBold; closeBtn.TextSize = 24; closeBtn.Text = "Close"
 	closeBtn.Visible = false
 	closeBtn.Parent = gui
 	local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0, 12); cc.Parent = closeBtn

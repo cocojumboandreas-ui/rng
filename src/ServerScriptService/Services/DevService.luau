@@ -124,18 +124,18 @@ function DevService.Start()
 
 	Net.get("DevAction").OnServerInvoke = function(player, payload)
 		if not isDev(player) then
-			return { ok = false, msg = "brak uprawnien DEV" }
+			return { ok = false, msg = "no DEV permissions" }
 		end
 		if type(payload) ~= "table" then
-			return { ok = false, msg = "zly payload" }
+			return { ok = false, msg = "invalid payload" }
 		end
 		local fn = ACTIONS[payload.action]
 		if not fn then
-			return { ok = false, msg = "nieznana akcja: " .. tostring(payload.action) }
+			return { ok = false, msg = "unknown action: " .. tostring(payload.action) }
 		end
 		local data = _profile.GetProfile(player)
 		if not data then
-			return { ok = false, msg = "profil nie zaladowany" }
+			return { ok = false, msg = "profile not loaded" }
 		end
 		fn(player, data, tonumber(payload.amount))
 		return { ok = true }

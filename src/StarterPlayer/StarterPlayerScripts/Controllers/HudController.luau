@@ -59,7 +59,7 @@ function HudController.start()
 	local sklep = Instance.new("TextButton")
 	sklep.Size = UDim2.fromOffset(120, 54); sklep.AnchorPoint = Vector2.new(0, 0.5); sklep.Position = UDim2.new(0, 16, 0.5, -60)
 	sklep.BackgroundColor3 = Color3.fromRGB(150, 60, 130); sklep.TextColor3 = Color3.new(1, 1, 1)
-	sklep.Font = Enum.Font.GothamBold; sklep.TextSize = 16; sklep.Text = "🛒 Sklep"; sklep.Parent = gui
+	sklep.Font = Enum.Font.GothamBold; sklep.TextSize = 16; sklep.Text = "🛒 Store"; sklep.Parent = gui
 	local sc = Instance.new("UICorner"); sc.CornerRadius = UDim.new(0, 10); sc.Parent = sklep
 
 	-- ── dol-lewo: luck + cooldown rolki ──
@@ -78,7 +78,7 @@ function HudController.start()
 	local waveBtn = Instance.new("TextButton")
 	waveBtn.Size = UDim2.fromOffset(190, 50); waveBtn.AnchorPoint = Vector2.new(1, 0.5); waveBtn.Position = UDim2.new(1, -16, 0.5, -30)
 	waveBtn.BackgroundColor3 = Color3.fromRGB(70, 170, 60); waveBtn.TextColor3 = Color3.new(1, 1, 1)
-	waveBtn.Font = Enum.Font.GothamBold; waveBtn.TextSize = 17; waveBtn.Text = "Rozpocznij falę"; waveBtn.Parent = gui
+	waveBtn.Font = Enum.Font.GothamBold; waveBtn.TextSize = 17; waveBtn.Text = "Start Wave"; waveBtn.Parent = gui
 	local wc = Instance.new("UICorner"); wc.CornerRadius = UDim.new(0, 10); wc.Parent = waveBtn
 	waveBtn.MouseButton1Click:Connect(function()
 		Net.get("StartWave"):FireServer()
@@ -87,12 +87,12 @@ function HudController.start()
 	local autoBtn = Instance.new("TextButton")
 	autoBtn.Size = UDim2.fromOffset(190, 50); autoBtn.AnchorPoint = Vector2.new(1, 0.5); autoBtn.Position = UDim2.new(1, -16, 0.5, 30)
 	autoBtn.BackgroundColor3 = Color3.fromRGB(120, 50, 50); autoBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-	autoBtn.Font = Enum.Font.GothamBold; autoBtn.TextSize = 15; autoBtn.Text = "🔒 Automatyczna fala"; autoBtn.Parent = gui
+	autoBtn.Font = Enum.Font.GothamBold; autoBtn.TextSize = 15; autoBtn.Text = "🔒 Auto Wave"; autoBtn.Parent = gui
 	local ac = Instance.new("UICorner"); ac.CornerRadius = UDim.new(0, 10); ac.Parent = autoBtn
 	local autoToast = label(gui, "", 16, Color3.fromRGB(255, 180, 120))
 	autoToast.AnchorPoint = Vector2.new(1, 0.5); autoToast.Position = UDim2.new(1, -16, 0.5, 66); autoToast.Size = UDim2.fromOffset(220, 24); autoToast.Visible = false
 	autoBtn.MouseButton1Click:Connect(function()
-		autoToast.Text = "Odblokuj w Umiejętnościach"; autoToast.Visible = true
+		autoToast.Text = "Unlock in Skills"; autoToast.Visible = true
 		task.delay(2, function() autoToast.Visible = false end)
 	end)
 
@@ -100,7 +100,7 @@ function HudController.start()
 	local stopBtn = Instance.new("TextButton")
 		stopBtn.Size = UDim2.fromOffset(150, 40); stopBtn.AnchorPoint = Vector2.new(1, 0); stopBtn.Position = UDim2.new(1, -16, 0, 12)
 		stopBtn.BackgroundColor3 = Color3.fromRGB(200, 55, 55); stopBtn.TextColor3 = Color3.new(1, 1, 1)
-		stopBtn.Font = Enum.Font.GothamBold; stopBtn.TextSize = 16; stopBtn.Text = "⛔ Zakończ falę"; stopBtn.Parent = gui
+		stopBtn.Font = Enum.Font.GothamBold; stopBtn.TextSize = 16; stopBtn.Text = "⛔ End Wave"; stopBtn.Parent = gui
 		local stc = Instance.new("UICorner"); stc.CornerRadius = UDim.new(0, 10); stc.Parent = stopBtn
 		stopBtn.MouseButton1Click:Connect(function()
 			Net.get("StopWave"):FireServer()
@@ -117,7 +117,7 @@ function HudController.start()
 		panel.BackgroundColor3 = Color3.fromRGB(28, 28, 38); panel.BorderSizePixel = 0; panel.Parent = modalGui
 		local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 16); pc.Parent = panel
 		local pst = Instance.new("UIStroke"); pst.Color = Color3.fromRGB(255, 215, 90); pst.Thickness = 2; pst.Transparency = 0.3; pst.Parent = panel
-		local title = label(panel, "KONIEC RUNU", 26, Color3.fromRGB(255, 215, 90))
+		local title = label(panel, "RUN OVER", 26, Color3.fromRGB(255, 215, 90))
 		title.Position = UDim2.fromOffset(0, 20); title.Size = UDim2.new(1, 0, 0, 40)
 		local subL = label(panel, "", 15, Color3.fromRGB(200, 200, 210))
 		subL.Position = UDim2.fromOffset(0, 58); subL.Size = UDim2.new(1, 0, 0, 20)
@@ -128,9 +128,9 @@ function HudController.start()
 			valL.Position = UDim2.fromOffset(36, y); valL.Size = UDim2.new(1, -72, 0, 28)
 			return valL
 		end
-		local waveVal = statRow(96, "🌊 Najdalsza fala", Color3.fromRGB(120, 200, 255))
-		local dmgVal = statRow(134, "⚔️ Zadane obrażenia", Color3.fromRGB(255, 150, 120))
-		local coinVal = statRow(172, "🪙 Zarobione monety", Color3.fromRGB(255, 215, 90))
+		local waveVal = statRow(96, "🌊 Furthest Wave", Color3.fromRGB(120, 200, 255))
+		local dmgVal = statRow(134, "⚔️ Damage Dealt", Color3.fromRGB(255, 150, 120))
+		local coinVal = statRow(172, "🪙 Coins Earned", Color3.fromRGB(255, 215, 90))
 		local okBtn = Instance.new("TextButton")
 		okBtn.Size = UDim2.fromOffset(200, 46); okBtn.AnchorPoint = Vector2.new(0.5, 1); okBtn.Position = UDim2.new(0.5, 0, 1, -20)
 		okBtn.BackgroundColor3 = Color3.fromRGB(70, 170, 60); okBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -140,7 +140,7 @@ function HudController.start()
 
 		Net.get("RunSummary").OnClientEvent:Connect(function(s)
 			if type(s) ~= "table" then return end
-			subL.Text = (s.reason == "core") and "Twoja baza zostala zniszczona" or "Przerwales fale"
+			subL.Text = (s.reason == "core") and "Your base was destroyed" or "You ended the wave"
 			waveVal.Text = fmt(s.maxWave or 0)
 			dmgVal.Text = fmt(s.damage or 0)
 			coinVal.Text = fmt(s.coins or 0)
@@ -148,7 +148,7 @@ function HudController.start()
 		end)
 
 		local offF = pill(guiOver, UDim2.fromOffset(210, 66), UDim2.new(1, -12, 1, -12), Vector2.new(1, 1))
-	local offTitle = label(offF, "Zarobki offline (na godzinę)", 13, Color3.fromRGB(150, 255, 150))
+	local offTitle = label(offF, "Offline earnings (per hour)", 13, Color3.fromRGB(150, 255, 150))
 	offTitle.Position = UDim2.fromOffset(0, 4); offTitle.Size = UDim2.new(1, 0, 0, 20)
 	local offVals = label(offF, "🪙 0   🎲 0", 16, Color3.new(1, 1, 1))
 	offVals.Position = UDim2.fromOffset(0, 30); offVals.Size = UDim2.new(1, 0, 0, 28)

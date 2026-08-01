@@ -75,7 +75,7 @@ local _cursorGui, _reticle, _cursorTint = nil, nil, {}
 
 -- clear-plot 2-krok
 local _clearBtn, _clearLbl, _clearArmed, _clearToken = nil, nil, false, 0
-local _clearOrigText = "Wyczyść działkę!" -- oryginalny napis przycisku (przywracany po confirm)
+local _clearOrigText = "Clear plot!" -- oryginalny napis przycisku (przywracany po confirm)
 
 -- czy gracz cos aktualnie stawia (ghost aktywny) — UnitTooltip pyta, by nie pokazywac dymka swiata podczas stawiania
 function BuildController.HasSelection()
@@ -541,7 +541,7 @@ end
 local function clearPlot()
 	if not _clearArmed then
 		_clearArmed = true
-		if _clearLbl then _clearLbl.Text = "Czy jesteś pewny?" end
+		if _clearLbl then _clearLbl.Text = "Are you sure?" end
 		_clearToken += 1
 		local tok = _clearToken
 		task.delay(3, function() -- auto-rozbrojenie po 3 s

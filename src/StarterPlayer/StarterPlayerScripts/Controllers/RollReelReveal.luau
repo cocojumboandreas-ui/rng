@@ -224,18 +224,18 @@ function RollReelReveal.init(config)
 		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 12); c.Parent = b
 		return b
 	end
-	refs.autoBtn = barBtn(0.15, 100, 72, Color3.fromRGB(38, 42, 52), Color3.fromRGB(150, 150, 150), "↻\nAuto: WYŁ", 13)
+	refs.autoBtn = barBtn(0.15, 100, 72, Color3.fromRGB(38, 42, 52), Color3.fromRGB(150, 150, 150), "↻\nAuto: OFF", 13)
 	refs.autoBtn.Activated:Connect(function()
 		state.auto = not state.auto
-		refs.autoBtn.Text = state.auto and "↻\nAuto: WŁ" or "↻\nAuto: WYŁ"
+		refs.autoBtn.Text = state.auto and "↻\nAuto: ON" or "↻\nAuto: OFF"
 		refs.autoBtn.TextColor3 = state.auto and Color3.fromRGB(120, 255, 140) or Color3.fromRGB(150, 150, 150)
 		if state.auto and not state.rolling and cfg.onRollAgain then cfg.onRollAgain() end
 	end)
-	local rollaBtn = barBtn(0.5, 116, 88, Color3.fromRGB(240, 240, 240), Color3.fromRGB(30, 30, 30), "🎲\nRolka", 20)
+	local rollaBtn = barBtn(0.5, 116, 88, Color3.fromRGB(240, 240, 240), Color3.fromRGB(30, 30, 30), "🎲\nRoll", 20)
 	rollaBtn.Activated:Connect(function()
 		if not state.rolling and cfg.onRollAgain then cfg.onRollAgain() end
 	end)
-	local closeBtn = barBtn(0.85, 96, 72, Color3.fromRGB(35, 38, 48), Color3.fromRGB(255, 255, 255), "✖\nZamknij", 15)
+	local closeBtn = barBtn(0.85, 96, 72, Color3.fromRGB(35, 38, 48), Color3.fromRGB(255, 255, 255), "✖\nClose", 15)
 	closeBtn.Activated:Connect(function() state.auto = false; RollReelReveal.close() end)
 end
 

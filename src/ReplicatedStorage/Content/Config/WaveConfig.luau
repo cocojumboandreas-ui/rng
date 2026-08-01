@@ -99,7 +99,7 @@ local WaveConfig = {
 	-- NIE maja napisu nad glowa (schowany). Ranga rosnie z fala; duzy boss = zawsze najwyzsza (General).
 	-- nazwy = najbardziej znane wsrod dzieciakow (brainrot/meme) — PODMIEN dowolnie, to Twoj brand.
 	bossNames = {
-		ranks = { "Kapral", "Sierzant", "Chorazy", "Porucznik", "Kapitan", "Major", "Pulkownik", "General" },
+		ranks = { "Corporal", "Sergeant", "Warrant Officer", "Lieutenant", "Captain", "Major", "Colonel", "General" },
 		names = {
 			"Skibidi", "Sigma", "Rizzler", "Gyatt", "Tralalero", "Bombardiro", "Tung Tung",
 			"Chimpanzini", "Cappuccino", "Ballerina", "Sahur", "Ohio", "Sussy", "Bombombini",

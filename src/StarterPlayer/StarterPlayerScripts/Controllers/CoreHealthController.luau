@@ -46,7 +46,7 @@ local function ensureBar()
 	local title = Instance.new("TextLabel")
 	title.Size = UDim2.new(1, 0, 0, 14); title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold; title.TextSize = 13; title.TextColor3 = Color3.fromRGB(255, 120, 130)
-	title.TextStrokeTransparency = 0.3; title.Text = "❤ RDZEŃ"; title.Parent = gui
+	title.TextStrokeTransparency = 0.3; title.Text = "❤ CORE"; title.Parent = gui
 	local back = Instance.new("Frame")
 	back.Size = UDim2.new(1, 0, 0, 11); back.Position = UDim2.new(0, 0, 1, -11)
 	back.BackgroundColor3 = Color3.fromRGB(20, 20, 26); back.BorderSizePixel = 0; back.Parent = gui

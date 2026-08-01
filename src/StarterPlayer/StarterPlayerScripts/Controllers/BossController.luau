@@ -43,7 +43,7 @@ function BossController.start()
 	local flourish = Instance.new("TextLabel")
 	flourish.Size = UDim2.fromScale(0.7, 0.1); flourish.Position = UDim2.fromScale(0.15, 0.28)
 	flourish.BackgroundTransparency = 1; flourish.TextColor3 = Color3.fromRGB(255, 220, 120)
-	flourish.Font = Enum.Font.GothamBlack; flourish.TextScaled = true; flourish.Text = "BOSS POKONANY!"
+	flourish.Font = Enum.Font.GothamBlack; flourish.TextScaled = true; flourish.Text = "BOSS DEFEATED!"
 	local fst = Instance.new("UIStroke"); fst.Thickness = 3; fst.Color = Color3.new(0, 0, 0); fst.Parent = flourish
 	flourish.Visible = false; flourish.Parent = fgui
 

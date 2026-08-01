@@ -24,16 +24,16 @@ end
 
 -- {label, action, amount?, color}
 local BUTTONS = {
-	{ "💰 +10k monet", "coins", 10000, Color3.fromRGB(200, 165, 40) },
-	{ "💰 +100k monet", "coins", 100000, Color3.fromRGB(200, 165, 40) },
-	{ "🎲 +100 kosci", "rolls", 100, Color3.fromRGB(150, 110, 200) },
-	{ "🎲 +1000 kosci", "rolls", 1000, Color3.fromRGB(150, 110, 200) },
-	{ "📦 Caly arsenal x3", "giveArsenal", 3, Color3.fromRGB(60, 160, 120) },
-	{ "🌳 Reset skille", "resetSkills", nil, Color3.fromRGB(70, 120, 170) },
+	{ "💰 +10k coins", "coins", 10000, Color3.fromRGB(200, 165, 40) },
+	{ "💰 +100k coins", "coins", 100000, Color3.fromRGB(200, 165, 40) },
+	{ "🎲 +100 dice", "rolls", 100, Color3.fromRGB(150, 110, 200) },
+	{ "🎲 +1000 dice", "rolls", 1000, Color3.fromRGB(150, 110, 200) },
+	{ "📦 Whole arsenal x3", "giveArsenal", 3, Color3.fromRGB(60, 160, 120) },
+	{ "🌳 Reset skills", "resetSkills", nil, Color3.fromRGB(70, 120, 170) },
 	{ "🎒 Reset inventory", "resetInventory", nil, Color3.fromRGB(70, 120, 170) },
-	{ "📖 Reset kolekcja", "resetIndex", nil, Color3.fromRGB(70, 120, 170) },
-	{ "✖️ Reset mnozniki", "resetMultipliers", nil, Color3.fromRGB(70, 120, 170) },
-	{ "☢️ RESET WSZYSTKO", "resetAll", nil, Color3.fromRGB(190, 55, 55) },
+	{ "📖 Reset collection", "resetIndex", nil, Color3.fromRGB(70, 120, 170) },
+	{ "✖️ Reset multipliers", "resetMultipliers", nil, Color3.fromRGB(70, 120, 170) },
+	{ "☢️ RESET ALL", "resetAll", nil, Color3.fromRGB(190, 55, 55) },
 }
 
 function DevController.start()
@@ -82,7 +82,7 @@ function DevController.start()
 	local status = Instance.new("TextLabel")
 	status.Size = UDim2.new(1, 0, 0, 18); status.LayoutOrder = 0
 	status.BackgroundTransparency = 1; status.TextColor3 = Color3.fromRGB(160, 170, 190)
-	status.Font = Enum.Font.Gotham; status.TextSize = 12; status.Text = "— gotowe —"
+	status.Font = Enum.Font.Gotham; status.TextSize = 12; status.Text = "— ready —"
 	status.TextXAlignment = Enum.TextXAlignment.Left; status.Parent = panel
 
 	local function doAction(action, amount)

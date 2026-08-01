@@ -164,7 +164,7 @@ function HudBindController.start()
 		bindPress(buildBtn)
 		buildBtn.MouseButton1Click:Connect(function()
 			if _waveActive then
-				showToast("Nie można budować w tej rundzie")
+				showToast("You can't build during this round")
 				return -- fala trwa -> Buduj zablokowany
 			end
 			local ctrl = require(Controllers:FindFirstChild("BuildController"))
@@ -219,62 +219,44 @@ function HudBindController.start()
 	-- FALE CIAGIEM: WaveEnded to tylko kosmetyka (konfetti/monety robi WaveFxController) — NIE odblokowuje
 	-- Buduj ani nie chowa "Wave X", bo zaraz leci nastepna fala. Odblokowanie dopiero na RunSummary (koniec runu).
 
-	-- ── MODAL PODSUMOWANIA RUNU (przeniesiony z HudController; SideButtons go nie ma) ──
-	local modalGui = Instance.new("ScreenGui")
-	modalGui.Name = "WR_RunSummary"; modalGui.ResetOnSpawn = false; modalGui.IgnoreGuiInset = true
-	modalGui.DisplayOrder = 200; modalGui.Enabled = false; modalGui.Parent = pg
-	local dim = Instance.new("Frame")
-	dim.Size = UDim2.fromScale(1, 1); dim.BackgroundColor3 = Color3.new(0, 0, 0); dim.BackgroundTransparency = 0.4
-	dim.BorderSizePixel = 0; dim.Parent = modalGui
-	local panel = Instance.new("Frame")
-	panel.Size = UDim2.fromOffset(360, 440); panel.AnchorPoint = Vector2.new(0.5, 0.5); panel.Position = UDim2.fromScale(0.5, 0.5)
-	panel.BackgroundColor3 = Color3.fromRGB(28, 28, 38); panel.BorderSizePixel = 0; panel.Parent = modalGui
-	local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 16); pc.Parent = panel
-	local pst = Instance.new("UIStroke"); pst.Color = Color3.fromRGB(255, 215, 90); pst.Thickness = 2; pst.Transparency = 0.3; pst.Parent = panel
-	local function lbl(parent, text, size, color, y, xa)
-		local l = Instance.new("TextLabel")
-		l.BackgroundTransparency = 1; l.Font = Enum.Font.GothamBold; l.TextSize = size
-		l.TextColor3 = color or Color3.new(1, 1, 1); l.Text = text
-		l.TextXAlignment = xa or Enum.TextXAlignment.Center; l.Position = UDim2.fromOffset(0, y)
-		l.Size = UDim2.new(1, 0, 0, size + 6); l.Parent = parent
-		return l
+	-- ── PODSUMOWANIE RUNU: designerowy StarterGui.RoundOver (place-owned; my tylko sterujemy) ──
+	-- Modal proceduralny zastapiony kitem ziomka. Payload RunSummary {reason,maxWave,damage,coins,
+	-- playerKills,...} -> designer pokazuje 3 statystyki: Monety / Fale / Zabici.
+	local roundOver = pg:WaitForChild("RoundOver", 10)
+	local roCanvas = roundOver and resolve(roundOver, "Canvas")
+	local roVals = roundOver and resolve(roundOver, "Canvas", "Content", "Content", "Values")
+	local roMoney = roVals and resolve(roVals, "Money", "Value")
+	local roWaves = roVals and resolve(roVals, "Waves", "Value")
+	local roKills = roVals and resolve(roVals, "Kills", "Value")
+	local roTitle = roundOver and resolve(roundOver, "Canvas", "IconName", "Text")
+	local roCollect = roundOver and resolve(roundOver, "Canvas", "Content", "Content", "Collect")
+	local roClose = roundOver and resolve(roundOver, "Canvas", "CloseButton")
+	if roundOver and roCanvas then
+		roundOver.ResetOnSpawn = false
+		roundOver.DisplayOrder = 200
+		roCanvas.Visible = false -- sterujemy widocznoscia Canvas (ScreenGui zostaje Enabled)
+		-- statyczne etykiety -> PL (tylko tekst; layout/styl bez zmian)
+		setText(resolve(roVals, "Money", "Text"), "Coins:")
+		setText(resolve(roVals, "Waves", "Text"), "Waves:")
+		setText(resolve(roVals, "Kills", "Text"), "Kills:")
+		setText(resolve(roCollect, "TextLabel"), "Continue")
+		local function closeRO() roCanvas.Visible = false end
+		if roCollect and roCollect:IsA("GuiButton") then bindPress(roCollect); roCollect.MouseButton1Click:Connect(closeRO) end
+		if roClose and roClose:IsA("GuiButton") then roClose.MouseButton1Click:Connect(closeRO) end
 	end
-	local title = lbl(panel, "KONIEC RUNU", 26, Color3.fromRGB(255, 215, 90), 20)
-	local subL = lbl(panel, "", 15, Color3.fromRGB(200, 200, 210), 58)
-	local function statRow(y, cap, color)
-		local capL = lbl(panel, cap, 16, Color3.fromRGB(180, 185, 200), y, Enum.TextXAlignment.Left)
-		capL.Position = UDim2.fromOffset(36, y); capL.Size = UDim2.new(1, -72, 0, 28)
-		local valL = lbl(panel, "0", 20, color, y, Enum.TextXAlignment.Right)
-		valL.Position = UDim2.fromOffset(36, y); valL.Size = UDim2.new(1, -72, 0, 28)
-		return valL
-	end
-	local waveVal = statRow(96, "🌊 Najdalsza fala", Color3.fromRGB(120, 200, 255))
-	local dmgVal = statRow(134, "⚔️ Zadane obrażenia", Color3.fromRGB(255, 150, 120))
-	local coinVal = statRow(172, "🪙 Zarobione monety", Color3.fromRGB(255, 215, 90))
-	local hsVal = statRow(210, "🎯 Headshoty", Color3.fromRGB(255, 90, 90))
-	local pdmgVal = statRow(248, "🔫 Obrażenia gracza", Color3.fromRGB(255, 200, 120))
-	local pkillVal = statRow(286, "💀 Zabici przez gracza", Color3.fromRGB(200, 160, 255))
-	local okBtn = Instance.new("TextButton")
-	okBtn.Size = UDim2.fromOffset(200, 46); okBtn.AnchorPoint = Vector2.new(0.5, 1); okBtn.Position = UDim2.new(0.5, 0, 1, -20)
-	okBtn.BackgroundColor3 = Color3.fromRGB(70, 170, 60); okBtn.TextColor3 = Color3.new(1, 1, 1)
-	okBtn.Font = Enum.Font.GothamBold; okBtn.TextSize = 18; okBtn.Text = "OK"; okBtn.Parent = panel
-	local okc = Instance.new("UICorner"); okc.CornerRadius = UDim.new(0, 10); okc.Parent = okBtn
-	bindPress(okBtn)
-	okBtn.MouseButton1Click:Connect(function() modalGui.Enabled = false end)
 
 	Net.get("RunSummary").OnClientEvent:Connect(function(s)
 		if type(s) ~= "table" then return end
 		setWaveActiveUI(false) -- koniec runu -> tylko "Rozpocznij fale"
 		setBuildLocked(false) -- koniec runu -> Buduj znow dostepny (wracamy do fazy Building)
 		if waveInfo then waveInfo.Visible = false end
-		subL.Text = (s.reason == "core") and "Twoja baza została zniszczona" or "Przerwałeś falę"
-		waveVal.Text = fmt(s.maxWave or 0)
-		dmgVal.Text = fmt(s.damage or 0)
-		coinVal.Text = fmt(s.coins or 0)
-		hsVal.Text = fmt(s.headshots or 0)
-		pdmgVal.Text = fmt(s.playerDamage or 0)
-		pkillVal.Text = fmt(s.playerKills or 0)
-		modalGui.Enabled = true
+		if roundOver and roCanvas then
+			setText(roMoney, "+" .. fmt(s.coins or 0))
+			setText(roWaves, fmt(s.maxWave or 0))
+			setText(roKills, fmt(s.playerKills or 0))
+			setText(roTitle, (s.reason == "core") and "Base destroyed!" or "Round over!")
+			roCanvas.Visible = true
+		end
 	end)
 end
 

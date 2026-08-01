@@ -10,10 +10,10 @@
 local IndexConfig = {
 	-- kolejnosc = kolejnosc zakladek w UI
 	categories = {
-		{ id = "regular", label = "Regularny", kind = "unit", variant = "regular" },
-		{ id = "shiny", label = "Blyszczacy", kind = "unit", variant = "shiny" },
-		{ id = "galaxy", label = "Galaktyka", kind = "unit", variant = "galaxy" },
-		{ id = "enemies", label = "Wrogowie", kind = "enemy" }, -- STUB (etap 5)
+		{ id = "regular", label = "Regular", kind = "unit", variant = "regular" },
+		{ id = "shiny", label = "Shiny", kind = "unit", variant = "shiny" },
+		{ id = "galaxy", label = "Galaxy", kind = "unit", variant = "galaxy" },
+		{ id = "enemies", label = "Enemies", kind = "enemy" }, -- STUB (etap 5)
 	},
 	luckThresholds = {
 		{ pct = 25, luck = 0.5 },

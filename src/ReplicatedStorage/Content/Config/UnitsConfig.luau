@@ -25,17 +25,17 @@ local Units = {
 	noob_soldier = {
 		kind = W, rarityN = 3, footprint = { w = 1, d = 1 }, hp = 80,
 		combat = { dmg = 4, fireRate = 1.0, range = 10 }, -- DPS 4
-		model = "Noob Soldier", displayName = "Rekrut",
+		model = "Noob Soldier", displayName = "Recruit",
 	},
 	soldier = {
 		kind = W, rarityN = 8, footprint = { w = 1, d = 1 }, hp = 140,
 		combat = { dmg = 8, fireRate = 1.2, range = 14 }, -- karabin: DPS 9.6
-		model = "Soldier", displayName = "Zolnierz",
+		model = "Soldier", displayName = "Soldier",
 	},
 	sniper = {
 		kind = W, rarityN = 15, footprint = { w = 1, d = 1 }, hp = 120,
 		combat = { dmg = 35, fireRate = 0.4, range = 30 }, -- duzy zasieg/dmg, wolny: DPS 14
-		model = "Sniper", displayName = "Snajper",
+		model = "Sniper", displayName = "Sniper",
 	},
 	swat = {
 		kind = W, rarityN = 30, footprint = { w = 1, d = 1 }, hp = 500, def = 6, -- tarcza = duzo HP (tank) + DEF
@@ -45,17 +45,17 @@ local Units = {
 	rocket_soldier = {
 		kind = W, rarityN = 60, footprint = { w = 1, d = 1 }, hp = 200,
 		combat = { dmg = 56, fireRate = 0.5, range = 28 }, -- RPG: zasieg jak sniper, duzy dmg, wybuch: DPS 28
-		model = "Rocket Soldier", displayName = "Rakietowiec",
+		model = "Rocket Soldier", displayName = "Rocketeer",
 	},
 	flamethrower = {
 		kind = W, rarityN = 100, footprint = { w = 1, d = 1 }, hp = 400,
 		combat = { dmg = 10, fireRate = 4.0, range = 10 }, -- miotacz: krotki zasieg, szybki DPS: DPS 40
-		model = "Flamethrower", displayName = "Miotacz ognia",
+		model = "Flamethrower", displayName = "Flamethrower",
 	},
 	tank_soldier = {
 		kind = W, rarityN = 150, footprint = { w = 1, d = 1 }, hp = 900, def = 12, -- Big Shield = bardzo tanky + DEF
 		combat = { dmg = 9, fireRate = 6.0, range = 16 }, -- minigun: malo dmg/pocisk, bardzo szybko: DPS 54
-		model = "Tank Soldier", displayName = "Ciezki piechur",
+		model = "Tank Soldier", displayName = "Heavy Trooper",
 	},
 	jeep = {
 		kind = W, rarityN = 300, footprint = { w = 2, d = 2 }, hp = 700, def = 8,
@@ -66,12 +66,12 @@ local Units = {
 	tank = {
 		kind = W, rarityN = 1500, footprint = { w = 2, d = 2 }, hp = 1500, def = 22, -- najwiecej HP + pancerz
 		combat = { dmg = 430, fireRate = 0.6, range = 24 }, -- dzialo glowne: ogromny burst: DPS 258
-		model = "Tank", displayName = "Czolg",
+		model = "Tank", displayName = "Tank",
 	},
 	helicopter = {
 		kind = W, rarityN = 800, footprint = { w = 2, d = 2 }, hp = 900, def = 6,
 		combat = { dmg = 30, fireRate = 5.0, range = 34 }, -- 2 miniguny, najwiekszy zasieg, lata: DPS 150
-		model = "Helicopter", displayName = "Helikopter",
+		model = "Helicopter", displayName = "Helicopter",
 	},
 	jet = {
 		kind = W, rarityN = 2000, footprint = { w = 2, d = 2 }, hp = 700, -- HP jak jeep
@@ -87,40 +87,40 @@ local Units = {
 	-- dopiero silniejszy (wyzszy tier / pozniejsza fala) przebija. Lepszy material = wyzszy def i hp.
 	test_block_wood = {
 		kind = B, category = "block", rarityN = 5, footprint = { w = 1, d = 1 },
-		hp = 500, def = 10, displayName = "Blok drewna",
+		hp = 500, def = 10, displayName = "Wood Block",
 	},
 	test_block_stone = {
 		kind = B, category = "block", rarityN = 15, footprint = { w = 1, d = 1 },
-		hp = 1200, def = 22, displayName = "Blok kamienia",
+		hp = 1200, def = 22, displayName = "Stone Block",
 	},
 	test_block_iron = {
 		kind = B, category = "block", rarityN = 40, footprint = { w = 1, d = 1 },
-		hp = 3000, def = 45, displayName = "Blok zelaza",
+		hp = 3000, def = 45, displayName = "Iron Block",
 	},
 	test_block_rusty = {
 		kind = B, category = "block", rarityN = 150, footprint = { w = 1, d = 1 },
-		hp = 6000, def = 80, displayName = "Blok zardzewialy",
+		hp = 6000, def = 80, displayName = "Rusty Block",
 	},
 	-- BRONIE TEST: kind=Weapon, footprint 1x1. DPS dostrojone do drabiny (monotoniczne wg rarityN).
 	test_weapon_pistol = {
 		kind = W, category = "weapon", rarityN = 10, footprint = { w = 1, d = 1 },
 		combat = { dmg = 6, fireRate = 2.0, range = 35 }, -- DPS 12
-		displayName = "Pistolet (test)",
+		displayName = "Pistol (test)",
 	},
 	test_weapon_rifle = {
 		kind = W, category = "weapon", rarityN = 60, footprint = { w = 1, d = 1 },
 		combat = { dmg = 9, fireRate = 3.0, range = 45 }, -- DPS 27
-		displayName = "Karabin (test)",
+		displayName = "Rifle (test)",
 	},
 	test_weapon_cannon = {
 		kind = W, category = "weapon", rarityN = 300, footprint = { w = 1, d = 1 },
 		combat = { dmg = 114, fireRate = 0.7, range = 60 }, -- DPS 79.8
-		displayName = "Dzialko (test)",
+		displayName = "Cannon (test)",
 	},
 	test_weapon_launcher = {
 		kind = W, category = "weapon", rarityN = 1500, footprint = { w = 1, d = 1 },
 		combat = { dmg = 645, fireRate = 0.4, range = 70 }, -- DPS 258
-		displayName = "Wyrzutnia (test)",
+		displayName = "Launcher (test)",
 	},
 }
 

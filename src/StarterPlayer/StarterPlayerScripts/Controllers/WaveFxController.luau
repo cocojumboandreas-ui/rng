@@ -48,7 +48,7 @@ function WaveFxController.start()
 
 		local function showCoins(amount)
 			if not amount or amount <= 0 then return end
-			coinPop.Text = "+" .. shortCoins(amount) .. " Monet"
+			coinPop.Text = "+" .. shortCoins(amount) .. " Coins"
 			coinPop.TextTransparency = 1; coinPop.TextStrokeTransparency = 1
 			coinPop.TextSize = 22; coinPop.Position = UDim2.new(0.5, 0, 0.27, 0)
 			TweenService:Create(coinPop, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
