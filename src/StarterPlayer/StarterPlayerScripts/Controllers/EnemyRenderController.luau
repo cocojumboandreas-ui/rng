@@ -678,6 +678,19 @@ local function vehicleExplosion(pos, scale)
 	ex.DestroyJointRadiusPercent = 0
 	ex.BlastRadius = math.clamp(scale, 6, 22)
 	ex.Parent = _fxFolder
+	-- DZWIEK wybuchu (3D pozycyjny; wieksze pojazdy = glosniej + nizszy ton)
+	local holder = Instance.new("Part")
+	holder.Anchored = true; holder.CanCollide = false; holder.CanQuery = false; holder.CanTouch = false; holder.CastShadow = false
+	holder.Transparency = 1; holder.Size = Vector3.one; holder.CFrame = CFrame.new(pos); holder.Parent = _fxFolder
+	local snd = Instance.new("Sound")
+	snd.SoundId = "rbxassetid://3149249837" -- Cannon_Explode (Roblox)
+	snd.Volume = math.clamp(0.5 + scale * 0.03, 0.5, 1)
+	snd.PlaybackSpeed = math.clamp(1.15 - scale * 0.02, 0.8, 1.15)
+	snd.RollOffMode = Enum.RollOffMode.InverseTapered
+	snd.RollOffMinDistance = 15; snd.RollOffMaxDistance = 260
+	snd.Parent = holder
+	snd:Play()
+	task.delay(4.5, function() if holder.Parent then holder:Destroy() end end)
 	boom(pos, Color3.fromRGB(255, 160, 50), math.clamp(scale * 0.7, 6, 16)) -- blysk + swiatlo (heavy-capped)
 	if heavyTake() then -- fala uderzeniowa: plaski pierscien rozszerza sie i zanika
 		local ring = Instance.new("Part")
