@@ -25,6 +25,22 @@ for _, n in ipairs(SkillTreeData) do
 	end
 end
 
+-- EFEKTY LUCK (podpiecie drzewa do szczescia). Wartosc = docelowy mnoznik "roll luck" wezla (z opisu "Nx roll luck").
+-- StatProfile: skillLuckMult = 1 + Σ(V-1) po posiadanych wezlach (pojedynczy wezel = jego mnoznik; bonusy sie dodaja).
+-- Placeholdery — Olo/balans dostroi. (Reszta efektow skilli = pozniejsza faza.)
+local LUCK_MULT = {
+	n70 = 1.5, n71 = 2, n75 = 3, -- Luck I / II / III
+	n76 = 5, n79 = 7, n80 = 10, -- Strong Luck I / II / III
+	n81 = 13, n82 = 18, n84 = 23, -- Mighty Luck I / II / III
+	n85 = 28, n86 = 35, n87 = 44, -- Hellish Luck I / II / III
+	n88 = 53, n89 = 60, n90 = 70, -- God Luck I / II / III
+}
+for id, v in pairs(LUCK_MULT) do
+	if nodes[id] then
+		nodes[id].effect = { luckMult = v }
+	end
+end
+
 return {
 	costExp = 1.0, -- maxRank=1, wiec cost = base (koszt wprost z projektu)
 	nodes = nodes,

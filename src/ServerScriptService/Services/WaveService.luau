@@ -292,6 +292,8 @@ local function finishRun(player, reason: string)
 	local waveNumber = (data and data.waveNumber) or 1
 	local rs = _runStats[player] or { maxWave = 0, coins = 0 }
 	local maxWave = math.max(rs.maxWave or 0, waveNumber)
+	-- Kills = wrogowie zabici przez JEDNOSTKI: cleared fale (rs.unitKills) + biezaca czesciowa (_run.kills)
+	local unitKills = (rs.unitKills or 0) + ((_run[player] and _run[player].kills) or 0)
 	local damage = (_combat and _combat.GetRunDamage and _combat.GetRunDamage(player)) or 0
 	local pstats = (_combat and _combat.GetPlayerRunStats and _combat.GetPlayerRunStats(player)) or { damage = 0, headshots = 0, kills = 0 } -- staty gracza PRZED ClearPlot (zeruje je)
 
@@ -304,7 +306,7 @@ local function finishRun(player, reason: string)
 	_runStats[player] = nil
 
 	local summary = { reason = reason, maxWave = maxWave, damage = math.floor(damage + 0.5), coins = math.floor((rs.coins or 0) + 0.5),
-		headshots = pstats.headshots, playerDamage = pstats.damage, playerKills = pstats.kills }
+		kills = unitKills, headshots = pstats.headshots, playerDamage = pstats.damage, playerKills = pstats.kills }
 	WaveService.WaveEnded:Fire(player, reason, summary)
 	if _runSummary then
 		_runSummary:FireClient(player, summary)
@@ -324,6 +326,7 @@ local function endWave(player, reason)
 	local coinsEarned = _economy.AwardWave(player, waveNumber, run.kills) -- boss-fala: x bossRewardMult (Economy)
 	local rs = _runStats[player] or { maxWave = 0, coins = 0 }
 	rs.coins = (rs.coins or 0) + coinsEarned
+	rs.unitKills = (rs.unitKills or 0) + run.kills -- laczne kille JEDNOSTEK w runie (do podsumowania)
 	rs.maxWave = math.max(rs.maxWave or 0, waveNumber)
 	_runStats[player] = rs
 	if isBossWave(waveNumber) then

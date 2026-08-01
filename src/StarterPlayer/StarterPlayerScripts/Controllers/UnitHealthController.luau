@@ -4,6 +4,7 @@
 -- (Net.UnitKilled). Serwer jest autorytatywny: liczy HP i decyduje o smierci; tu tylko feedback.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
@@ -64,22 +65,36 @@ local function ensureBar(pid)
 	return rec
 end
 
-local function poof(pos)
-	local p = Instance.new("Part")
-	p.Shape = Enum.PartType.Ball; p.Size = Vector3.new(2, 2, 2); p.Position = pos
-	p.Anchored = true; p.CanCollide = false; p.CanQuery = false; p.CanTouch = false; p.CastShadow = false
-	p.Material = Enum.Material.Neon; p.Color = Color3.fromRGB(120, 120, 130); p.Transparency = 0.2
-	p.Parent = Workspace
-	Debris:AddItem(p, 0.5)
-	task.spawn(function()
-		local t0 = os.clock()
-		while p.Parent do
-			local a = (os.clock() - t0) / 0.4
-			if a >= 1 then break end
-			p.Size = Vector3.one * (2 + a * 4)
-			p.Transparency = 0.2 + a * 0.8
-			RunService.Heartbeat:Wait()
+-- SMIERC jednostki: KLON modelu PLYNNIE (TweenService) pada NA PLECY, lezy 2s, potem znika (oryginal usuwa serwer).
+local function fallCorpse(model)
+	local clone = model:Clone()
+	for _, d in ipairs(clone:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = true; d.CanCollide = false; d.CanQuery = false; d.CanTouch = false; d.CastShadow = false
+		elseif d:IsA("BillboardGui") or d:IsA("Highlight") or d:IsA("Script") or d:IsA("LocalScript") then
+			d:Destroy() -- usun paski HP / otoczki / skrypty z klonu-trupa
 		end
+	end
+	if not clone.PrimaryPart then clone.PrimaryPart = clone:FindFirstChildWhichIsA("BasePart") end
+	if not clone.PrimaryPart then clone:Destroy(); return end
+	clone.Parent = Workspace
+	local start = model:GetPivot()
+	local look = start.LookVector
+	local halfH = model:GetExtentsSize().Y * 0.5
+	local groundPos = Vector3.new(start.Position.X, start.Position.Y - halfH + 0.3, start.Position.Z)
+	local fallen = CFrame.lookAlong(groundPos, look) * CFrame.Angles(math.rad(90), 0, 0) -- na plecy
+	task.spawn(function()
+		local cv = Instance.new("CFrameValue")
+		cv.Value = start
+		local conn = cv:GetPropertyChangedSignal("Value"):Connect(function()
+			if clone.Parent then clone:PivotTo(cv.Value) end
+		end)
+		local tw = TweenService:Create(cv, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Value = fallen })
+		tw:Play()
+		tw.Completed:Wait()
+		conn:Disconnect(); cv:Destroy()
+		task.wait(2) -- lezy 2s od przewrocenia
+		clone:Destroy()
 	end)
 end
 
@@ -117,7 +132,7 @@ function UnitHealthController.start()
 	Net.get("UnitKilled").OnClientEvent:Connect(function(p)
 		if type(p) ~= "table" or not p.placementId then return end
 		local model = findModel(p.placementId)
-		if model then poof(model:GetPivot().Position) end
+		if model then fallCorpse(model) end -- pada na plecy, po 2s znika (klon; oryginal usuwa serwer)
 		local rec = _bars[p.placementId]
 		if rec then
 			if rec.gui then rec.gui:Destroy() end

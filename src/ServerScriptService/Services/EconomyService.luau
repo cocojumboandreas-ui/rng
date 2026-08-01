@@ -18,6 +18,7 @@ local _profile, _stat = nil, nil
 local _coinsSync = nil -- cache remote'a (guard: nil w edit-mode tescie)
 local _rollsSync = nil -- cache remote'a RollsSync (druga waluta)
 local _offlineRemote = nil -- cache remote'a OfflineEarnings
+local _roll = nil -- RollService (przyznanie rolek offline)
 
 function EconomyService.GetCoins(player): number
 	local data = _profile and _profile.GetProfile(player)
@@ -115,18 +116,22 @@ end
 function EconomyService.ComputeOfflineEarnings(player)
 	local data = _profile and _profile.GetProfile(player)
 	if not data then
-		return { coins = 0, seconds = 0 }
+		return { coins = 0, rolls = 0, seconds = 0 }
 	end
 	local now = os.time()
 	local offlineRate = (_stat and _stat.Get(player).offlineRate) or 0
 	local capHours = GameConfig.Economy.offline.capHours
 	local raw, seconds, firstLogin = computeOfflineRaw(data.offlineTs or 0, now, offlineRate, capHours)
 	data.offlineTs = now -- reset baseline (offlineTs znow ustawi ProfileReleasing przy leave)
-	if firstLogin or raw <= 0 then
-		return { coins = 0, seconds = seconds }
+	if firstLogin then
+		return { coins = 0, rolls = 0, seconds = seconds }
 	end
-	local gained = EconomyService.Award(player, raw, "offline") -- coinMult raz + CoinsSync
-	return { coins = gained, seconds = seconds }
+	local gained = (raw > 0) and EconomyService.Award(player, raw, "offline") or 0 -- coinMult raz + CoinsSync
+	-- rolki offline (WALUTA): rollsPerHour * godziny (capped seconds); RollService = writer spendableRolls
+	local rollsRate = GameConfig.Economy.offline.rollsPerHour or 0
+	local rawRolls = math.floor((seconds / 3600) * rollsRate)
+	local rollsGained = (rawRolls > 0 and _roll) and _roll.GrantRolls(player, rawRolls) or 0
+	return { coins = gained, rolls = rollsGained, seconds = seconds }
 end
 
 function EconomyService.Init()
@@ -140,12 +145,13 @@ function EconomyService.Start()
 	_coinsSync = Net.get("CoinsSync")
 	_rollsSync = Net.get("RollsSync")
 	_offlineRemote = Net.get("OfflineEarnings")
-	-- po zaladowaniu profilu: salda + offline earn (popup gdy coins>0)
+	_roll = ServiceRegistry.get("RollService")
+	-- po zaladowaniu profilu: salda + offline earn (popup gdy coins>0 lub rolls>0)
 	_profile.ProfileLoaded:Connect(function(player)
 		pushBalance(player, EconomyService.GetCoins(player))
 		EconomyService.SyncRolls(player)
 		local result = EconomyService.ComputeOfflineEarnings(player)
-		if result.coins > 0 then
+		if result.coins > 0 or result.rolls > 0 then
 			EconomyService.OfflineEarningsReady:Fire(player, result)
 			if _offlineRemote then
 				_offlineRemote:FireClient(player, result)

@@ -72,14 +72,15 @@ function OfflineController.start()
 
 	local content = resolve(canvas, "Content", "Content")
 	local moneyVal = content and resolve(content, "Values", "Money", "Value")
+	local rollsVal = content and resolve(content, "Values", "Rolls", "Value")
 	local offlineInfo = content and resolve(content, "OfflineInfo")
 
-	-- statyczne etykiety -> PL (tylko tekst; layout/styl bez zmian)
+	-- statyczne etykiety (tylko tekst; layout/styl bez zmian)
 	setText(resolve(gui, "Canvas", "IconName", "Text"), "Welcome back!")
 	setText(content and resolve(content, "Values", "Money", "Text"), "Coins:")
+	setText(content and resolve(content, "Values", "Rolls", "Text"), "Rolls:")
 
-	-- payload nie niesie rolek ani dropow -> chowamy niewypelnione sekcje i przycisk x2
-	hide(content and resolve(content, "Values", "Rolls"))
+	-- offline daje monety + rolki (waluta); dropow brak -> chowamy BestDrops i przycisk x2
 	hide(content and resolve(content, "BestDrops"))
 	hide(content and resolve(content, "BottomButtons", "DoubleOffline"))
 
@@ -93,10 +94,11 @@ function OfflineController.start()
 	end
 
 	Net.get("OfflineEarnings").OnClientEvent:Connect(function(p)
-		if type(p) ~= "table" or not p.coins or p.coins <= 0 then
+		if type(p) ~= "table" or ((p.coins or 0) <= 0 and (p.rolls or 0) <= 0) then
 			return
 		end
-		setText(moneyVal, "+" .. fmtNum(p.coins))
+		setText(moneyVal, "+" .. fmtNum(p.coins or 0))
+		setText(rollsVal, "+" .. fmtNum(p.rolls or 0))
 		setText(offlineInfo, ("While you were away (%s), you earned:"):format(fmtDuration(p.seconds or 0)))
 		canvas.Visible = true
 	end)

@@ -56,15 +56,37 @@ local function compute(profileData)
 	return stats
 end
 
+-- mnoznik luck z DRZEWA umiejetnosci: bonusy (V-1) posiadanych wezlow Luck sie dodaja; brak = 1.0 (neutralny).
+local function skillLuckMult(profileData)
+	local skills = profileData and profileData.skills
+	if type(skills) ~= "table" then
+		return 1.0
+	end
+	local nodes = GameConfig.Skill.nodes
+	local bonus = 0
+	for nodeId, rank in pairs(skills) do
+		local node = nodes[nodeId]
+		if node and node.effect and node.effect.luckMult and type(rank) == "number" and rank > 0 then
+			bonus += (node.effect.luckMult - 1)
+		end
+	end
+	return 1 + bonus
+end
+
 function StatProfileService.Init()
 	StatProfileService.StatsChanged = Signal.new() -- (player, Stats)
 end
 
 function StatProfileService.Recompute(player: Player)
 	local data = _profileService and _profileService.GetProfile(player) or nil
-	local stats = compute(data) -- baza + delty skilli
-	if _index then
-		stats.luck += _index.GetLuckBonus(player) -- + bonus luck z indeksu (§3.13); domyka petle rolki->indeks->luck
+	local stats = compute(data) -- baza + delty skilli (base luck = 1.0)
+	do
+		-- SZCZESCIE z DWOCH zrodel (decyzja): indeks (odebrane progi) i drzewo umiejetnosci (wezly Luck).
+		-- total luck = baza × indeks × skille (mnoznikowo); rozbicie luckIndex/luckSkill do HUD (tooltip koniczyny).
+		local indexBonus = (_index and _index.GetLuckBonus(player)) or 0
+		stats.luckIndex = 1 + indexBonus
+		stats.luckSkill = skillLuckMult(data)
+		stats.luck = stats.luck * stats.luckIndex * stats.luckSkill
 	end
 	_cache[player] = stats
 	if StatProfileService.StatsChanged then
@@ -87,6 +109,11 @@ end
 function StatProfileService.Start()
 	_profileService = ServiceRegistry.get("ProfileService")
 	_index = ServiceRegistry.get("IndexService")
+
+	-- HUD moze pobrac aktualne staty (luck/rollSpeed + rozbicie) od razu, bez czekania na StatsSync.
+	Net.get("GetStats").OnServerInvoke = function(player)
+		return StatProfileService.Get(player)
+	end
 
 	-- Recompute triggery: ProfileLoaded + IndexUpdated (nowy typ w indeksie -> mogl zmienic prog luck).
 	-- (SkillPurchase wola Recompute bezposrednio z SkillService; passy/boosty -> POST-BRAMKA.)

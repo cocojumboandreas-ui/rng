@@ -179,6 +179,62 @@ function HudBindController.start()
 		end)
 	end
 
+	-- ── SZCZESCIE: designerowe ikony w PRAWYM DOLNYM ROGU (BottomRightCanvas.Luck=koniczyna, None=kostka) ──
+	local brc = resolve(sb, "BottomRightCanvas")
+	local luckSlot = brc and brc:FindFirstChild("Luck")
+	local diceSlot = brc and brc:FindFirstChild("None")
+	local luckLbl = luckSlot and luckSlot:FindFirstChild("TimeLeft")
+	local diceLbl = diceSlot and diceSlot:FindFirstChild("TimeLeft")
+	local diceIcon = diceSlot and diceSlot:FindFirstChild("EventIcon")
+	if diceIcon then diceIcon.Image = "rbxassetid://92190657341460" end -- None mial pusty obrazek -> kostka
+	local function fmtMul(n)
+		local sfx = string.format("%.2f", tonumber(n) or 0)
+		sfx = sfx:gsub("0+$", ""):gsub("%.$", "")
+		return sfx
+	end
+	-- tooltip rozbicia (hover koniczyny); slot jest w rogu -> tooltip wychodzi w lewo/gore
+	local tipSkill, tipIndex
+	if luckSlot then
+		local tipGui = Instance.new("ScreenGui") -- osobny GUI: slot Luck ma ClipsDescendants + UIScale
+		tipGui.Name = "WR_LuckTip"; tipGui.ResetOnSpawn = false; tipGui.IgnoreGuiInset = true; tipGui.DisplayOrder = 120
+		tipGui.Parent = pg
+		local tip = Instance.new("Frame")
+		tip.AnchorPoint = Vector2.new(1, 1); tip.Position = UDim2.new(0.992, 0, 0.9, 0); tip.Size = UDim2.fromOffset(250, 84)
+		tip.BackgroundColor3 = Color3.fromRGB(52, 58, 78); tip.BackgroundTransparency = 0.06; tip.BorderSizePixel = 0
+		tip.Visible = false; tip.Parent = tipGui
+		local tcc = Instance.new("UICorner"); tcc.CornerRadius = UDim.new(0, 10); tcc.Parent = tip
+		local tst = Instance.new("UIStroke"); tst.Color = Color3.fromRGB(18, 22, 34); tst.Thickness = 2; tst.Parent = tip
+		local function makeTipRow(cap, y, col)
+			local c = Instance.new("TextLabel")
+			c.Position = UDim2.fromOffset(12, y); c.Size = UDim2.fromOffset(160, 30); c.BackgroundTransparency = 1
+			c.Font = Enum.Font.GothamBold; c.TextSize = 16; c.TextColor3 = Color3.fromRGB(210, 214, 230)
+			c.TextXAlignment = Enum.TextXAlignment.Left; c.Text = cap; c.ZIndex = 31; c.Parent = tip
+			local v = Instance.new("TextLabel")
+			v.AnchorPoint = Vector2.new(1, 0); v.Position = UDim2.new(1, -12, 0, y); v.Size = UDim2.fromOffset(76, 30)
+			v.BackgroundTransparency = 1; v.Font = Enum.Font.GothamBlack; v.TextSize = 18; v.TextColor3 = col
+			v.TextXAlignment = Enum.TextXAlignment.Right; v.Text = "-"; v.ZIndex = 31; v.Parent = tip
+			local vs = Instance.new("UIStroke"); vs.Thickness = 2; vs.Color = Color3.new(0, 0, 0); vs.Parent = v
+			return v
+		end
+		tipSkill = makeTipRow("Skill Tree:", 12, Color3.new(1, 1, 1))
+		tipIndex = makeTipRow("Index Luck:", 46, Color3.fromRGB(150, 255, 150))
+		local hoverBtn = Instance.new("TextButton")
+		hoverBtn.Size = UDim2.fromScale(1, 1); hoverBtn.BackgroundTransparency = 1; hoverBtn.Text = ""; hoverBtn.ZIndex = 10; hoverBtn.Parent = luckSlot
+		hoverBtn.MouseEnter:Connect(function() tip.Visible = true end)
+		hoverBtn.MouseLeave:Connect(function() tip.Visible = false end)
+	end
+	local function applyLuck(s)
+		if type(s) ~= "table" then return end
+		if luckLbl and s.luck then luckLbl.Text = fmtMul(s.luck) .. "x" end
+		if diceLbl and s.rollSpeed then diceLbl.Text = fmtMul(s.rollSpeed) .. "s" end
+		if tipSkill and s.luckSkill then tipSkill.Text = "×" .. fmtMul(s.luckSkill) end
+		if tipIndex and s.luckIndex then tipIndex.Text = "×" .. fmtMul(s.luckIndex) end
+	end
+	task.spawn(function()
+		local ok, s = pcall(function() return Net.get("GetStats"):InvokeServer() end)
+		if ok then applyLuck(s) end
+	end)
+
 	-- ── waluty / rolki ──
 	Net.get("CoinsSync").OnClientEvent:Connect(function(p)
 		if p and p.balance ~= nil then setText(coinsL, fmt(p.balance)) end
@@ -191,6 +247,7 @@ function HudBindController.start()
 		local coinsPerH = (s.offlineRate or 0) * (s.coinMult or 1)
 		setText(offCoins, fmt(coinsPerH))
 		setText(offRolls, fmt(0))
+		applyLuck(s)
 	end)
 
 	-- ── postęp fali (WaveProgress: {waveNumber, killed, pool}) ──
@@ -253,7 +310,7 @@ function HudBindController.start()
 		if roundOver and roCanvas then
 			setText(roMoney, "+" .. fmt(s.coins or 0))
 			setText(roWaves, fmt(s.maxWave or 0))
-			setText(roKills, fmt(s.playerKills or 0))
+			setText(roKills, fmt(s.kills or 0)) -- kille JEDNOSTEK w runie (nie broni gracza)
 			setText(roTitle, (s.reason == "core") and "Base destroyed!" or "Round over!")
 			roCanvas.Visible = true
 		end

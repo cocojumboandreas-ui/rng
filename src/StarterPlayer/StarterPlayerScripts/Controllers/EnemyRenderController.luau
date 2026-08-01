@@ -8,6 +8,7 @@
 -- Realne obrazenia jednostek (HP, smierc) = FAZA 5.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local Workspace = game:GetService("Workspace")
@@ -465,29 +466,127 @@ local function headshotPopup(pos)
 	end)
 end
 
-local function coinBurst(pos)
+-- MONETY z killa: wypadaja, ladują na ziemi i KRECA sie (walec), potem MAGNES gracza sciaga je do postaci
+-- (leca do gracza + kurcza sie). Realne monety liczy serwer (nagroda per fala) — to warstwa VISUAL/juice.
+local COIN_A = Vector3.new(0.22, 1.05, 1.05)
+local COIN_B = Vector3.new(0.1, 0.35, 0.35)
+local function coinDrop(pos, halfH)
+	local groundY = pos.Y - (halfH or 2) + 0.35
 	for _ = 1, 4 do
 		if _coinActive >= COIN_CAP then return end
 		_coinActive += 1
 		local c = Instance.new("Part")
-		c.Shape = Enum.PartType.Ball; c.Size = Vector3.new(0.6, 0.6, 0.6)
+		c.Shape = Enum.PartType.Cylinder; c.Size = COIN_A
 		c.Anchored = true; c.CanCollide = false; c.CanQuery = false; c.CanTouch = false; c.CastShadow = false
-		c.Material = Enum.Material.Neon; c.Color = Color3.fromRGB(255, 205, 60); c.Position = pos + Vector3.new(0, 2, 0)
-		c.Parent = _fxFolder
-		local p0 = c.Position
-		local vx, vz, vy = (math.random() - 0.5) * 9, (math.random() - 0.5) * 9, 8 + math.random() * 5
+		c.Material = Enum.Material.Neon; c.Color = Color3.fromRGB(255, 205, 60); c.Parent = _fxFolder
+		local land = Vector3.new(pos.X + (math.random() - 0.5) * 5, groundY, pos.Z + (math.random() - 0.5) * 5)
+		local p0 = pos + Vector3.new(0, 1.5, 0)
 		task.spawn(function()
-			local t0 = os.clock(); local dur = 0.5 + math.random() * 0.25
+			-- 1) wyrzut na ziemie (luk)
+			local t0 = os.clock(); local d1 = 0.3 + math.random() * 0.15
 			while c.Parent do
-				local t = os.clock() - t0
-				if t >= dur then break end
-				c.Position = Vector3.new(p0.X + vx * t, p0.Y + vy * t - 16 * t * t, p0.Z + vz * t)
-				c.Transparency = (t / dur) * 0.6
+				local a = math.min((os.clock() - t0) / d1, 1)
+				local p = p0:Lerp(land, a) + Vector3.new(0, math.sin(a * math.pi) * 2.2, 0)
+				c.CFrame = CFrame.new(p) * CFrame.Angles(0, os.clock() * 9, math.rad(90))
+				if a >= 1 then break end
+				RunService.Heartbeat:Wait()
+			end
+			-- 2) lezy na ziemi i sie kreci (krotko)
+			local t1 = os.clock(); local d2 = 0.45 + math.random() * 0.4
+			while c.Parent and os.clock() - t1 < d2 do
+				c.CFrame = CFrame.new(land) * CFrame.Angles(0, os.clock() * 6, math.rad(90))
+				RunService.Heartbeat:Wait()
+			end
+			-- 3) magnes: lec do gracza (przyspiesza) + kurcz sie -> znika w postaci
+			local from = c.Position
+			local t2 = os.clock(); local d3 = 0.4
+			while c.Parent do
+				local a = math.min((os.clock() - t2) / d3, 1)
+				local char = Players.LocalPlayer.Character
+				local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+				local target = (hrp and hrp.Position + Vector3.new(0, 1.5, 0)) or from
+				c.CFrame = CFrame.new(from:Lerp(target, a * a)) * CFrame.Angles(0, os.clock() * 22, math.rad(90))
+				c.Size = COIN_A:Lerp(COIN_B, a)
+				if a >= 1 then break end
 				RunService.Heartbeat:Wait()
 			end
 			c:Destroy(); _coinActive = math.max(0, _coinActive - 1)
 		end)
 	end
+end
+
+-- wyprostuj poze trupa: nogi rowno (bez wymachu) + rece zwisaja w dol (stojaco, PRZED przewroceniem).
+local function neutralPose(model)
+	local pivot = model:GetPivot()
+	local rig = _rigByModel[model]
+	if rig and rig.kind == "walk" and rig.legs then
+		for _, leg in ipairs(rig.legs) do
+			leg.part.CFrame = pivot * leg.cf
+		end
+	end
+	local yaw = pivot.Rotation
+	for _, nm in ipairs({ "Left Arm", "Right Arm" }) do
+		local arm = findExact(model, nm)
+		if arm then
+			local top = arm.Position + arm.CFrame.UpVector * (arm.Size.Y * 0.5)
+			arm.CFrame = CFrame.new(top - Vector3.new(0, arm.Size.Y * 0.5, 0)) * yaw -- rece w dol
+		end
+	end
+end
+
+-- bron wypada OBOK ciala: klon czesci-broni spada na ziemie (na trupie oryginal chowamy).
+local function dropWeapon(model, groundY)
+	local wm = _weaponByModel[model]
+	local part = wm and wm.part
+	if not part or not part.Parent then return end
+	local w = part:Clone()
+	w.Anchored = true; w.CanCollide = false; w.CanQuery = false; w.CanTouch = false; w.CastShadow = false
+	for _, d in ipairs(w:GetDescendants()) do if d:IsA("BasePart") then d.Anchored = true; d.CanCollide = false end end
+	w.Parent = _fxFolder
+	part.Transparency = 1 -- schowaj bron w rekach trupa (upada obok jako klon)
+	local from = part.Position
+	local to = Vector3.new(from.X + (math.random() - 0.5) * 4, groundY + 0.3, from.Z + (math.random() - 0.5) * 4)
+	task.spawn(function()
+		local t0 = os.clock(); local dur = 0.45
+		while w.Parent do
+			local a = math.min((os.clock() - t0) / dur, 1)
+			local p = from:Lerp(to, a) + Vector3.new(0, math.sin(a * math.pi) * 1.4, 0)
+			w.CFrame = CFrame.new(p) * CFrame.Angles(a * 7, a * 5, a * 6)
+			if a >= 1 then break end
+			RunService.Heartbeat:Wait()
+		end
+		task.wait(2)
+		if w.Parent then w:Destroy() end
+	end)
+end
+
+-- SMIERC wroga: wyprostuj poze + upusc bron, potem PLYNNIE (TweenService) padnij NA PLECY, lezy 2s, znika.
+local function deathFall(e)
+	local model = e.model
+	local poolKey = e.poolKey
+	local halfH = e.halfH or 2
+	model:SetAttribute("WR_EnemyId", nil) -- trup nie jest trafialny bronia FPS
+	local hb = _hpBarByModel[model]
+	if hb then hb.lastPct = nil; if hb.gui.Enabled then hb.gui.Enabled = false end end
+	local start = model:GetPivot()
+	local groundY = start.Position.Y - halfH + 0.3
+	neutralPose(model) -- wyprostuj nogi + rece
+	dropWeapon(model, groundY) -- bron wypada obok
+	local dir = e.dir or Vector3.new(0, 0, 1)
+	local fallen = CFrame.lookAlong(Vector3.new(start.Position.X, groundY, start.Position.Z), dir) * CFrame.Angles(math.rad(90), 0, 0) -- na plecy
+	task.spawn(function()
+		local cv = Instance.new("CFrameValue")
+		cv.Value = start
+		local conn = cv:GetPropertyChangedSignal("Value"):Connect(function()
+			if model.Parent then model:PivotTo(cv.Value) end
+		end)
+		local tw = TweenService:Create(cv, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Value = fallen })
+		tw:Play()
+		tw.Completed:Wait()
+		conn:Disconnect(); cv:Destroy()
+		task.wait(2) -- lezy 2s od przewrocenia
+		release(model, poolKey)
+	end)
 end
 
 -- najblizsza jednostka gracza w zasiegu (XZ)
@@ -628,8 +727,12 @@ local function onEvents(payload)
 		local key = id % U16
 		local e = _active[key]
 		if e then
-			if e.shown then coinBurst(e.model:GetPivot().Position) end -- fontanna monet na widocznym killu
-			release(e.model, e.poolKey)
+			if e.shown then
+				coinDrop(e.model:GetPivot().Position, e.halfH) -- monety na ziemie + magnes do gracza
+				deathFall(e) -- pada na plecy, po 2s znika (release trzymany w deathFall)
+			else
+				release(e.model, e.poolKey) -- niewidoczny (inny plot) -> od razu do puli
+			end
 			_active[key] = nil
 		end
 	end

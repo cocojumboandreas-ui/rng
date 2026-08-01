@@ -28,6 +28,11 @@ local ASSETS_UNITS = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Unit
 local TAB_TO_CAT = { "regular", "shiny", "galaxy" } -- Normal, Golden, Rainbow
 local TAB_ORDER = { "Normal", "Golden", "Rainbow" }
 
+-- siatka: ile kart w rzedzie. Rozmiar karty liczony w PX z szerokosci List tak, ze
+-- GRID_COLUMNS kart + (GRID_COLUMNS-1) odstepow = pelna szerokosc (zero bocznych marginesow).
+local GRID_COLUMNS = 4
+local GRID_GAP = 13 -- = UIListLayout.Padding.Offset grafika
+
 -- ── stan ────────────────────────────────────────────────────────────────────────
 local _catsById = {} -- id -> {id,label,kind,variant,discovered={uid=true},count,total,percent}
 local _overall = { count = 0, total = 0, percent = 0 }
@@ -70,6 +75,15 @@ local function setText(inst, txt)
 	end
 end
 
+-- jak setText ale GLEBOKO (wszystkie potomki) — guzik-moneta ma kwote w zagniezdzonym Coins.Coins
+local function setTextDeep(inst, txt)
+	if not inst then return end
+	if inst:IsA("TextLabel") or inst:IsA("TextButton") then inst.Text = txt end
+	for _, c in ipairs(inst:GetDescendants()) do
+		if c:IsA("TextLabel") or c:IsA("TextButton") then c.Text = txt end
+	end
+end
+
 -- koszt WYSWIETLANY (mirror LevelService.GetCost)
 local function costOf(unitId, level)
 	local u = GameConfig.Units[unitId]
@@ -88,6 +102,14 @@ local function tierFor(rarityN)
 	end
 	return GameConfig.Rarity.tiers[#GameConfig.Rarity.tiers]
 end
+
+-- wariant (zakladka) -> etykieta "tieru" w detalu: Common / Golden / Rainbow (3 warianty jednostki)
+local VARIANT_LABEL = { regular = "Common", shiny = "Golden", galaxy = "Rainbow" }
+local VARIANT_COLOR = {
+	regular = Color3.fromRGB(200, 200, 210),
+	shiny = Color3.fromRGB(240, 200, 70),
+	galaxy = Color3.fromRGB(160, 120, 255),
+}
 
 -- ── ViewportFrame 3D miniatura modelu jednostki ───────────────────────────────────
 local function makeUnitViewport(modelName)
@@ -138,10 +160,16 @@ local function buildSlot(unitId, discovered, order)
 	if stroke then stroke.Color = border end
 
 	local petIcon = slot:FindFirstChild("PetIcon")
-	local nameLbl = slot:FindFirstChild("Text")
+	local textLbls = {}
+	for _, c in ipairs(slot:GetChildren()) do
+		if c:IsA("TextLabel") and c.Name == "Text" then textLbls[#textLbls + 1] = c end
+	end
+	local nameLbl = textLbls[1]
+	local oddsLbl = textLbls[2] -- druga "Text" grafika (placeholder "256x") -> szanse "1 in N"
 	local stats = slot:FindFirstChild("Stats")
 	local atkFrame = stats and stats:FindFirstChild("Attack")
 	local hpFrame = stats and stats:FindFirstChild("Health")
+	if oddsLbl then oddsLbl.Visible = false end -- referencja: karta bez liczby (placeholder "256x" schowany)
 
 	if discovered then
 		slot.BackgroundTransparency = _gridTemplate.BackgroundTransparency
@@ -157,13 +185,17 @@ local function buildSlot(unitId, discovered, order)
 		if nameLbl then nameLbl.Visible = true end
 		local mult = GameConfig.Level.growthPerLevel ^ (_levels[unitId] or 0)
 		if u.combat then
-			setText(atkFrame, "⚔ " .. fmtNum(math.floor(u.combat.dmg * mult + 0.5)))
-			setText(hpFrame, "❤ " .. fmtNum(u.hp or 0))
+			local dps = u.combat.dmg * mult * (u.combat.fireRate or 1)
+			setText(atkFrame, "⚔ " .. fmtNum(dps) .. "/s")
+			setText(hpFrame, "❤ " .. fmtNum(math.floor((u.hp or 0) * mult + 0.5)))
 		else
-			setText(atkFrame, "⚔ -")
+			if atkFrame then atkFrame.Visible = false end -- blok: bez dmg, sam HP
 			setText(hpFrame, "❤ " .. fmtNum(math.floor((u.hp or 0) * mult + 0.5)))
 		end
-		if stats then stats.Visible = true end
+		-- staty HP/DMG tylko na hover (domyslnie schowane -> karta pokazuje sam model 3D)
+		if stats then stats.Visible = false end
+		slot.MouseEnter:Connect(function() if stats then stats.Visible = true end end)
+		slot.MouseLeave:Connect(function() if stats then stats.Visible = false end end)
 		local btn = slot:IsA("GuiButton") and slot or slot:FindFirstChildWhichIsA("GuiButton")
 		if btn then
 			btn.Active = true
@@ -180,6 +212,21 @@ local function buildSlot(unitId, discovered, order)
 	return slot
 end
 
+-- rozmiar karty w px: (szerokosc widoczna List - odstepy) / kolumny -> 4 karty wypelniaja rzad bez luk
+local function applyCellSizes()
+	if not _gridList then return end
+	local listW = _gridList.AbsoluteWindowSize.X
+	if listW <= 0 then listW = _gridList.AbsoluteSize.X end
+	if listW <= 0 then return end
+	local cell = math.floor((listW - (GRID_COLUMNS - 1) * GRID_GAP) / GRID_COLUMNS)
+	if cell <= 0 then return end
+	for _, ch in ipairs(_gridList:GetChildren()) do
+		if ch:GetAttribute("WR_Slot") then
+			ch.Size = UDim2.fromOffset(cell, cell)
+		end
+	end
+end
+
 local function renderGrid()
 	clearGrid()
 	local cat = _catsById[_activeVariant]
@@ -187,6 +234,7 @@ local function renderGrid()
 	for i, unitId in ipairs(_unitOrder) do
 		buildSlot(unitId, discovered[unitId] == true, i)
 	end
+	applyCellSizes()
 end
 
 -- ── panel detali (PetWindow) ──────────────────────────────────────────────────────
@@ -194,11 +242,11 @@ local function refreshLevelUpBtn(unitId)
 	local level = _levels[unitId] or 0
 	if not _pw.levelUp then return end
 	if level >= GameConfig.Level.maxLevel then
-		setText(_pw.levelUp, "MAX Level")
+		setTextDeep(_pw.levelUp, "MAX")
 		_pw.levelUp.BackgroundColor3 = Color3.fromRGB(70, 74, 86)
 	else
 		local cost = costOf(unitId, level)
-		setText(_pw.levelUp, "Upgrade — " .. fmtNum(cost))
+		setTextDeep(_pw.levelUp, fmtNum(cost)) -- kwota na guziku-monecie (gleboko: Coins.Coins)
 		_pw.levelUp.BackgroundColor3 = (_coins >= cost) and Color3.fromRGB(80, 165, 95) or Color3.fromRGB(150, 70, 70)
 	end
 end
@@ -214,8 +262,9 @@ function IndexController._selectUnit(unitId)
 	local multNext = GameConfig.Level.growthPerLevel ^ (level + 1)
 
 	setText(_pw.name, u.displayName or unitId)
-	setText(_pw.rarity, ("%s · 1 in %d"):format(tier.name, u.rarityN))
-	if _pw.rarity then _pw.rarity.TextColor3 = TIER_COLOR[tier.revealTier] or Color3.new(1, 1, 1) end
+	local variantLabel = VARIANT_LABEL[_activeVariant] or "Common"
+	setText(_pw.rarity, variantLabel) -- sam wariant (Common/Golden/Rainbow), bez "1 in N"
+	if _pw.rarity then _pw.rarity.TextColor3 = VARIANT_COLOR[_activeVariant] or Color3.new(1, 1, 1) end
 	setText(_pw.levelInfo, "Level " .. level)
 
 	-- 3D ikona w detalu
@@ -234,14 +283,17 @@ function IndexController._selectUnit(unitId)
 	if u.combat then
 		local curDmg = math.floor(u.combat.dmg * mult + 0.5)
 		local nextDmg = math.floor(u.combat.dmg * multNext + 0.5)
+		local curHp = math.floor((u.hp or 0) * mult + 0.5)
+		local nextHp = math.floor((u.hp or 0) * multNext + 0.5)
+		if _pw.atk then _pw.atk.Visible = true end
 		setText(_pw.atk, fmtNum(curDmg))
-		setText(_pw.hp, fmtNum(u.hp or 0))
+		setText(_pw.hp, fmtNum(curHp))
 		setText(_pw.change1, ("⚔ %s → %s"):format(fmtNum(curDmg), fmtNum(nextDmg)))
-		setText(_pw.change2, ("Fire rate %s/s"):format(tostring(u.combat.fireRate or "-")))
+		setText(_pw.change2, ("❤ %s → %s"):format(fmtNum(curHp), fmtNum(nextHp)))
 	else
 		local curHp = math.floor((u.hp or 0) * mult + 0.5)
 		local nextHp = math.floor((u.hp or 0) * multNext + 0.5)
-		setText(_pw.atk, "-")
+		if _pw.atk then _pw.atk.Visible = false end -- blok nie ma dmg -> pokazujemy sam HP
 		setText(_pw.hp, fmtNum(curHp))
 		setText(_pw.change1, ("❤ %s → %s"):format(fmtNum(curHp), fmtNum(nextHp)))
 		setText(_pw.change2, u.def and ("Armor " .. u.def) or "")
@@ -388,9 +440,19 @@ function IndexController.start()
 	-- siatka
 	_gridList = resolve(_canvas, "ContentStroke", "Content", "List")
 	_gridTemplate = _gridList and _gridList:FindFirstChild("Template")
-	if _gridTemplate then
-		_gridTemplate.Visible = false -- oryginal to szablon; klonujemy z niego
+	if _gridList then
+		-- grafik zostawil 2 szablony "Template"; chowamy WSZYSTKIE (inaczej drugi renderuje sie jak smieciowa karta)
+		for _, c in ipairs(_gridList:GetChildren()) do
+			if c.Name == "Template" then c.Visible = false end
+		end
 		pcall(function() _gridList.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
+		-- pelna szerokosc + zero bocznych marginesow (grafik: List width 0.988 + UIPadding.Left=10)
+		_gridList.Size = UDim2.new(1, 0, _gridList.Size.Y.Scale, _gridList.Size.Y.Offset)
+		_gridList.Position = UDim2.new(0.5, 0, _gridList.Position.Y.Scale, _gridList.Position.Y.Offset)
+		local lpad = _gridList:FindFirstChildOfClass("UIPadding")
+		if lpad then lpad.PaddingLeft = UDim.new(0, 0); lpad.PaddingRight = UDim.new(0, 0) end
+		-- rozmiar kart zalezy od szerokosci List -> przelicz gdy sie zmieni (otwarcie panelu / zmiana rozdzielczosci)
+		_gridList:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyCellSizes)
 	end
 
 	-- PetWindow (detal)
@@ -424,7 +486,7 @@ function IndexController.start()
 				renderGrid() -- staty na slocie tez sie zmienily
 			else
 				local reason = type(res) == "table" and res.reason or "?"
-				setText(_pw.levelUp, (reason == "NotEnoughCoins") and "Not enough coins!" or (reason == "MaxLevel" and "MAX Level" or "Error"))
+				setTextDeep(_pw.levelUp, (reason == "NotEnoughCoins") and "Not enough!" or (reason == "MaxLevel" and "MAX" or "Error"))
 				task.delay(0.9, function()
 					if _selUnit == unitId then refreshLevelUpBtn(unitId) end
 				end)

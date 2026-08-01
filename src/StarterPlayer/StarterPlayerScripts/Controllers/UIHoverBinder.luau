@@ -86,6 +86,7 @@ end
 local function bindButton(inst: Instance)
 	if bound[inst] then return end
 	if not inst:IsA("GuiButton") then return end
+	if inst:GetAttribute("WR_NoHover") then return end -- oznaczone (np. wylaczone karty sklepu) -> bez hover/press
 
 	-- wlasny UIScale (dedykowany, nazwany). Cudzy UIScale (np. QuickScale) -> pomijamy.
 	local existing = inst:FindFirstChildOfClass("UIScale")
@@ -121,6 +122,7 @@ local function bindButton(inst: Instance)
 
 	local function track(conn) table.insert(entry.conns, conn) end
 	track(inst.MouseEnter:Connect(function()
+		if inst:GetAttribute("WR_NoHover") then return end -- oznaczony (np. karta sklepu) -> nie swiec
 		entry.hovered = true; apply(entry); applyStroke(entry)
 	end))
 	track(inst.MouseLeave:Connect(function()

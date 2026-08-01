@@ -147,6 +147,24 @@ function RollService.RequestRoll(player: Player)
 	rollOnce(player)
 end
 
+-- Przyznanie rolek jako WALUTY (np. offline earn) — bez rolowania jednostek. RollService = writer spendableRolls.
+function RollService.GrantRolls(player: Player, n: number): number
+	n = math.floor(n or 0)
+	if n <= 0 then
+		return 0
+	end
+	local data = _profile and _profile.GetProfile(player)
+	if not data then
+		return 0
+	end
+	data.lifetimeRolls += n
+	data.spendableRolls += n
+	if _economy then
+		_economy.SyncRolls(player)
+	end
+	return n
+end
+
 function RollService.Init()
 	RollService.Rolled = Signal.new() -- (player, RollResult)
 end

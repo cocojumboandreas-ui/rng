@@ -234,9 +234,23 @@ function UnitTooltip.start()
 		end
 		return BuildController and BuildController.IsBuildMode and BuildController.IsBuildMode() or false
 	end
+	-- panel na SRODKU ekranu (Sklep/Indeks/Koniec rundy/Offline/Ustawienia) otwarty -> input "pochloniety" przez UI:
+	-- NIE pokazujemy karty/otoczki swiata (raycast omija GUI, wiec sprawdzamy jawnie). Dziala dla myszy i dotyku.
+	local PANELS = { "Store", "Index", "RoundOver", "OfflineEarn", "Settings" }
+	local function panelOpen()
+		local pg = LP.PlayerGui
+		for _, name in ipairs(PANELS) do
+			local g = pg:FindFirstChild(name)
+			local c = g and g:FindFirstChild("Canvas")
+			if c and c.Visible then
+				return true
+			end
+		end
+		return false
+	end
 
 	RunService.RenderStepped:Connect(function()
-		if _waveActive or inBuildMode() or treeOpen() then -- karta swiata TYLKO w TRYBIE WOLNYM (nie w umiejetnosciach)
+		if _waveActive or inBuildMode() or treeOpen() or panelOpen() then -- karta TYLKO w trybie wolnym (nie gdy panel UI otwarty)
 			hideAll()
 			return
 		end

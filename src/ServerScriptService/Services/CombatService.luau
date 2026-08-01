@@ -328,7 +328,7 @@ local function step(dt: number)
 
 			-- LEWELOWANIE (Etap 3): mnoznik efektu TYPU = growthPerLevel^level. Odczyt unitLevels JEDEN raz/gracza
 			-- (NIE per-wieza), mnoznik liczony inline z LevelConfig.growthPerLevel i memoizowany per unitId
-			-- (perf: brak pow ani call serwisu per-tick per-wieza). weapon -> dmg, block -> hp.
+			-- (perf: brak pow ani call serwisu per-tick per-wieza). weapon -> dmg + hp, block -> hp.
 			local levels = (_level and _level.GetLevels(player)) or nil
 			local levelGrowth = GameConfig.Level.growthPerLevel
 			local levelMultMemo = {}
@@ -436,8 +436,7 @@ local function step(dt: number)
 			for pid, pl in pairs(placements) do
 				local u = GameConfig.Units[pl.unitId]
 				if u then
-					local maxHp = u.hp or 100
-					if u.combat == nil then maxHp = maxHp * levelMult(pl.unitId) end -- BLOK: level TYPU buffuje HP
+					local maxHp = (u.hp or 100) * levelMult(pl.unitId) -- level TYPU buffuje HP (weapon i block)
 					if uhp[pid] == nil then
 						uhp[pid] = maxHp
 						-- NIE pokazuj paska na pelnym HP przy pojawieniu (to robilo "zupe" zielonych X/Y nad
