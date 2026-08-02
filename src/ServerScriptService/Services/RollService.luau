@@ -102,8 +102,65 @@ local function computeRoll(stats, pity, rng)
 	return { unitId = chosen.id, rarityN = chosen.rarityN, mutation = mutation, variant = variant, totalMult = totalMult, quantity = quantity, pityTriggered = pityTriggered }
 end
 
--- Jedna rolka z efektami ubocznymi (kolejnosc §3.4).
-local function rollOnce(player: Player)
+-- SELEKCJA itemu (rarity + wariant), BEZ mutacji — jedno ogniwo lancucha rolek.
+local function selectOne(stats, pity, rng)
+	local rarityCfg = GameConfig.Rarity
+	local pool = unitsSorted()
+	local pityTriggered = false
+	if pity and pity.sinceRare and pity.sinceRare >= rarityCfg.pity.threshold then
+		local filt = {}
+		for _, u in ipairs(pool) do
+			if u.rarityN >= rarityCfg.pity.guaranteeMinN then
+				filt[#filt + 1] = u
+			end
+		end
+		if #filt > 0 then
+			pool = filt
+			pityTriggered = true
+		end
+	end
+	local chosen = nil
+	for _, u in ipairs(pool) do
+		local nEff = math.max(1, math.floor(u.rarityN / stats.luck))
+		if rng:NextInteger(1, nEff) == 1 then
+			chosen = u
+			break
+		end
+	end
+	if not chosen then
+		chosen = pool[#pool]
+	end
+	local variant = GameConfig.Variant.fallback or "regular"
+	local vLuck = stats.variantLuck or 1
+	for _, v in ipairs(GameConfig.Variant.ladder) do
+		local vN = math.max(1, math.floor(v.chanceN / vLuck))
+		if rng:NextInteger(1, vN) == 1 then
+			variant = v.id
+			break
+		end
+	end
+	return { unitId = chosen.id, rarityN = chosen.rarityN, variant = variant, pityTriggered = pityTriggered }
+end
+
+-- DRABINA KONICZYN: ile szczebli zlapano (x2,x4 zwykle zawsze; wyzej wg step*mutChance).
+-- To = ILE ROLEK zrobi lancuch: kazdy szczebel to jedno dodatkowe, prawdziwe losowanie (osobny item).
+local function ladderDepth(stats, rng)
+	local mutChance = stats.mutChance or 1
+	local depth = 0
+	for _, rung in ipairs(GameConfig.Mutation.ladder) do
+		local p = math.clamp((rung.step or 0) * mutChance, 0, 1)
+		if rng:NextNumber() <= p then
+			depth += 1
+		else
+			break
+		end
+	end
+	return depth
+end
+
+-- LANCUCH ROLEK (§3.4 + drabina): 1 klik -> N prawdziwych rolek po drabinie koniczyn.
+-- x2 wypada -> nowy roll -> x4 -> nowy roll -> x8 ... az drabina sie urwie. KAZDY roll = OSOBNY item.
+local function rollChain(player: Player)
 	local data = _profile.GetProfile(player)
 	if not data then
 		return nil
@@ -111,25 +168,40 @@ local function rollOnce(player: Player)
 	local stats = _stat.Get(player)
 	local rng = Random.new() -- serwerowy; NIGDY math.random
 
-	local result = computeRoll(stats, data.pity, rng)
-
-	-- 5) KSIEGOWANIE: wynik -> Inventory.Add -> liczniki -> pity -> Index.Discover -> Net
-	_inv.Add(player, result.unitId, result.mutation, result.variant)
-	data.lifetimeRolls += 1
-	data.spendableRolls += 1
-	if result.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then
-		data.pity.sinceRare = 0
-	else
-		data.pity.sinceRare += 1
+	local depth = ladderDepth(stats, rng)
+	local nRolls = math.max(1, depth) -- min 1 (bazowy roll bez koniczyny); zwykle >=2 (x2,x4)
+	local steps = {}
+	local best = nil
+	for i = 1, nRolls do
+		local sel = selectOne(stats, data.pity, rng)
+		-- KSIEGOWANIE per item (kolejnosc §3.4): Inventory.Add -> liczniki -> pity -> Index.Discover
+		_inv.Add(player, sel.unitId, nil, sel.variant)
+		data.lifetimeRolls += 1
+		data.spendableRolls += 1
+		if sel.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then
+			data.pity.sinceRare = 0
+		else
+			data.pity.sinceRare += 1
+		end
+		_index.Discover(player, sel.unitId, sel.variant)
+		local mult = (i <= depth) and (2 ^ i) or nil -- koniczyna tego ogniwa (x2, x4, x8...)
+		local step = { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mult = mult }
+		steps[#steps + 1] = step
+		if (not best) or sel.rarityN > best.rarityN then
+			best = step
+		end
+		RollService.Rolled:Fire(player, { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mutation = mult and { mult = mult } or nil })
 	end
-	_index.Discover(player, result.unitId, result.variant)
 	if _economy then
-		_economy.SyncRolls(player) -- zdobyto spendableRoll -> zywe saldo do klienta
+		_economy.SyncRolls(player) -- zdobyto spendableRolle -> zywe saldo do klienta
 	end
-
-	RollService.Rolled:Fire(player, result)
-	Net.get("RollResult"):FireClient(player, result)
-	return result
+	Net.get("RollResult"):FireClient(player, {
+		unitId = best.unitId, rarityN = best.rarityN, variant = best.variant, -- reel packa pokazuje najlepszy pull
+		chain = steps, -- pelny lancuch (kazdy element = osobny item + jego koniczyna)
+		cloverTop = (depth > 0) and (2 ^ depth) or nil, -- szczyt kaskady koniczyn (nil = brak koniczyn)
+		chainCount = nRolls,
+	})
+	return best
 end
 
 -- Handler Net.RollRequest: walidacja profilu + cooldown.
@@ -144,7 +216,7 @@ function RollService.RequestRoll(player: Player)
 		return -- cooldown; szybszy RollRequest odrzucony
 	end
 	_lastRoll[player] = now
-	rollOnce(player)
+	rollChain(player)
 end
 
 -- Przyznanie rolek jako WALUTY (np. offline earn) — bez rolowania jednostek. RollService = writer spendableRolls.

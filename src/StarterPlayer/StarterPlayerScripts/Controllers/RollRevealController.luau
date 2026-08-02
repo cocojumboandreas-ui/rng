@@ -29,6 +29,7 @@ local RARITY_COLOR = {
 	[5] = Color3.fromRGB(255, 205, 80), -- legendary
 }
 
+
 -- FINISH wariantu (warstwa poza kaskada mutacji). regular = brak. galaxy rzadszy -> mocniejszy.
 local VARIANT_FINISH = {
 	shiny = { text = "✨ SHINY ✨", color = Color3.fromRGB(255, 240, 150), extraHold = 0.4 },
@@ -263,7 +264,7 @@ end
 function RollRevealController.start()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "WR_RollReveal"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 50
+	gui.DisplayOrder = 1000 -- nad reveal packa (RollGui=999), by kaskada koniczyn byla widoczna
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 	_dim = Instance.new("Frame")
@@ -271,7 +272,7 @@ function RollRevealController.start()
 	_dim.BackgroundTransparency = 1; _dim.BorderSizePixel = 0; _dim.ZIndex = 1
 	_dim.Visible = false; _dim.Parent = gui
 
-	_stage = Instance.new("Frame") -- warstwa VFX (koniczyny)
+	_stage = Instance.new("Frame") -- warstwa VFX (listki-confetti)
 	_stage.Size = UDim2.fromScale(1, 1); _stage.BackgroundTransparency = 1
 	_stage.ZIndex = 2; _stage.Parent = gui
 
@@ -360,9 +361,18 @@ function RollRevealController.start()
 		if type(result) ~= "table" or not result.unitId then
 			return
 		end
-		RollClient.playRoll({
-			columns = { { itemId = result.unitId, rollItemType = "Item" } },
-		}, function()
+		-- REEL packa = kolumny z LANCUCHA obok siebie: koniczyny (Bonus) -> finalny item (Item).
+		-- Pack renderuje kolumny sekwencyjnie obok = "roll -> koniczyna -> nastepny roll obok" (port.mp4).
+		local columns = {}
+		if result.chain then
+			for _, step in ipairs(result.chain) do
+				if step.mult then
+					columns[#columns + 1] = { rollItemType = "Bonus", mult = step.mult } -- koniczyna-mnoznik
+				end
+			end
+		end
+		columns[#columns + 1] = { itemId = result.unitId, rollItemType = "Item" } -- finalny item
+		RollClient.playRoll({ columns = columns }, function()
 			_rollBusy = false -- reveal zakonczony -> mozna rollowac ponownie
 		end)
 	end)
