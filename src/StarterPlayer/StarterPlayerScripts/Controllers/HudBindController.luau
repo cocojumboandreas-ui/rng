@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
+local RollRevealController = require(script.Parent:WaitForChild("RollRevealController")) -- bramka anty-spam rolla
 
 local HudBindController = {}
 local LP = Players.LocalPlayer
@@ -92,7 +93,7 @@ function HudBindController.start()
 	end
 	setWaveActiveUI(false) -- start: idle (tylko Rozpocznij)
 	if waveInfo then waveInfo.Visible = false end -- "Wave X" na gorze pojawia sie dopiero po Start Wave
-	if rollBtn then bindPress(rollBtn); rollBtn.MouseButton1Click:Connect(function() Net.get("RollRequest"):FireServer() end) end
+	if rollBtn then bindPress(rollBtn); rollBtn.MouseButton1Click:Connect(function() RollRevealController.requestRoll() end) end
 
 	-- ── guziki paneli -> istniejace kontrolery (startuja PRZED HudBind, wiec .Toggle/.Open juz sa) ──
 	local Controllers = script.Parent

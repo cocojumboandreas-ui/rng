@@ -42,6 +42,19 @@ local _cloverPool = {}
 local _queue = {}
 local _playing = false
 
+-- BRAMKA anty-spam: jeden roll naraz. Klik ustawia _rollBusy natychmiast (blokuje kolejne kliki jeszcze
+-- przed startem reveala), a koniec reveala (callback playRoll) czysci flage. Generacja unieważnia stary bezpiecznik.
+local _rollBusy = false
+local _rollGen = 0
+function RollRevealController.requestRoll()
+	if _rollBusy then return end -- trwa roll -> zignoruj klik
+	_rollBusy = true
+	_rollGen += 1
+	local myGen = _rollGen
+	Net.get("RollRequest"):FireServer()
+	task.delay(12, function() if myGen == _rollGen then _rollBusy = false end end) -- bezpiecznik gdy serwer nie odpowie
+end
+
 -- ── helpers ──
 local function deriveTier(rarityN: number): number
 	for _, t in ipairs(GameConfig.Rarity.tiers) do
@@ -335,7 +348,7 @@ function RollRevealController.start()
 		modelProvider = UnitModelFactory.get,
 		decoyIds = decoyIds,
 		starburstId = "", -- repo uzywa tekstowego bursta (✦), brak asset id -> aura niewidoczna
-		onRollAgain = function() Net.get("RollRequest"):FireServer() end, -- Rolka/Auto w pasku reveala
+		onRollAgain = function() RollRevealController.requestRoll() end, -- Rolka/Auto w pasku reveala (gated)
 	})
 
 	-- reveal packa "RNG Roll" sterowany NASZYM wynikiem (nasze modele w viewport + audio packa).
@@ -349,7 +362,9 @@ function RollRevealController.start()
 		end
 		RollClient.playRoll({
 			columns = { { itemId = result.unitId, rollItemType = "Item" } },
-		}, function() end)
+		}, function()
+			_rollBusy = false -- reveal zakonczony -> mozna rollowac ponownie
+		end)
 	end)
 end
 
