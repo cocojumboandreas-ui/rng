@@ -372,6 +372,7 @@ function RollRevealController.start()
 			end
 		end
 		columns[#columns + 1] = { itemId = result.unitId, rollItemType = "Item" } -- finalny item
+		RollClient.setIsCompact(false) -- RECZNY roll = fullscreen takeover (compact/gorny-srodek zostaje dla auto-rolla)
 		RollClient.playRoll({ columns = columns }, function()
 			_rollBusy = false -- reveal zakonczony -> mozna rollowac ponownie
 		end)

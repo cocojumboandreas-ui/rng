@@ -851,9 +851,9 @@ function BuildController.start()
 				if m then pickup(m) end
 			end
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-			-- PPM: gdy cos trzymamy -> anuluj wybor (nie usuwaj cudzej jednostki!); inaczej -> usun pod kursorem
+			-- PPM: TYLKO anuluje trzymana jednostke; NIE usuwa jednostki z planszy (usuwanie = tryb Delete).
 			if not gp then
-				if _sel then cancelSelection() else deleteAt() end
+				if _sel then cancelSelection() end
 			end
 		elseif input.KeyCode == Enum.KeyCode.R then
 			if _sel then

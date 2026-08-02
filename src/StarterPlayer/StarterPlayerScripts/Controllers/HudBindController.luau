@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
 local RollRevealController = require(script.Parent:WaitForChild("RollRevealController")) -- bramka anty-spam rolla
+local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")) -- offline rollsPerHour
 
 local HudBindController = {}
 local LP = Players.LocalPlayer
@@ -230,10 +231,22 @@ function HudBindController.start()
 		if diceLbl and s.rollSpeed then diceLbl.Text = fmtMul(s.rollSpeed) .. "s" end
 		if tipSkill and s.luckSkill then tipSkill.Text = "×" .. fmtMul(s.luckSkill) end
 		if tipIndex and s.luckIndex then tipIndex.Text = "×" .. fmtMul(s.luckIndex) end
+		-- OFFLINE EARNINGS / godzine: coins = offlineRate*coinMult, rolki = config rollsPerHour
+		setText(offCoins, fmt((s.offlineRate or 0) * (s.coinMult or 1)))
+		local rph = GameConfig.Economy and GameConfig.Economy.offline and GameConfig.Economy.offline.rollsPerHour
+		setText(offRolls, fmt(rph or 0))
 	end
 	task.spawn(function()
 		local ok, s = pcall(function() return Net.get("GetStats"):InvokeServer() end)
 		if ok then applyLuck(s) end
+	end)
+	-- initial saldo monet + rolek (CoinsSync/RollsSync to PUSH -> moze wyprzedzic listener; tu PULL)
+	task.spawn(function()
+		local ok, st = pcall(function() return Net.get("GetSkillState"):InvokeServer() end)
+		if ok and type(st) == "table" then
+			if st.coins ~= nil then setText(coinsL, fmt(st.coins)) end
+			if st.spendableRolls ~= nil then setText(rollNum, fmt(st.spendableRolls)) end
+		end
 	end)
 
 	-- ── waluty / rolki ──
@@ -244,11 +257,7 @@ function HudBindController.start()
 		if type(p) == "table" and p.spendableRolls ~= nil then setText(rollNum, fmt(p.spendableRolls)) end
 	end)
 	Net.get("StatsSync").OnClientEvent:Connect(function(s)
-		if type(s) ~= "table" then return end
-		local coinsPerH = (s.offlineRate or 0) * (s.coinMult or 1)
-		setText(offCoins, fmt(coinsPerH))
-		setText(offRolls, fmt(0))
-		applyLuck(s)
+		applyLuck(s) -- luck + offline earnings/h (coins & rolki)
 	end)
 
 	-- ── postęp fali (WaveProgress: {waveNumber, killed, pool}) ──

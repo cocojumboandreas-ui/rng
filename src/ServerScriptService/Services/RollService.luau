@@ -158,8 +158,8 @@ local function ladderDepth(stats, rng)
 	return depth
 end
 
--- LANCUCH ROLEK (§3.4 + drabina): 1 klik -> N prawdziwych rolek po drabinie koniczyn.
--- x2 wypada -> nowy roll -> x4 -> nowy roll -> x8 ... az drabina sie urwie. KAZDY roll = OSOBNY item.
+-- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item, a ILOCZYN zlapanych koniczyn
+-- (x2*x4*x8...) = ILE SZTUK tego itemu trafia do inventory. Koniczyny to kolumny Bonus w reelu.
 local function rollChain(player: Player)
 	local data = _profile.GetProfile(player)
 	if not data then
@@ -168,40 +168,39 @@ local function rollChain(player: Player)
 	local stats = _stat.Get(player)
 	local rng = Random.new() -- serwerowy; NIGDY math.random
 
+	-- 1) DRABINA: ile koniczyn zlapano; ILOSC SZTUK = MAX koniczyna (najwyzsza), NIE iloczyn.
 	local depth = ladderDepth(stats, rng)
-	local nRolls = math.max(1, depth) -- min 1 (bazowy roll bez koniczyny); zwykle >=2 (x2,x4)
-	local steps = {}
-	local best = nil
-	for i = 1, nRolls do
-		local sel = selectOne(stats, data.pity, rng)
-		-- KSIEGOWANIE per item (kolejnosc §3.4): Inventory.Add -> liczniki -> pity -> Index.Discover
-		_inv.Add(player, sel.unitId, nil, sel.variant)
-		data.lifetimeRolls += 1
-		data.spendableRolls += 1
-		if sel.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then
-			data.pity.sinceRare = 0
-		else
-			data.pity.sinceRare += 1
-		end
-		_index.Discover(player, sel.unitId, sel.variant)
-		local mult = (i <= depth) and (2 ^ i) or nil -- koniczyna tego ogniwa (x2, x4, x8...)
-		local step = { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mult = mult }
-		steps[#steps + 1] = step
-		if (not best) or sel.rarityN > best.rarityN then
-			best = step
-		end
-		RollService.Rolled:Fire(player, { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mutation = mult and { mult = mult } or nil })
+	local clovers = {}
+	for i = 1, depth do
+		clovers[i] = { mult = 2 ^ i } -- x2, x4, x8, x16, x32, x64...
 	end
+	local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1 -- np. drabina do x32 -> 32 sztuki
+
+	-- 2) JEDEN wylosowany item
+	local sel = selectOne(stats, data.pity, rng)
+
+	-- 3) KSIEGOWANIE (§3.4): totalMult SZTUK itemu -> Inventory; liczniki/pity/index raz
+	_inv.Add(player, sel.unitId, nil, sel.variant, totalMult)
+	data.lifetimeRolls += 1
+	data.spendableRolls += 1
+	if sel.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then
+		data.pity.sinceRare = 0
+	else
+		data.pity.sinceRare += 1
+	end
+	_index.Discover(player, sel.unitId, sel.variant)
 	if _economy then
-		_economy.SyncRolls(player) -- zdobyto spendableRolle -> zywe saldo do klienta
+		_economy.SyncRolls(player) -- zywe saldo do klienta
 	end
+
+	RollService.Rolled:Fire(player, { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mutation = (depth > 0) and { mult = 2 ^ depth } or nil, quantity = totalMult })
 	Net.get("RollResult"):FireClient(player, {
-		unitId = best.unitId, rarityN = best.rarityN, variant = best.variant, -- reel packa pokazuje najlepszy pull
-		chain = steps, -- pelny lancuch (kazdy element = osobny item + jego koniczyna)
-		cloverTop = (depth > 0) and (2 ^ depth) or nil, -- szczyt kaskady koniczyn (nil = brak koniczyn)
-		chainCount = nRolls,
+		unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant,
+		chain = clovers, -- kolumny koniczyn (Bonus) w reelu
+		cloverTop = (depth > 0) and (2 ^ depth) or nil,
+		quantity = totalMult, -- ile sztuk trafilo do inventory
 	})
-	return best
+	return sel
 end
 
 -- Handler Net.RollRequest: walidacja profilu + cooldown.

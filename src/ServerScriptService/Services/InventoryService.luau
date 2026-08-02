@@ -72,13 +72,13 @@ function InventoryService.KeyFor(unitId: string, mutation, variant): string
 	return invKey(unitId, mutation, variant)
 end
 
-function InventoryService.Add(player, unitId: string, mutation, variant)
+function InventoryService.Add(player, unitId: string, mutation, variant, count)
 	local i = inv(player)
 	if not i then
 		return
 	end
 	local k = invKey(unitId, mutation, variant)
-	i[k] = (i[k] or 0) + 1
+	i[k] = (i[k] or 0) + math.max(1, math.floor(count or 1)) -- count = ile sztuk (np. iloczyn koniczyn); domyslnie 1
 	InventoryService.Changed:Fire(player)
 end
 
