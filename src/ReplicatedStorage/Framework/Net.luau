@@ -49,6 +49,7 @@ local REMOTES: { [string]: string } = {
 	InventorySync = "RemoteEvent", -- S->C { [invKey]=count } (live liczby w panelu; push na Changed/ProfileLoaded)
 	DevAction = "RemoteFunction", -- C->S {action, amount?} -> {ok, msg?} (panel DEV; serwer gated isDev)
 	SkillTreeReset = "RemoteEvent", -- S->C () — DEV wyczyscil skille -> klient czysci drzewko
+	WaveStrike = "RemoteEvent", -- S->C {kind, plotId, pos, radius} — strike galezi bojowej (konwoj/nalot/nuke) -> FX klienta
 }
 
 local Net = {}

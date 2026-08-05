@@ -25,9 +25,11 @@ local ORDER = {
 	"BuildController",
 	"UnitTooltipController", -- dymek podgladu jednostki (ikona + DMG/s + HP)
 	"HudBindController", -- HUD ziomka (StarterGui.SideButtons)
+	"AutoWaveController", -- guzik Auto Wave pod Start Wave (skill n5)
 	"DevController",
 	"SettingsPanelController",
 	"WaveFxController", -- konfetti + baner po wyczyszczeniu fali
+	"WaveStrikeController", -- FX strike'ow galezi bojowej (konwoj/nalot/nuke)
 	"StoreController",
 	"UIHoverBinder", -- sprezyste hover/press na przyciskach
 	"AttentionBob", -- kolysanie Roll + Sklep

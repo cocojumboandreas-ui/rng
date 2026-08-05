@@ -10,7 +10,7 @@ local GridConfig = require(Config:WaitForChild("GridConfig"))
 
 local StatBaseConfig = {
 	luck = RarityConfig.luck.base, -- 1.0 (dom: RarityConfig)
-	rollSpeed = 1.0, -- cooldown rolki [s]; fast_1 -0.15/rank
+	rollSpeed = 4.0, -- cooldown rolki [s] START; Fast Rolls schodzi do floor 3.0 (klamp w StatProfile)
 	mutChance = 1.0, -- mnoznik szansy mutacji (chanceN / mutChance)
 	cellBudget = GridConfig.baseCellBudget, -- 40 (dom: GridConfig)
 	dmgMult = 1.0, -- mnoznik dmg wiez

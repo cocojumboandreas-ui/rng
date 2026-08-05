@@ -51,7 +51,8 @@ function SkillTreeController.start()
 	local ownedIds: { [string]: boolean } = {}
 	local totalRankNodes = 0
 	for id in pairs(nodes) do
-		if string.find(id, "#", 1, true) then
+		local base = string.match(id, "^(.-)#")
+		if base and SkillConfig.nodes[base] then -- licz tylko KUPOWALNE (pomin naglowki-sekcje 0/0)
 			totalRankNodes += 1
 		end
 	end
@@ -188,6 +189,11 @@ function SkillTreeController.start()
 		NodeTreeClient.setIsNodeOwned("root", true) -- root owned -> 3 dzieci REALNE (ich dzieci = "?", reszta ukryta)
 		for id in pairs(nodes) do
 			if string.sub(id, 1, 2) == "b:" then
+				NodeTreeClient.setIsNodeOwned(id, true)
+			end
+			-- WR: naglowki-sekcje (0/0, niekupowalne) tez "owned" -> ich dzieci sa REALNE, nie zablokowane "?"
+			local base = string.match(id, "^(.-)#")
+			if base and base ~= "root" and not SkillConfig.nodes[base] then
 				NodeTreeClient.setIsNodeOwned(id, true)
 			end
 		end

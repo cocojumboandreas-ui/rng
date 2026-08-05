@@ -119,17 +119,20 @@ function EconomyService.ComputeOfflineEarnings(player)
 		return { coins = 0, rolls = 0, seconds = 0 }
 	end
 	local now = os.time()
-	local offlineRate = (_stat and _stat.Get(player).offlineRate) or 0
+	local st = _stat and _stat.Get(player)
+	local offlineRate = (st and st.offlineRate) or 0
+	local offlineMult = (st and st.offlineMult) or 0 -- Offline Rolls: mnoznik zarobkow offline (monety I rolki)
 	local capHours = GameConfig.Economy.offline.capHours
 	local raw, seconds, firstLogin = computeOfflineRaw(data.offlineTs or 0, now, offlineRate, capHours)
+	raw = raw * (1 + offlineMult)
 	data.offlineTs = now -- reset baseline (offlineTs znow ustawi ProfileReleasing przy leave)
 	if firstLogin then
 		return { coins = 0, rolls = 0, seconds = seconds }
 	end
 	local gained = (raw > 0) and EconomyService.Award(player, raw, "offline") or 0 -- coinMult raz + CoinsSync
-	-- rolki offline (WALUTA): rollsPerHour * godziny (capped seconds); RollService = writer spendableRolls
-	local rollsRate = GameConfig.Economy.offline.rollsPerHour or 0
-	local rawRolls = math.floor((seconds / 3600) * rollsRate)
+	-- rolki offline: TYLKO gdy odblokowane (n3 Offline Progression); tempo x (1+offlineMult). RollService = writer spendableRolls.
+	local rollsRate = (GameConfig.Economy.offline.rollsPerHour or 0) * (1 + offlineMult)
+	local rawRolls = (st and st.offlineRollsOn) and math.floor((seconds / 3600) * rollsRate) or 0
 	local rollsGained = (rawRolls > 0 and _roll) and _roll.GrantRolls(player, rawRolls) or 0
 	return { coins = gained, rolls = rollsGained, seconds = seconds }
 end

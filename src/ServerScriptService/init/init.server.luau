@@ -26,6 +26,7 @@ local ORDER = {
 	"CoreService",
 	"CombatService",
 	"WaveService",
+	"WaveStrikeService",
 	"BaseDoorService",
 	"WeaponWaveService",
 	"RigCompatService",

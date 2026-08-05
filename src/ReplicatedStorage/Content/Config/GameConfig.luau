@@ -11,6 +11,7 @@ local GameConfig = {
 	Wave = require(Config:WaitForChild("WaveConfig")),
 	Grid = require(Config:WaitForChild("GridConfig")),
 	Skill = require(Config:WaitForChild("SkillConfig")),
+	SkillEffect = require(Config:WaitForChild("SkillEffectConfig")), -- balans DZIALANIA galezi bojowej (Faza 2, plik dla Olo)
 	Economy = require(Config:WaitForChild("EconomyConfig")),
 	Reveal = require(Config:WaitForChild("RevealConfig")),
 	StatBase = require(Config:WaitForChild("StatBaseConfig")), -- bazy plaskiej tabeli Stats (§3.2)

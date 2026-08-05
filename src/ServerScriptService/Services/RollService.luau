@@ -5,6 +5,7 @@
 -- Cooldown z Stats.rollSpeed egzekwowany serwerowo (klientowa animacja to teatr).
 -- deps: StatProfileService, InventoryService, IndexService, ProfileService.
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
@@ -19,6 +20,8 @@ local RollService = {}
 
 local _stat, _inv, _index, _profile, _economy = nil, nil, nil, nil, nil
 local _lastRoll: { [Player]: number } = {} -- player -> os.clock() ostatniej rolki
+local _special: { [any]: any } = {} -- player -> {gold,diamond,rainbow} liczniki specjalnych rolek
+local _autoAcc: { [any]: any } = {} -- player -> {roll, regen} akumulatory Auto Roll (n2)
 
 -- Jednostki posortowane MALEJACO po rarityN (najrzadsze pierwsze) — raz.
 local _unitsSorted = nil
@@ -103,10 +106,11 @@ local function computeRoll(stats, pity, rng)
 end
 
 -- SELEKCJA itemu (rarity + wariant), BEZ mutacji — jedno ogniwo lancucha rolek.
-local function selectOne(stats, pity, rng)
+local function selectOne(stats, pity, rng, luckMult)
 	local rarityCfg = GameConfig.Rarity
 	local pool = unitsSorted()
 	local pityTriggered = false
+	local luck = stats.luck * (luckMult or 1) -- Gold/Diamond/Rainbow: chwilowy boost luck TEJ rolki
 	if pity and pity.sinceRare and pity.sinceRare >= rarityCfg.pity.threshold then
 		local filt = {}
 		for _, u in ipairs(pool) do
@@ -121,7 +125,7 @@ local function selectOne(stats, pity, rng)
 	end
 	local chosen = nil
 	for _, u in ipairs(pool) do
-		local nEff = math.max(1, math.floor(u.rarityN / stats.luck))
+		local nEff = math.max(1, math.floor(u.rarityN / luck))
 		if rng:NextInteger(1, nEff) == 1 then
 			chosen = u
 			break
@@ -129,6 +133,18 @@ local function selectOne(stats, pity, rng)
 	end
 	if not chosen then
 		chosen = pool[#pool]
+	end
+	-- BONUS: szansa na ULEPSZENIE do rzadszego itemu (wiekszy tier). pool sortowany najrzadszy->najczestszy (idx 1 = rzadszy).
+	local bonus = stats.bonusChance or 0
+	if bonus > 0 and rng:NextNumber() < bonus then
+		for i, u in ipairs(pool) do
+			if u.id == chosen.id then
+				if i > 1 then
+					chosen = pool[i - 1]
+				end
+				break
+			end
+		end
 	end
 	local variant = GameConfig.Variant.fallback or "regular"
 	local vLuck = stats.variantLuck or 1
@@ -146,8 +162,12 @@ end
 -- To = ILE ROLEK zrobi lancuch: kazdy szczebel to jedno dodatkowe, prawdziwe losowanie (osobny item).
 local function ladderDepth(stats, rng)
 	local mutChance = stats.mutChance or 1
+	local cap = stats.cloverMaxTier or #GameConfig.Mutation.ladder -- sufit: x16/x32/x64 podnosza (domyslnie x8)
 	local depth = 0
-	for _, rung in ipairs(GameConfig.Mutation.ladder) do
+	for i, rung in ipairs(GameConfig.Mutation.ladder) do
+		if i > cap then
+			break
+		end
 		local p = math.clamp((rung.step or 0) * mutChance, 0, 1)
 		if rng:NextNumber() <= p then
 			depth += 1
@@ -158,9 +178,45 @@ local function ladderDepth(stats, rng)
 	return depth
 end
 
+-- GOLD/DIAMOND/RAINBOW: OSOBNE liczniki per typ. Co N rolek (min N wsrod POSIADANYCH wezlow typu) jedna rolka
+-- dostaje x{mult} luck. Typy niezalezne; gdy kilka trafi te sama rolke -> najwyzszy mult. Zwraca (luckMult, typ|nil).
+local function specialRollBoost(player, data)
+	local cfg = GameConfig.SkillEffect and GameConfig.SkillEffect.specialRolls
+	if not cfg or type(data.skills) ~= "table" then
+		return 1, nil
+	end
+	local skills = data.skills
+	local counters = _special[player]
+	if not counters then
+		counters = {}
+		_special[player] = counters
+	end
+	local bestMult, bestType = 1, nil
+	for typeName, tcfg in pairs(cfg) do
+		local minN = nil
+		for nodeId, everyN in pairs(tcfg.everyByNode or {}) do
+			if (skills[nodeId] or 0) > 0 and (not minN or everyN < minN) then
+				minN = everyN
+			end
+		end
+		if minN then
+			local c = (counters[typeName] or 0) + 1
+			if c >= minN then
+				c = 0
+				if (tcfg.mult or 1) > bestMult then
+					bestMult = tcfg.mult
+					bestType = typeName
+				end
+			end
+			counters[typeName] = c
+		end
+	end
+	return bestMult, bestType
+end
+
 -- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item, a ILOCZYN zlapanych koniczyn
 -- (x2*x4*x8...) = ILE SZTUK tego itemu trafia do inventory. Koniczyny to kolumny Bonus w reelu.
-local function rollChain(player: Player)
+local function rollChain(player: Player, isAuto)
 	local data = _profile.GetProfile(player)
 	if not data then
 		return nil
@@ -176,13 +232,16 @@ local function rollChain(player: Player)
 	end
 	local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1 -- np. drabina do x32 -> 32 sztuki
 
-	-- 2) JEDEN wylosowany item
-	local sel = selectOne(stats, data.pity, rng)
+	-- 2) JEDEN wylosowany item (+ Gold/Diamond/Rainbow: osobne liczniki -> chwilowy boost luck co N rolek)
+	local luckMult, special = specialRollBoost(player, data)
+	local sel = selectOne(stats, data.pity, rng, luckMult)
 
 	-- 3) KSIEGOWANIE (§3.4): totalMult SZTUK itemu -> Inventory; liczniki/pity/index raz
 	_inv.Add(player, sel.unitId, nil, sel.variant, totalMult)
 	data.lifetimeRolls += 1
-	data.spendableRolls += 1
+	if not isAuto then
+		data.spendableRolls += 1 -- reczna rolka NALICZA walute; auto-rolka ja ZUZYWA (odjete w petli auto)
+	end
 	if sel.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then
 		data.pity.sinceRare = 0
 	else
@@ -199,6 +258,8 @@ local function rollChain(player: Player)
 		chain = clovers, -- kolumny koniczyn (Bonus) w reelu
 		cloverTop = (depth > 0) and (2 ^ depth) or nil,
 		quantity = totalMult, -- ile sztuk trafilo do inventory
+		special = special, -- "gold"/"diamond"/"rainbow" gdy trafiona specjalna rolka (klient moze podkreslic)
+		auto = isAuto or nil, -- true = auto-rolka (klient: KOMPAKTOWY reel na gorze, nie fullscreen)
 	})
 	return sel
 end
@@ -252,12 +313,59 @@ function RollService.Start()
 	end)
 	Players.PlayerRemoving:Connect(function(player)
 		_lastRoll[player] = nil
+		_special[player] = nil
+		_autoAcc[player] = nil
+	end)
+
+	-- AUTO ROLL (skill n2): gdy posiadany -> pasywna REGENERACJA spendableRolls + auto-rolka co rollSpeed,
+	-- ktora ZUZYWA rolke (regen >= zuzycie -> nigdy nie schodzi do 0). Reel na kliencie = tryb kompaktowy.
+	RunService.Heartbeat:Connect(function(dt)
+		local ar = GameConfig.SkillEffect and GameConfig.SkillEffect.autoRoll
+		if not ar then
+			return
+		end
+		for _, player in ipairs(Players:GetPlayers()) do
+			local data = _profile and _profile.GetProfile(player)
+			if data and data.skills and (data.skills[ar.node] or 0) > 0 then
+				local acc = _autoAcc[player]
+				if not acc then
+					acc = { roll = 0, regen = 0 }
+					_autoAcc[player] = acc
+				end
+				-- pasywna regeneracja rolek (w nieskonczonosc)
+				acc.regen += dt * (ar.regenPerSec or 0)
+				if acc.regen >= 1 then
+					local add = math.floor(acc.regen)
+					acc.regen -= add
+					data.spendableRolls = (data.spendableRolls or 0) + add
+					if _economy then
+						_economy.SyncRolls(player)
+					end
+				end
+				-- auto-rolka co rollSpeed (zuzywa rolke)
+				acc.roll += dt
+				local cd = (_stat and _stat.Get(player).rollSpeed) or 4
+				if acc.roll >= cd then
+					acc.roll = 0
+					if (data.spendableRolls or 0) >= (ar.cost or 1) then
+						data.spendableRolls -= (ar.cost or 1)
+						rollChain(player, true) -- auto-rolka: nie nalicza waluty, reel kompaktowy
+					end
+				end
+			else
+				_autoAcc[player] = nil
+			end
+		end
 	end)
 end
 
 -- Hook TYLKO do testow: czysta selekcja+mutacja bez serwisow.
 function RollService._ComputeRollForTest(stats, pity, rng)
 	return computeRoll(stats, pity, rng)
+end
+-- Hook TYLKO do testow: krok licznika specjalnych rolek (gold/diamond/rainbow). Zwraca (luckMult, typ|nil).
+function RollService._SpecialBoostForTest(player)
+	return specialRollBoost(player, _profile.GetProfile(player))
 end
 
 return RollService

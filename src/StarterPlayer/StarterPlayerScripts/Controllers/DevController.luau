@@ -24,12 +24,12 @@ end
 
 -- {label, action, amount?, color}
 local BUTTONS = {
+	{ "🌳 RESET SKILL TREE", "resetSkills", nil, Color3.fromRGB(60, 130, 210) },
 	{ "💰 +10k coins", "coins", 10000, Color3.fromRGB(200, 165, 40) },
 	{ "💰 +100k coins", "coins", 100000, Color3.fromRGB(200, 165, 40) },
 	{ "🎲 +100 dice", "rolls", 100, Color3.fromRGB(150, 110, 200) },
 	{ "🎲 +1000 dice", "rolls", 1000, Color3.fromRGB(150, 110, 200) },
 	{ "📦 Whole arsenal x3", "giveArsenal", 3, Color3.fromRGB(60, 160, 120) },
-	{ "🌳 Reset skills", "resetSkills", nil, Color3.fromRGB(70, 120, 170) },
 	{ "🎒 Reset inventory", "resetInventory", nil, Color3.fromRGB(70, 120, 170) },
 	{ "📖 Reset collection", "resetIndex", nil, Color3.fromRGB(70, 120, 170) },
 	{ "✖️ Reset multipliers", "resetMultipliers", nil, Color3.fromRGB(70, 120, 170) },
@@ -47,7 +47,7 @@ function DevController.start()
 	gui.Name = "WR_DevPanel"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 80
+	gui.DisplayOrder = 300000 -- NA 1 PLANIE: nad wszystkim (Tooltip 250k, Build 200k, Settings 100k)
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 	-- przycisk toggle (gora-lewo, pod monetami)

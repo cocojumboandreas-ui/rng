@@ -35,6 +35,7 @@ local _towerCd: { [any]: { [string]: number } } = {} -- player -> {placementId -
 local _deaths: { [any]: { number } } = {} -- player -> {enemyId,...} (flush per tick)
 local _nextEnemyId = 0
 local _acc = 0
+local _rng = Random.new() -- serwerowy RNG (proc splash Explosive Ammo); NIE math.random
 local _synthPlotId: { [any]: number } = {} -- syntetyczny klucz -> plotId (harness bramki; puste w grze)
 local _lastStepMs = 0 -- czas ostatniego kroku symulacji [ms] (instrumentacja bramki)
 local _syncBytes = 0 -- bajty EnemySync od ostatniego odczytu (KB/s bramki)
@@ -325,6 +326,7 @@ local function step(dt: number)
 			local dmgMult = (stats and stats.dmgMult) or 1
 			local fireRateMult = (stats and stats.fireRateMult) or 1
 			local rangeMult = (stats and stats.rangeMult) or 1
+			local explosiveChance = (stats and stats.explosiveChance) or 0 -- Explosive Ammo: szansa splash (0 gdy brak)
 
 			-- LEWELOWANIE (Etap 3): mnoznik efektu TYPU = growthPerLevel^level. Odczyt unitLevels JEDEN raz/gracza
 			-- (NIE per-wieza), mnoznik liczony inline z LevelConfig.growthPerLevel i memoizowany per unitId
@@ -419,7 +421,16 @@ local function step(dt: number)
 							_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, best.hp)) -- licz efektywne (bez overkill)
 							best.hp -= dmg
 							cds[pid] = 1 / (u.combat.fireRate * fireRateMult)
-							if best.hp <= 0 then
+							-- EXPLOSIVE AMMO: szansa na splash AoE wokol celu (wspolna sciezka smierci przez AreaDamage).
+							-- best moze zginac od splash -> ponizsza gałąź smierci strzezona przez enemies[best.id].
+							if explosiveChance > 0 and _rng:NextNumber() < explosiveChance then
+								local ex = GameConfig.SkillEffect and GameConfig.SkillEffect.explosive
+								if ex then
+									local bpos = enemyWorldPos(plot, best.pathT, best.lane, best.fwd)
+									CombatService.AreaDamage(player, bpos, ex.splashRadius or 9, dmg * (ex.splashFrac or 0.6))
+								end
+							end
+							if best.hp <= 0 and enemies[best.id] then
 								enemies[best.id] = nil
 								queueDeath(player, best.id)
 								CombatService.EnemyDied:Fire(player, best.typeId)
@@ -603,6 +614,68 @@ function CombatService.PlayerHitEnemy(player, id, isHead)
 		_playerKills[player] = (_playerKills[player] or 0) + 1 -- zabojstwa GRACZA (bron FPS) do summary
 		CombatService.EnemyDied:Fire(player, e.typeId)
 	end
+end
+
+-- AoE: zadaj `dmg` wszystkim wrogom gracza w promieniu `radius` (XZ) od `center`. Zwraca liczbe TRAFIONYCH.
+-- Wspolna sciezka dla Explosive Ammo (splash) i strike'ow (konwoj/nalot/nuke): te same liczniki dmg/kille/EnemyDied.
+-- Kille zbierane do listy i usuwane PO petli (nie mutujemy tabeli w trakcie wlasnego pairs).
+function CombatService.AreaDamage(player, center: Vector3, radius: number, dmg: number): number
+	local enemies = _enemies[player]
+	if not enemies or not dmg or dmg <= 0 then
+		return 0
+	end
+	local plot = resolvePlot(player)
+	if not plot then
+		return 0
+	end
+	local r2 = radius * radius
+	local hit = 0
+	local kills = nil
+	for _, e in pairs(enemies) do
+		local epos = enemyWorldPos(plot, e.pathT, e.lane, e.fwd)
+		local dx, dz = epos.X - center.X, epos.Z - center.Z
+		if (dx * dx + dz * dz) <= r2 then
+			_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, e.hp)) -- efektywne (bez overkill)
+			e.hp -= dmg
+			hit += 1
+			if e.hp <= 0 then
+				kills = kills or {}
+				kills[#kills + 1] = e.id
+			end
+		end
+	end
+	if kills then
+		for _, id in ipairs(kills) do
+			local e = enemies[id]
+			if e then
+				enemies[id] = nil
+				queueDeath(player, id)
+				CombatService.EnemyDied:Fire(player, e.typeId)
+			end
+		end
+	end
+	return hit
+end
+
+-- Punkt celu strike'a: CENTROID zywych wrogow gracza w swiecie (nil gdy brak). Strike bije w skupisko.
+function CombatService.PickStrikeTarget(player): Vector3?
+	local enemies = _enemies[player]
+	if not enemies then
+		return nil
+	end
+	local plot = resolvePlot(player)
+	if not plot then
+		return nil
+	end
+	local sx, sy, sz, n = 0, 0, 0, 0
+	for _, e in pairs(enemies) do
+		local epos = enemyWorldPos(plot, e.pathT, e.lane, e.fwd)
+		sx += epos.X; sy += epos.Y; sz += epos.Z; n += 1
+	end
+	if n == 0 then
+		return nil
+	end
+	return Vector3.new(sx / n, sy / n, sz / n)
 end
 
 function CombatService.Init()

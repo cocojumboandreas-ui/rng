@@ -1,8 +1,10 @@
 --!strict
--- Content/Config/SkillTreeData.luau — SUROWE dane drzewa umiejetnosci z crafteru (95 wezlow).
--- JEDNO zrodlo prawdy: SkillTreeLayout (render packa) + SkillConfig (koszt/kupno) buduja sie z tego.
+-- Content/Config/SkillTreeData.luau — SUROWE dane drzewa umiejetnosci. ZSYNCHRONIZOWANE 1:1 z crafterem
+-- (place "tworzenie heksow" 117459502228333). JEDNO zrodlo prawdy STRUKTURY: SkillTreeLayout (render packa)
+-- i SkillConfig (kupno/efekty) buduja sie z tego. CENY (balans) nadpisuje SkillCosts.luau (plik dla Olo).
 -- id, parent (nil=root), dir (kierunek heksa), label, coin (koszt monet), roll (koszt kostek), desc (opis w podgladzie).
--- coin=0 i roll=0 -> wezel INFORMACYJNY (naglowek sekcji), niekupowalny.
+-- coin=0 i roll=0 -> domyslnie wezel INFORMACYJNY (naglowek), CHYBA ze SkillCosts nada mu cene (galaz bojowa).
+-- Opisy sa krotkie, po ANGIELSKU (konwencja gry).
 return {
 	{ id="root", parent=nil, dir=nil, label="Skill Tree", coin=0, roll=0, desc="" },
 	{ id="n2", parent="root", dir="DolLewo", label="Automatic Roll", coin=250, roll=0, desc="Automatic roll in the background" },
@@ -23,6 +25,7 @@ return {
 	{ id="n17", parent="n16", dir="Dol", label="Rainbow Rolls II", coin=8500000, roll=0, desc="Get a rainbow roll every 80 normal rolls" },
 	{ id="n20", parent="n17", dir="DolPrawo", label="Rainbow Rolls III", coin=10000000, roll=0, desc="Get a rainbow roll every 75 normal rolls" },
 	{ id="n21", parent="n20", dir="DolPrawo", label="Rainbow Rolls IV", coin=12000000, roll=0, desc="Get a rainbow roll every 45 normal rolls" },
+	{ id="n104", parent="n21", dir="DolPrawo", label="Rainbow Rolls V", coin=120000, roll=0, desc="Get a rainbow roll every 30 normal rolls" },
 	{ id="n22", parent="n3", dir="DolLewo", label="Offline Rolls I", coin=15000, roll=0, desc="+15% offline rolls" },
 	{ id="n23", parent="n22", dir="DolLewo", label="Offline Rolls II", coin=120000, roll=0, desc="+35% offline rolls" },
 	{ id="n27", parent="n23", dir="DolLewo", label="Offline Rolls III", coin=1100000, roll=0, desc="+50% offline rolls" },
@@ -38,16 +41,10 @@ return {
 	{ id="n37", parent="n36", dir="Dol", label="Fast Rolls VI", coin=0, roll=1500, desc="+50% roll speed" },
 	{ id="n39", parent="n34", dir="GoraPrawo", label="Bonus I", coin=0, roll=120, desc="+5% bonus chance" },
 	{ id="n40", parent="n39", dir="DolPrawo", label="Bonus II", coin=0, roll=250, desc="+10% bonus chance" },
-	{ id="n41", parent="n40", dir="GoraPrawo", label="Power Punch I", coin=0, roll=300, desc="Power rolls give 4x luck" },
-	{ id="n42", parent="n41", dir="DolPrawo", label="Power Punch II", coin=0, roll=550, desc="Power rolls give 5x luck" },
 	{ id="n43", parent="n40", dir="Dol", label="Bonus III", coin=0, roll=520, desc="+15% bonus chance" },
 	{ id="n44", parent="n43", dir="Dol", label="Bonus Frenzy I", coin=0, roll=750, desc="+25% bonus chance" },
 	{ id="n45", parent="n44", dir="Dol", label="Bonus Frenzy II", coin=0, roll=1100, desc="+35% bonus chance" },
 	{ id="n46", parent="n45", dir="Dol", label="Bonus Frenzy III", coin=0, roll=2500, desc="+60% bonus chance" },
-	{ id="n47", parent="n42", dir="Dol", label="Power Punch III", coin=0, roll=820, desc="Power rolls give 6x luck" },
-	{ id="n48", parent="n47", dir="Dol", label="Electric Shot I", coin=0, roll=1100, desc="Power rolls give 8x luck" },
-	{ id="n49", parent="n48", dir="Dol", label="Electric Shot II", coin=0, roll=2500, desc="Power rolls give 10x luck" },
-	{ id="n50", parent="n49", dir="Dol", label="Electric Shot III", coin=0, roll=5000, desc="Power rolls give 12x luck" },
 	{ id="n51", parent="n32", dir="GoraPrawo", label="Clover Chance II", coin=0, roll=120, desc="+15% more clovers" },
 	{ id="n52", parent="n51", dir="GoraPrawo", label="Clover Chance III", coin=0, roll=250, desc="+20% more clovers" },
 	{ id="n53", parent="n52", dir="Gora", label="x16 Clover", coin=0, roll=1500, desc="Unlock x16 clovers" },
@@ -65,7 +62,7 @@ return {
 	{ id="n65", parent="n56", dir="Gora", label="Double Roll III", coin=0, roll=1500, desc="Gives you a 20% chance for a double roll" },
 	{ id="n66", parent="n65", dir="Gora", label="Double Roll IV", coin=0, roll=3000, desc="Gives you a 35% chance for a double roll" },
 	{ id="n67", parent="n66", dir="Gora", label="Double Roll V", coin=0, roll=5000, desc="Gives you a 50% chance for a double roll" },
-	{ id="n68", parent="n67", dir="Gora", label="Double Roll VI", coin=0, roll=8000, desc="Gives you a 50% chance for a double roll" },
+	{ id="n68", parent="n67", dir="Gora", label="Double Roll VI", coin=0, roll=8000, desc="Gives you a 65% chance for a double roll" },
 	{ id="n69", parent="n3", dir="Gora", label="Base Section", coin=0, roll=0, desc="The base section lets you unlock your base's full potential through your upgrades" },
 	{ id="n70", parent="root", dir="Gora", label="Luck I", coin=100, roll=0, desc="1.5x roll luck" },
 	{ id="n71", parent="n70", dir="Gora", label="Luck II", coin=800, roll=0, desc="2x roll luck" },
@@ -73,12 +70,11 @@ return {
 	{ id="n74", parent="n71", dir="GoraPrawo", label="Friends' Luck I", coin=2500, roll=0, desc="+5% luck for each friend on the server" },
 	{ id="n75", parent="n71", dir="GoraLewo", label="Luck III", coin=2500, roll=0, desc="3x roll luck" },
 	{ id="n76", parent="n75", dir="GoraLewo", label="Strong Luck I", coin=15000, roll=0, desc="5x clover luck" },
-	{ id="n78", parent="n76", dir="Gora", label="Fiery Objects", coin=150000, roll=0, desc="Gives you a small chance to roll a fiery item" },
+	{ id="n78", parent="n76", dir="Gora", label="Explosive Ammo", coin=150000, roll=0, desc="Your units get a small chance to fire an explosive round that bursts on impact, dealing splash damage to nearby enemies instead of just one." },
 	{ id="n79", parent="n76", dir="DolLewo", label="Strong Luck II", coin=40000, roll=0, desc="7x roll luck" },
 	{ id="n80", parent="n79", dir="DolLewo", label="Strong Luck III", coin=75000, roll=0, desc="10x roll luck" },
 	{ id="n81", parent="n80", dir="DolLewo", label="Mighty Luck I", coin=200000, roll=0, desc="13x roll luck" },
 	{ id="n82", parent="n81", dir="DolLewo", label="Mighty Luck II", coin=500000, roll=0, desc="18x more roll luck" },
-	{ id="n83", parent="n82", dir="GoraLewo", label="Cosmic Objects", coin=750000, roll=0, desc="Gives you a small chance to roll an item with a cosmic mutation" },
 	{ id="n84", parent="n82", dir="DolLewo", label="Mighty Luck III", coin=1200000, roll=0, desc="23x roll luck" },
 	{ id="n85", parent="n84", dir="Dol", label="Hellish Luck I", coin=3500000, roll=0, desc="28x roll luck" },
 	{ id="n86", parent="n85", dir="Dol", label="Hellish Luck II", coin=6000000, roll=0, desc="35x roll luck" },
@@ -86,17 +82,21 @@ return {
 	{ id="n88", parent="n87", dir="DolLewo", label="God Luck I", coin=10000000, roll=0, desc="53x roll luck" },
 	{ id="n89", parent="n88", dir="DolLewo", label="God Luck II", coin=12000000, roll=0, desc="60x roll luck" },
 	{ id="n90", parent="n89", dir="DolLewo", label="God Luck III", coin=15000000, roll=0, desc="70x roll luck" },
-	{ id="n91", parent="n83", dir="GoraLewo", label="Cosmic Luck I", coin=1500000, roll=0, desc="1.5x chance to roll an item with a cosmic mutation" },
-	{ id="n92", parent="n91", dir="GoraLewo", label="Cosmic Luck II", coin=3000000, roll=0, desc="2x chance to roll an item with a cosmic mutation" },
-	{ id="n93", parent="n92", dir="GoraLewo", label="Cosmic Luck III", coin=7500000, roll=0, desc="3x chance to roll an item with a cosmic mutation" },
-	{ id="n94", parent="n93", dir="GoraLewo", label="Cosmic Luck IV", coin=15000000, roll=0, desc="5x chance to roll an item with a cosmic mutation" },
-	{ id="n95", parent="n78", dir="GoraLewo", label="Fiery Luck I", coin=500000, roll=0, desc="1.5x chance to roll an item with a fiery mutation" },
-	{ id="n96", parent="n95", dir="GoraLewo", label="Fiery Luck II", coin=1500000, roll=0, desc="2x chance to roll an item with a fiery mutation" },
-	{ id="n97", parent="n96", dir="GoraLewo", label="Fiery Luck III", coin=3000000, roll=0, desc="3x chance to roll an item with a fiery mutation" },
-	{ id="n98", parent="n97", dir="GoraLewo", label="Fiery Luck IV", coin=8000000, roll=0, desc="5x chance to roll an item with a fiery mutation" },
+	{ id="n95", parent="n78", dir="GoraLewo", label="Explosive Ammo I", coin=500000, roll=0, desc="1.5x chance to fire an explosive splash round." },
+	{ id="n96", parent="n95", dir="GoraLewo", label="Explosive Ammo II", coin=1500000, roll=0, desc="2x chance to fire an explosive splash round." },
+	{ id="n97", parent="n96", dir="GoraLewo", label="Explosive Ammo III", coin=3000000, roll=0, desc="3x chance to fire an explosive splash round." },
+	{ id="n98", parent="n97", dir="GoraLewo", label="Explosive Ammo IV", coin=8000000, roll=0, desc="5x chance to fire an explosive splash round." },
 	{ id="n99", parent="n74", dir="Gora", label="Friends' Luck II", coin=15000, roll=0, desc="+10% luck for each friend on the server" },
 	{ id="n100", parent="n99", dir="Gora", label="Friends' Luck III", coin=40000, roll=0, desc="+20% luck for each friend on the server" },
 	{ id="n101", parent="n100", dir="Gora", label="Friends' Luck IV", coin=200000, roll=0, desc="+25% luck for each friend on the server" },
 	{ id="n102", parent="n101", dir="GoraPrawo", label="Friends' Luck V", coin=3000000, roll=0, desc="+30% luck for each friend on the server" },
 	{ id="n103", parent="n102", dir="GoraPrawo", label="Friends' Luck VI", coin=7500000, roll=0, desc="+35% luck for each friend on the server" },
+	-- ── GALAZ BOJOWA (Player PRO) — koszty w SkillCosts.luau (dla Olo). Efekty: patrz SkillConfig. ──
+	{ id="n105", parent="n73", dir="DolPrawo", label="Weapon Upgrade", coin=0, roll=0, desc="Your units deal +10% more damage." },
+	{ id="n106", parent="n105", dir="Gora", label="Military Convoy", coin=0, roll=0, desc="During a wave a military convoy drives past your base, raking the advancing enemies with fire before it rolls off." },
+	{ id="n107", parent="n106", dir="GoraPrawo", label="Nuke", coin=0, roll=0, desc="Call in a nuclear strike — a bomb drops from the sky and devastates enemy units in a massive blast." },
+	{ id="n108", parent="n106", dir="DolPrawo", label="Air Raid", coin=0, roll=0, desc="During a wave a plane flies over and drops a bomb, dealing heavy splash damage to enemy units." },
+	{ id="n109", parent="n3", dir="GoraLewo", label="Faster Shooting I", coin=0, roll=0, desc="Your units shoot 5% faster." },
+	{ id="n110", parent="n109", dir="GoraLewo", label="Faster Shooting II", coin=0, roll=0, desc="Your units shoot 10% faster." },
+	{ id="n111", parent="n110", dir="Dol", label="Faster Shooting III", coin=0, roll=0, desc="Your units shoot 30% faster." },
 }

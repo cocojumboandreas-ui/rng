@@ -7,6 +7,7 @@
 -- Ceny pack sam skraca do K/M. Nie ruszamy wygladu packa.
 local Config = script.Parent
 local SkillTreeData = require(Config:WaitForChild("SkillTreeData"))
+local SkillCosts = require(Config:WaitForChild("SkillCosts")) -- nadpisania cen (plik dla Olo) — spojne z SkillConfig
 
 local COIN = "rbxassetid://5684864491"
 local DICE = "rbxassetid://92190657341460"
@@ -42,11 +43,15 @@ for _, n in ipairs(SkillTreeData) do
 	if n.id == "root" then
 		Nodes.root = { icon = "", text = "SKILL" .. string.char(10) .. "TREE" }
 	else
+		-- cena: SkillCosts (Olo) nadpisuje SkillTreeData — TA SAMA logika co SkillConfig (spojnosc kupno<->wyswietlanie).
+		local override = SkillCosts[n.id]
+		local coin = (override and override.coin) or n.coin or 0
+		local roll = (override and override.roll) or n.roll or 0
 		local price = nil
-		if (n.coin or 0) > 0 then
-			price = { quantity = n.coin, currencyIcon = COIN }
-		elseif (n.roll or 0) > 0 then
-			price = { quantity = n.roll, currencyIcon = DICE }
+		if coin > 0 then
+			price = { quantity = coin, currencyIcon = COIN }
+		elseif roll > 0 then
+			price = { quantity = roll, currencyIcon = DICE }
 		end
 		Nodes[nid(n.id)] = {
 			parentNodeId = nid(n.parent or "root"),
