@@ -216,6 +216,45 @@ end
 
 -- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item, a ILOCZYN zlapanych koniczyn
 -- (x2*x4*x8...) = ILE SZTUK tego itemu trafia do inventory. Koniczyny to kolumny Bonus w reelu.
+-- Friends' Luck (n74/99-103): mnoznik lucka = 1 + pct(najwyzszy posiadany tier) * (ilu ZNAJOMYCH Roblox jest na serwerze).
+-- IsFriendsWith yielduje (web) -> memo per para (relacja nie zmienia sie w sesji).
+local _friendPair: { [string]: boolean } = {}
+local function areFriends(a: Player, b: Player): boolean
+	local key = math.min(a.UserId, b.UserId) .. ":" .. math.max(a.UserId, b.UserId)
+	local v = _friendPair[key]
+	if v == nil then
+		local ok, res = pcall(function()
+			return a:IsFriendsWith(b.UserId)
+		end)
+		v = (ok and res) or false
+		_friendPair[key] = v
+	end
+	return v
+end
+local function friendsLuckMult(player: Player): number
+	local fl = GameConfig.SkillEffect and GameConfig.SkillEffect.friendsLuck
+	local data = _profile and _profile.GetProfile(player)
+	if not (fl and fl.pctByNode and data and data.skills) then
+		return 1
+	end
+	local pct = 0
+	for node, p in pairs(fl.pctByNode) do
+		if (data.skills[node] or 0) > 0 and p > pct then
+			pct = p
+		end
+	end
+	if pct <= 0 then
+		return 1
+	end
+	local friends = 0
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= player and areFriends(player, other) then
+			friends += 1
+		end
+	end
+	return 1 + pct * friends
+end
+
 local function rollChain(player: Player, isAuto, cycleStart, collect)
 	local data = _profile.GetProfile(player)
 	if not data then
@@ -234,6 +273,7 @@ local function rollChain(player: Player, isAuto, cycleStart, collect)
 
 	-- 2) JEDEN wylosowany item (+ Gold/Diamond/Rainbow: osobne liczniki -> chwilowy boost luck co N rolek)
 	local luckMult, special = specialRollBoost(player, data)
+	luckMult = luckMult * friendsLuckMult(player) -- Friends' Luck: +pct za kazdego znajomego na serwerze
 	local sel = selectOne(stats, data.pity, rng, luckMult)
 
 	-- 3) KSIEGOWANIE (§3.4): totalMult SZTUK itemu -> Inventory; liczniki/pity/index raz
@@ -287,7 +327,7 @@ function RollService.AutoRollColumns(player)
 	local rng = Random.new()
 	local depth = ladderDepth(stats, rng)
 	local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1
-	local luckMult = specialRollBoost(player, data)
+	local luckMult = specialRollBoost(player, data) * friendsLuckMult(player) -- Friends' Luck tez w auto-rollu
 	local sel = selectOne(stats, data.pity, rng, luckMult)
 	_inv.Add(player, sel.unitId, nil, sel.variant, totalMult)
 	data.lifetimeRolls += 1

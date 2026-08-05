@@ -41,6 +41,12 @@ return {
 		rainbow = { mult = 40, everyByNode = { n15 = 100, n16 = 90, n17 = 80, n20 = 75, n21 = 45, n104 = 30 } },
 	},
 
+	-- Friends' Luck (n74, n99-103): +X% luck ZA KAZDEGO ZNAJOMEGO Roblox aktualnie na serwerze (najwyzszy tier).
+	-- Guzik "Invite Friends" (InviteController) sciaga kolegow -> po wejsciu licza sie jako znajomi na serwerze.
+	friendsLuck = {
+		pctByNode = { n74 = 0.05, n99 = 0.10, n100 = 0.20, n101 = 0.25, n102 = 0.30, n103 = 0.35 },
+	},
+
 	-- Double Roll (n54-56, n65-68): przy RECZNYM rollu SZANSA na 2. rolke naraz (2 reele obok + 2 itemy).
 	-- Bierzemy NAJWYZSZY posiadany tier. Gdy procnie -> reveal pokazuje 2 rownolegle reele w normalnym widoku.
 	doubleRoll = {

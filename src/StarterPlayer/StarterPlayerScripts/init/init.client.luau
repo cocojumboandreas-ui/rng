@@ -27,6 +27,7 @@ local ORDER = {
 	"HudBindController", -- HUD ziomka (StarterGui.SideButtons)
 	"AutoWaveController", -- guzik Auto Wave pod Start Wave (skill n5)
 	"AutoRollController", -- auto-roll przez natywny flow packa (2 reele rownolegle, petla) — skill n2
+	"InviteController", -- guzik "Invite Friends" (Friends' Luck n74+) -> SocialService PromptGameInvite
 	"DevController",
 	"SettingsPanelController",
 	"WaveFxController", -- konfetti + baner po wyczyszczeniu fali
