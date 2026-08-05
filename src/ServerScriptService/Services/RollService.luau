@@ -216,7 +216,7 @@ end
 
 -- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item, a ILOCZYN zlapanych koniczyn
 -- (x2*x4*x8...) = ILE SZTUK tego itemu trafia do inventory. Koniczyny to kolumny Bonus w reelu.
-local function rollChain(player: Player, isAuto)
+local function rollChain(player: Player, isAuto, cycleStart)
 	local data = _profile.GetProfile(player)
 	if not data then
 		return nil
@@ -260,8 +260,48 @@ local function rollChain(player: Player, isAuto)
 		quantity = totalMult, -- ile sztuk trafilo do inventory
 		special = special, -- "gold"/"diamond"/"rainbow" gdy trafiona specjalna rolka (klient moze podkreslic)
 		auto = isAuto or nil, -- true = auto-rolka (klient: KOMPAKTOWY reel na gorze, nie fullscreen)
+		cycleStart = cycleStart or nil, -- (legacy) nieuzywane w pack-native auto
 	})
 	return sel
+end
+
+-- AUTO ROLL (pack-native): JEDNA auto-rolka -> zuzyj rolke, zaksieguj (inventory+index+pity), zwroc KOLUMNY
+-- w formacie packa (koniczyny Bonus + finalny item Item ostatni). nil gdy brak rolek (regen dogoni).
+-- Consume TU (nie grant). Wolane perCycle razy przez RequestRollRemoteFunction (patrz Start).
+function RollService.AutoRollColumns(player)
+	local data = _profile and _profile.GetProfile(player)
+	if not data then
+		return nil
+	end
+	local ar = GameConfig.SkillEffect and GameConfig.SkillEffect.autoRoll
+	local cost = (ar and ar.cost) or 1
+	if (data.spendableRolls or 0) < cost then
+		return nil
+	end
+	data.spendableRolls -= cost
+	local stats = _stat.Get(player)
+	local rng = Random.new()
+	local depth = ladderDepth(stats, rng)
+	local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1
+	local luckMult = specialRollBoost(player, data)
+	local sel = selectOne(stats, data.pity, rng, luckMult)
+	_inv.Add(player, sel.unitId, nil, sel.variant, totalMult)
+	data.lifetimeRolls += 1
+	if sel.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then
+		data.pity.sinceRare = 0
+	else
+		data.pity.sinceRare += 1
+	end
+	_index.Discover(player, sel.unitId, sel.variant)
+	if _economy then
+		_economy.SyncRolls(player)
+	end
+	local columns = {}
+	for i = 1, depth do
+		columns[#columns + 1] = { rollItemType = "Bonus", mult = 2 ^ i } -- koniczyna-mnoznik
+	end
+	columns[#columns + 1] = { rollItemType = "Item", itemId = sel.unitId } -- finalny item (ostatni)
+	return { columns = columns }
 end
 
 -- Handler Net.RollRequest: walidacja profilu + cooldown.
@@ -342,21 +382,39 @@ function RollService.Start()
 						_economy.SyncRolls(player)
 					end
 				end
-				-- auto-rolka co rollSpeed (zuzywa rolke)
-				acc.roll += dt
-				local cd = (_stat and _stat.Get(player).rollSpeed) or 4
-				if acc.roll >= cd then
-					acc.roll = 0
-					if (data.spendableRolls or 0) >= (ar.cost or 1) then
-						data.spendableRolls -= (ar.cost or 1)
-						rollChain(player, true) -- auto-rolka: nie nalicza waluty, reel kompaktowy
-					end
-				end
+				-- (Auto-roll SAM w sobie robi PACK: RequestRollRemoteFunction -> AutoRollColumns. Tu TYLKO regen,
+				--  zeby spendableRolls sie nie skonczyly — klient petli w tempie reveala, wiec nic „za szybko".)
 			else
 				_autoAcc[player] = nil
 			end
 		end
 	end)
+
+	-- AUTO ROLL pack-native: podepnij RemoteFunction packa pod NASZ RNG. Klient (AutoRollController) wlacza
+	-- RollClient auto -> requestRoll -> tu; zwracamy perCycle rolek RÓWNOLEGLYCH; pack gra je i PETLI gdy OBA skoncza.
+	local rollFn = ReplicatedStorage:WaitForChild("Roll"):WaitForChild("Functions"):WaitForChild("RequestRollRemoteFunction")
+	local function autoRollHandler(player)
+		local ar = GameConfig.SkillEffect and GameConfig.SkillEffect.autoRoll
+		if not (ar and _profile and _profile.IsLoaded(player)) then
+			return false
+		end
+		local data = _profile.GetProfile(player)
+		if not (data and data.skills and (data.skills[ar.node] or 0) > 0) then
+			return false -- tylko gracz z Automatic Roll (n2)
+		end
+		local results = {}
+		for _ = 1, (ar.perCycle or 1) do
+			local rr = RollService.AutoRollColumns(player)
+			if rr then
+				results[#results + 1] = rr
+			end
+		end
+		return true, results
+	end
+	-- Pack (RollServer.initialize) TEZ ustawia ten handler przy boot -> przejmij PO nim (defer + re-assert po 1s).
+	rollFn.OnServerInvoke = autoRollHandler
+	task.defer(function() rollFn.OnServerInvoke = autoRollHandler end)
+	task.delay(1, function() rollFn.OnServerInvoke = autoRollHandler end)
 end
 
 -- Hook TYLKO do testow: czysta selekcja+mutacja bez serwisow.

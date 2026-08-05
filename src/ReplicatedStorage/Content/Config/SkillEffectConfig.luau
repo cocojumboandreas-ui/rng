@@ -43,5 +43,7 @@ return {
 
 	-- Automatic Roll (n2): gdy posiadany -> pasywna regeneracja rolek (regenPerSec) + auto-rolka co rollSpeed,
 	-- ktora zuzywa `cost` rolek. regenPerSec >= 1/rollSpeed -> rolki nigdy nie schodza do 0 (regeneracja bez konca).
-	autoRoll = { node = "n2", regenPerSec = 0.35, cost = 1 },
+	-- perCycle = ile RÓWNOLEGLYCH reeli na cykl (2 = dwie kolumny obok siebie). interval > czas reveala (~5.5s),
+	-- zeby cykle sie nie nakladaly (nowy cykl czysci poprzedni na kliencie -> nic nie wychodzi poza ekran).
+	autoRoll = { node = "n2", regenPerSec = 0.7, cost = 1, interval = 8, perCycle = 2 },
 }

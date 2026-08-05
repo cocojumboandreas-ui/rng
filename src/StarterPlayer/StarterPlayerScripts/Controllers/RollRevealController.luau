@@ -372,7 +372,7 @@ function RollRevealController.start()
 			end
 		end
 		columns[#columns + 1] = { itemId = result.unitId, rollItemType = "Item" } -- finalny item
-		RollClient.setIsCompact(result.auto == true) -- auto-rolka = KOMPAKTOWY reel (gora-srodek); reczny = fullscreen
+		RollClient.setIsCompact(RollClient.isAuto()) -- gdy auto (n2) leci: reczny tez kompakt (nie psuj auto); inaczej fullscreen
 		RollClient.playRoll({ columns = columns }, function()
 			_rollBusy = false -- reveal zakonczony -> mozna rollowac ponownie
 		end)
