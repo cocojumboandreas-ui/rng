@@ -357,24 +357,40 @@ function RollRevealController.start()
 	local RollClient = require(game:GetService("ReplicatedStorage"):WaitForChild("Roll"):WaitForChild("RollClient"))
 	RollClient.setBaseRollTime(2.5) -- czas reveala (snappy)
 
-	Net.get("RollResult").OnClientEvent:Connect(function(result)
-		if type(result) ~= "table" or not result.unitId then
-			return
-		end
-		-- REEL packa = kolumny z LANCUCHA obok siebie: koniczyny (Bonus) -> finalny item (Item).
-		-- Pack renderuje kolumny sekwencyjnie obok = "roll -> koniczyna -> nastepny roll obok" (port.mp4).
+	-- buduje format packa (kolumny koniczyn Bonus -> finalny Item) z jednego wyniku serwera
+	local function reelFromResult(r)
 		local columns = {}
-		if result.chain then
-			for _, step in ipairs(result.chain) do
+		if r.chain then
+			for _, step in ipairs(r.chain) do
 				if step.mult then
 					columns[#columns + 1] = { rollItemType = "Bonus", mult = step.mult } -- koniczyna-mnoznik
 				end
 			end
 		end
-		columns[#columns + 1] = { itemId = result.unitId, rollItemType = "Item" } -- finalny item
+		-- special ("gold"/"diamond"/"rainbow") na FINALNYM itemie -> pack podkresla zwyciezke (aura+badge)
+		columns[#columns + 1] = { itemId = r.unitId, rollItemType = "Item", special = r.special }
+		return { columns = columns }
+	end
+
+	Net.get("RollResult").OnClientEvent:Connect(function(result)
+		if type(result) ~= "table" then
+			return
+		end
+		-- Double Roll: serwer moze przyslac { multi = { wynik1, wynik2 } } -> 2 rownolegle reele + 2 itemy.
+		-- Normalna rolka: pojedynczy wynik -> znormalizuj do tablicy 1-elementowej.
+		local reelsIn = result.multi or { result }
+		local rollResults = {}
+		for _, r in ipairs(reelsIn) do
+			if type(r) == "table" and r.unitId then
+				rollResults[#rollResults + 1] = reelFromResult(r)
+			end
+		end
+		if #rollResults == 0 then
+			return
+		end
 		RollClient.setIsCompact(RollClient.isAuto()) -- gdy auto (n2) leci: reczny tez kompakt (nie psuj auto); inaczej fullscreen
-		RollClient.playRoll({ columns = columns }, function()
-			_rollBusy = false -- reveal zakonczony -> mozna rollowac ponownie
+		RollClient.playRolls(rollResults, function()
+			_rollBusy = false -- reveal (wszystkie reele) zakonczony -> mozna rollowac ponownie
 		end)
 	end)
 end

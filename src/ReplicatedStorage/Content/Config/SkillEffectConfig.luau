@@ -41,6 +41,12 @@ return {
 		rainbow = { mult = 40, everyByNode = { n15 = 100, n16 = 90, n17 = 80, n20 = 75, n21 = 45, n104 = 30 } },
 	},
 
+	-- Double Roll (n54-56, n65-68): przy RECZNYM rollu SZANSA na 2. rolke naraz (2 reele obok + 2 itemy).
+	-- Bierzemy NAJWYZSZY posiadany tier. Gdy procnie -> reveal pokazuje 2 rownolegle reele w normalnym widoku.
+	doubleRoll = {
+		chanceByNode = { n54 = 0.05, n55 = 0.10, n56 = 0.15, n65 = 0.20, n66 = 0.35, n67 = 0.50, n68 = 0.65 },
+	},
+
 	-- Automatic Roll (n2): gdy posiadany -> pasywna regeneracja rolek (regenPerSec) + auto-rolka co rollSpeed,
 	-- ktora zuzywa `cost` rolek. regenPerSec >= 1/rollSpeed -> rolki nigdy nie schodza do 0 (regeneracja bez konca).
 	-- perCycle = ile RÓWNOLEGLYCH reeli na cykl (2 = dwie kolumny obok siebie). interval > czas reveala (~5.5s),

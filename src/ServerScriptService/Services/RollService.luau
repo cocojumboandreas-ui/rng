@@ -216,7 +216,7 @@ end
 
 -- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item, a ILOCZYN zlapanych koniczyn
 -- (x2*x4*x8...) = ILE SZTUK tego itemu trafia do inventory. Koniczyny to kolumny Bonus w reelu.
-local function rollChain(player: Player, isAuto, cycleStart)
+local function rollChain(player: Player, isAuto, cycleStart, collect)
 	local data = _profile.GetProfile(player)
 	if not data then
 		return nil
@@ -253,7 +253,7 @@ local function rollChain(player: Player, isAuto, cycleStart)
 	end
 
 	RollService.Rolled:Fire(player, { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mutation = (depth > 0) and { mult = 2 ^ depth } or nil, quantity = totalMult })
-	Net.get("RollResult"):FireClient(player, {
+	local payload = {
 		unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant,
 		chain = clovers, -- kolumny koniczyn (Bonus) w reelu
 		cloverTop = (depth > 0) and (2 ^ depth) or nil,
@@ -261,7 +261,11 @@ local function rollChain(player: Player, isAuto, cycleStart)
 		special = special, -- "gold"/"diamond"/"rainbow" gdy trafiona specjalna rolka (klient moze podkreslic)
 		auto = isAuto or nil, -- true = auto-rolka (klient: KOMPAKTOWY reel na gorze, nie fullscreen)
 		cycleStart = cycleStart or nil, -- (legacy) nieuzywane w pack-native auto
-	})
+	}
+	if collect then
+		return sel, payload -- Double Roll: RequestRoll zbiera N payloadow i wysyla jako { multi = {...} }
+	end
+	Net.get("RollResult"):FireClient(player, payload)
 	return sel
 end
 
@@ -304,6 +308,25 @@ function RollService.AutoRollColumns(player)
 	return { columns = columns }
 end
 
+-- Double Roll (n54-68): ile RECZNYCH rolek naraz. 1 normalnie; 2 gdy procnie szansa NAJWYZSZEGO posiadanego tieru.
+local function doubleRollCount(player: Player): number
+	local dr = GameConfig.SkillEffect and GameConfig.SkillEffect.doubleRoll
+	local data = _profile and _profile.GetProfile(player)
+	if not (dr and dr.chanceByNode and data and data.skills) then
+		return 1
+	end
+	local chance = 0
+	for node, c in pairs(dr.chanceByNode) do
+		if (data.skills[node] or 0) > 0 and c > chance then
+			chance = c
+		end
+	end
+	if chance > 0 and Random.new():NextNumber() < chance then
+		return 2
+	end
+	return 1
+end
+
 -- Handler Net.RollRequest: walidacja profilu + cooldown.
 function RollService.RequestRoll(player: Player)
 	if not _profile.IsLoaded(player) then
@@ -316,7 +339,22 @@ function RollService.RequestRoll(player: Player)
 		return -- cooldown; szybszy RollRequest odrzucony
 	end
 	_lastRoll[player] = now
-	rollChain(player)
+	local n = doubleRollCount(player)
+	if n <= 1 then
+		rollChain(player)
+		return
+	end
+	-- Double Roll procnal: N rolek naraz -> zbierz payloady -> jeden event { multi } -> klient reveal N reeli RAZEM
+	local reels = {}
+	for _ = 1, n do
+		local _sel, payload = rollChain(player, false, nil, true)
+		if payload then
+			reels[#reels + 1] = payload
+		end
+	end
+	if #reels > 0 then
+		Net.get("RollResult"):FireClient(player, { multi = reels })
+	end
 end
 
 -- Przyznanie rolek jako WALUTY (np. offline earn) — bez rolowania jednostek. RollService = writer spendableRolls.
