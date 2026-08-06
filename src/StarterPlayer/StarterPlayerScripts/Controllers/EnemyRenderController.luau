@@ -385,14 +385,15 @@ local function buildDmgLabel()
 end
 
 -- popnij "-N" nad pozycja (rise + fade). big=trafienie krytyczne/duze -> wieksze i pomaranczowe.
-local function popDamage(pos, amount, big)
+local function popDamage(pos, amount, big, hs)
 	local rec = table.remove(_dmgFree)
 	if not rec then return end -- pula wyczerpana -> pomin (cap kosztu)
 	rec.anchor.Position = pos
 	rec.lbl.Text = "-" .. shortNum(amount)
-	rec.lbl.TextColor3 = big and Color3.fromRGB(255, 170, 60) or Color3.fromRGB(255, 240, 140)
+	-- headshot = ZOLTY i NAJWIEKSZY; big (kryt) = pomaranczowy; zwykly = jasnozolty
+	rec.lbl.TextColor3 = hs and Color3.fromRGB(255, 225, 40) or (big and Color3.fromRGB(255, 170, 60) or Color3.fromRGB(255, 240, 140))
 	rec.lbl.TextTransparency = 0; rec.lbl.TextStrokeTransparency = 0.25
-	rec.gui.Size = UDim2.fromOffset(big and 120 or 84, big and 42 or 30)
+	rec.gui.Size = UDim2.fromOffset(hs and 150 or (big and 120 or 84), hs and 52 or (big and 42 or 30))
 	local jitterX = (math.random() - 0.5) * 2.4
 	rec.gui.StudsOffsetWorldSpace = Vector3.new(jitterX, 0, 0)
 	rec.gui.Enabled = true
@@ -438,7 +439,7 @@ local function headshotPopup(pos)
 	local lbl = Instance.new("TextLabel")
 	lbl.AnchorPoint = Vector2.new(0.5, 0.5); lbl.Position = UDim2.fromScale(0.5, 0.5)
 	lbl.Size = UDim2.fromScale(0.96, 0.5); lbl.Rotation = -6; lbl.BackgroundTransparency = 1
-	lbl.Font = Enum.Font.GothamBlack; lbl.TextScaled = true; lbl.TextColor3 = Color3.new(1, 1, 1)
+	lbl.Font = Enum.Font.GothamBlack; lbl.TextScaled = true; lbl.TextColor3 = Color3.fromRGB(255, 225, 40) -- zolty (klasyczny headshot)
 	lbl.Text = "HEAD SHOT"; lbl.TextStrokeTransparency = 0; lbl.TextStrokeColor3 = Color3.new(0, 0, 0); lbl.Parent = gui
 	task.spawn(function()
 		local t0 = os.clock()
@@ -987,7 +988,7 @@ local function onPlayerShotHit(_plotId, id, dmg, isHead)
 	local e = _active[id % U16]
 	if not e or not e.shown then return end
 	local pos = e.model:GetPivot().Position + Vector3.new(0, (e.halfH or 2) + 1.2, 0)
-	popDamage(pos, dmg, dmg >= (e.maxHp or 0) * 0.25)
+	popDamage(pos, dmg, dmg >= (e.maxHp or 0) * 0.25, isHead) -- headshot -> zolty najwiekszy numer
 	if isHead then -- HEAD SHOT: komiksowy popup nad glowa (tylko wrogowie z glowa; wykryte w kicie)
 		headshotPopup(e.model:GetPivot().Position + Vector3.new(0, (e.halfH or 2) + 2.4, 0))
 	end

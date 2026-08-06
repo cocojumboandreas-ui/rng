@@ -4,9 +4,11 @@
 -- (Bar: BossName / BossHP / Progress=fill). Pokazuje sie na boss-fali (Net.BossHP),
 -- znika po pokonaniu (BossDefeated -> flourish), koncu fali (WaveEnded) lub gdy boss
 -- przestaje slac HP. Nie tworzymy nic w SideButtons — tylko sterujemy elementami po nazwach.
+-- KOSMETYKA D: intro-pop paska (Back), puls przy niskim HP (<25%), odroznienie mini-bossa (⭐ + kolor).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -14,11 +16,23 @@ local Net = require(Framework:WaitForChild("Net"))
 local BossController = {}
 local _lastHP = 0
 
+local BIG_NAME_COLOR = Color3.fromRGB(255, 220, 120) -- duzy boss = zloty
+local MINI_NAME_COLOR = Color3.fromRGB(150, 225, 255) -- mini-boss (elita) = blekit
+local LOW_HP_FRAC = 0.25 -- ponizej tego progu pasek pulsuje na czerwono (blisko smierci)
+
 local function setText(inst, txt)
 	if not inst then return end
 	if inst:IsA("TextLabel") or inst:IsA("TextButton") then inst.Text = txt end
 	for _, c in ipairs(inst:GetChildren()) do
 		if c:IsA("TextLabel") then c.Text = txt end
+	end
+end
+
+local function setColor(inst, col)
+	if not inst then return end
+	if inst:IsA("TextLabel") or inst:IsA("TextButton") then inst.TextColor3 = col end
+	for _, c in ipairs(inst:GetChildren()) do
+		if c:IsA("TextLabel") then c.TextColor3 = col end
 	end
 end
 
@@ -35,6 +49,31 @@ function BossController.start()
 		warn("[BossController] brak designerowego BossBar (SideButtons) — pasek bossa nieaktywny")
 		return
 	end
+
+	-- INTRO: skala-pop paska przy wejsciu bossa (UIScale doklejony raz; Back = elastyczny „wskok").
+	local introScale = bar and bar:FindFirstChild("WR_BossIntro")
+	if bar and not introScale then
+		introScale = Instance.new("UIScale")
+		introScale.Name = "WR_BossIntro"
+		introScale.Scale = 1
+		introScale.Parent = bar
+	end
+	-- LOW-HP: czerwona nakladka pulsujaca gdy HP bossa spada nisko (sygnal „zaraz padnie").
+	local lowOverlay = bar and bar:FindFirstChild("WR_BossLowHp")
+	if bar and not lowOverlay then
+		lowOverlay = Instance.new("Frame")
+		lowOverlay.Name = "WR_BossLowHp"
+		lowOverlay.Size = UDim2.fromScale(1, 1)
+		lowOverlay.BackgroundColor3 = Color3.fromRGB(255, 55, 55)
+		lowOverlay.BackgroundTransparency = 1
+		lowOverlay.BorderSizePixel = 0
+		lowOverlay.ZIndex = 2 -- nad tlem paska, pod tekstem (BossName/HP maja wyzszy ZIndex)
+		local lc = Instance.new("UICorner")
+		lc.CornerRadius = UDim.new(0, 8)
+		lc.Parent = lowOverlay
+		lowOverlay.Parent = bar
+	end
+	local _lowHp = false
 
 	-- flourish „BOSS POKONANY!" (własny mały overlay; designer nie ma tego elementu)
 	local fgui = Instance.new("ScreenGui")
@@ -68,14 +107,43 @@ function BossController.start()
 		cam.CFrame = cam.CFrame * CFrame.Angles(math.rad(math.noise(n, 0.5) * decay), math.rad(math.noise(0.5, n) * decay), math.rad(math.noise(n, n) * decay * 0.4))
 	end)
 
-	local function show() bossBar.Visible = true end
-	local function hide() bossBar.Visible = false; _bigShaken = false end
+	local _visible = false
+	local function playIntro()
+		if not introScale then return end
+		introScale.Scale = 0.6
+		TweenService:Create(introScale, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	end
+	local function show()
+		if not _visible then
+			_visible = true
+			playIntro() -- pop TYLKO na przejsciu ukryty->widoczny (nie co tick HP)
+		end
+		bossBar.Visible = true
+	end
+	local function hide()
+		bossBar.Visible = false
+		_bigShaken = false
+		_visible = false
+		_lowHp = false
+		if lowOverlay then lowOverlay.BackgroundTransparency = 1 end
+	end
 
 	Net.get("BossHP").OnClientEvent:Connect(function(p)
 		if not p or not p.maxHp or p.maxHp <= 0 then return end
-		setFrac(p.hp / p.maxHp)
+		local frac = p.hp / p.maxHp
+		setFrac(frac)
+		_lowHp = frac <= LOW_HP_FRAC
 		setText(bossHP, ("%d / %d"):format(math.max(0, math.floor(p.hp + 0.5)), math.floor(p.maxHp + 0.5)))
-		if bossName then setText(bossName, p.name or "BOSS") end -- "<ranga> <nazwa>" z serwera (np. General Skibidi)
+		if bossName then
+			local nm = p.name or "BOSS"
+			if p.big then
+				setText(bossName, nm)
+				setColor(bossName, BIG_NAME_COLOR)
+			else
+				setText(bossName, "⭐ " .. nm) -- mini-boss = ELITA (gwiazdka + blekit)
+				setColor(bossName, MINI_NAME_COLOR)
+			end
+		end
 		if p.big and not _bigShaken then _bigShaken = true; startShake(3.5, 0.6) end -- DUZY boss wbija -> trzasnij ekranem (mini NIE)
 		show()
 		_lastHP = os.clock()
@@ -91,10 +159,20 @@ function BossController.start()
 		hide()
 	end)
 
-	-- staleness: boss przestał słać HP (śmierć bez czyszczenia fali) -> schowaj po ~0.5s
+	-- pętla: (1) staleness — boss przestał słać HP -> schowaj po ~0.5s; (2) puls low-HP (czerwona nakladka).
 	RunService.Heartbeat:Connect(function()
 		if bossBar.Visible and os.clock() - _lastHP > 0.5 then
 			hide()
+			return
+		end
+		if lowOverlay then
+			if _lowHp and bossBar.Visible then
+				-- sinusoidalny puls: krycie 0.9..0.5 (subtelny czerwony oddech, nie zaslania tekstu)
+				local pulse = 0.7 + 0.2 * math.sin(os.clock() * 9)
+				lowOverlay.BackgroundTransparency = pulse
+			elseif lowOverlay.BackgroundTransparency ~= 1 then
+				lowOverlay.BackgroundTransparency = 1
+			end
 		end
 	end)
 end

@@ -2,9 +2,11 @@
 -- StarterPlayerScripts/Controllers/CoreHealthController.luau  (KLIENT)
 -- Pasek HP RDZENIA (serduszko bazy) nad WR_CoreAnchor wlasnego plotu. Zrodlo: Net.CoreHP (serwer autorytatywny).
 -- Wrogowie ostrzeliwuja rdzen z dystansu (nie wchodza) — CombatService drenuje HP, tu tylko wizualizacja.
+-- KOSMETYKA E: gdy HP rdzenia spada nisko (<=DANGER) — ekranowa CZERWONA WINIETA pulsuje (im nizej HP, tym mocniej).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
 
@@ -13,9 +15,11 @@ local LP = Players.LocalPlayer
 
 local RED = Color3.fromRGB(230, 55, 55)
 local GREEN = Color3.fromRGB(90, 225, 95)
+local DANGER = 0.30 -- ponizej tego % HP rdzenia zaczyna sie ekranowa winieta zagrozenia
 
 local _gui, _fill, _label = nil, nil, nil
 local _lastHp, _lastMax = nil, nil
+local _pct = 1 -- ostatni % HP rdzenia (dla winiety)
 
 local function shortNum(n)
 	n = math.max(0, math.floor(n + 0.5))
@@ -61,21 +65,76 @@ local function ensureBar()
 end
 
 local function apply(hp, maxHp)
-	if not ensureBar() then return end
 	maxHp = math.max(1, maxHp or 1)
 	local pct = math.clamp((hp or maxHp) / maxHp, 0, 1)
+	_pct = pct -- winieta zagrozenia dziala niezaleznie od paska nad rdzeniem
+	if not ensureBar() then return end
 	_fill.Size = UDim2.fromScale(pct, 1)
 	_fill.BackgroundColor3 = RED:Lerp(GREEN, pct)
 	_label.Text = shortNum(hp or maxHp) .. "/" .. shortNum(maxHp)
 end
 
+-- WINIETA: 4 pasy-gradienty (gora/dol/lewo/prawo), czerwone przy krawedzi, znikaja do srodka.
+-- Zwraca funkcje setIntensity(a) — a=0 (niewidoczna) .. 1 (pelna czerwona krawedz).
+local function buildVignette(parent)
+	local strips = {}
+	local function strip(anchor, pos, size, rot)
+		local f = Instance.new("Frame")
+		f.BackgroundColor3 = Color3.fromRGB(210, 30, 30)
+		f.BorderSizePixel = 0
+		f.AnchorPoint = anchor
+		f.Position = pos
+		f.Size = size
+		f.BackgroundTransparency = 1
+		local g = Instance.new("UIGradient")
+		g.Rotation = rot
+		g.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0), -- krawedz = pelna
+			NumberSequenceKeypoint.new(1, 1), -- do srodka = znika
+		})
+		g.Parent = f
+		f.Parent = parent
+		strips[#strips + 1] = f
+	end
+	local T = 0.32 -- grubosc pasa (frac ekranu)
+	strip(Vector2.new(0.5, 0), UDim2.fromScale(0.5, 0), UDim2.new(1, 0, T, 0), 90) -- gora
+	strip(Vector2.new(0.5, 1), UDim2.fromScale(0.5, 1), UDim2.new(1, 0, T, 0), 270) -- dol
+	strip(Vector2.new(0, 0.5), UDim2.fromScale(0, 0.5), UDim2.new(T, 0, 1, 0), 0) -- lewo
+	strip(Vector2.new(1, 0.5), UDim2.fromScale(1, 0.5), UDim2.new(T, 0, 1, 0), 180) -- prawo
+	return function(a)
+		local bgt = 1 - math.clamp(a, 0, 1)
+		for _, f in ipairs(strips) do
+			f.BackgroundTransparency = bgt
+		end
+	end
+end
+
 function CoreHealthController.start()
+	-- ekranowa winieta zagrozenia (osobny ScreenGui, pod HUD; nie lapie klikow)
+	local vgui = Instance.new("ScreenGui")
+	vgui.Name = "WR_CoreDanger"; vgui.ResetOnSpawn = false; vgui.IgnoreGuiInset = true
+	vgui.DisplayOrder = 90 -- pod panelami/rewealem, nad swiatem
+	vgui.Parent = LP:WaitForChild("PlayerGui")
+	local setVignette = buildVignette(vgui)
+
 	Net.get("CoreHP").OnClientEvent:Connect(function(p)
 		if type(p) ~= "table" then return end
 		if p.plotId ~= nil and p.plotId ~= LP:GetAttribute("PlotId") then return end -- tylko wlasny rdzen
 		_lastHp, _lastMax = p.hp, p.maxHp
 		apply(p.hp, p.maxHp)
 	end)
+
+	-- puls winiety: intensywnosc = jak GLEBOKO ponizej progu (0 przy DANGER, 1 przy 0 HP) * oddech sin.
+	RunService.Heartbeat:Connect(function()
+		local danger01 = math.clamp((DANGER - _pct) / DANGER, 0, 1) -- 0..1
+		if danger01 <= 0 then
+			setVignette(0)
+			return
+		end
+		local breath = 0.62 + 0.38 * (0.5 + 0.5 * math.sin(os.clock() * 6)) -- 0.24..1 oddech
+		setVignette(danger01 * 0.55 * breath) -- cap ~0.55 zeby nie zalewac ekranu
+	end)
+
 	-- rdzen/plot moga pojawic sie po dolaczeniu — retry az zbudujemy pasek z ostatnim znanym HP
 	task.spawn(function()
 		for _ = 1, 60 do

@@ -12,6 +12,7 @@
 -- Kontrakt serwera bez zmian: GetIndexState (RF), IndexUpdated (S->C), LevelUpUnit (RF), ClaimIndexLuck (RF).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -43,6 +44,140 @@ local _coins = 0
 local _activeVariant = "regular"
 local _unitOrder = {} -- uid po rarityN rosnaco
 local _selUnit = nil -- aktualnie wybrany w PetWindow
+
+-- ── G: CELEBRACJA NOWEGO ODKRYCIA (banner + sparkle) — standalone ScreenGui, dziala tez gdy panel zamkniety ──
+local VARIANT_ACCENT = {
+	regular = Color3.fromRGB(255, 235, 150), -- delikatne zloto
+	shiny = Color3.fromRGB(255, 205, 60), -- zloto
+	galaxy = Color3.fromRGB(200, 130, 255), -- fiolet
+}
+local VARIANT_TAG = { regular = "NEW DISCOVERY", shiny = "NEW GOLDEN", galaxy = "NEW RAINBOW" }
+local _discoGui = nil
+
+local function sparkleBurst(parent, accent)
+	for i = 1, 12 do
+		local s = Instance.new("Frame")
+		s.AnchorPoint = Vector2.new(0.5, 0.5)
+		s.Position = UDim2.fromScale(0.5, 0.5)
+		s.Size = UDim2.fromOffset(10, 10)
+		s.BackgroundColor3 = accent
+		s.BorderSizePixel = 0
+		s.Rotation = 45
+		s.ZIndex = 13
+		local uc = Instance.new("UICorner")
+		uc.CornerRadius = UDim.new(0.3, 0)
+		uc.Parent = s
+		s.Parent = parent
+		local ang = (i / 12) * math.pi * 2
+		local dist = math.random(90, 150)
+		local tw = TweenService:Create(
+			s,
+			TweenInfo.new(0.6 + math.random() * 0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{
+				Position = UDim2.new(0.5, math.cos(ang) * dist, 0.5, math.sin(ang) * dist),
+				Rotation = s.Rotation + math.random(-120, 120),
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(2, 2),
+			}
+		)
+		tw:Play()
+		tw.Completed:Once(function() s:Destroy() end)
+	end
+end
+
+local function celebrateDiscovery(unitId, variant)
+	local accent = VARIANT_ACCENT[variant] or VARIANT_ACCENT.regular
+	local tag = VARIANT_TAG[variant] or "NEW DISCOVERY"
+	local uname = (GameConfig.Units[unitId] and GameConfig.Units[unitId].displayName) or unitId
+	if not _discoGui then
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "WR_IndexDisco"
+		gui.ResetOnSpawn = false
+		gui.IgnoreGuiInset = true
+		gui.DisplayOrder = 400
+		gui.Parent = LP:WaitForChild("PlayerGui")
+		_discoGui = gui
+	end
+	local old = _discoGui:FindFirstChild("Banner")
+	if old then old:Destroy() end
+	local holder = Instance.new("Frame")
+	holder.Name = "Banner"
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Position = UDim2.fromScale(0.5, 0.2)
+	holder.Size = UDim2.fromOffset(360, 92)
+	holder.BackgroundTransparency = 1
+	holder.Parent = _discoGui
+	local pill = Instance.new("Frame")
+	pill.AnchorPoint = Vector2.new(0.5, 0.5)
+	pill.Position = UDim2.fromScale(0.5, 0.5)
+	pill.Size = UDim2.fromScale(1, 1)
+	pill.BackgroundColor3 = Color3.fromRGB(28, 26, 40)
+	pill.BackgroundTransparency = 0.1
+	pill.BorderSizePixel = 0
+	pill.ZIndex = 11
+	pill.Parent = holder
+	local pc = Instance.new("UICorner")
+	pc.CornerRadius = UDim.new(0, 16)
+	pc.Parent = pill
+	local ps = Instance.new("UIStroke")
+	ps.Color = accent
+	ps.Thickness = 2.5
+	ps.Parent = pill
+	local tagL = Instance.new("TextLabel")
+	tagL.BackgroundTransparency = 1
+	tagL.AnchorPoint = Vector2.new(0.5, 0.5)
+	tagL.Position = UDim2.fromScale(0.5, 0.3)
+	tagL.Size = UDim2.fromScale(0.94, 0.4)
+	tagL.Font = Enum.Font.GothamBlack
+	tagL.TextScaled = true
+	tagL.Text = "✨ " .. tag .. "! ✨"
+	tagL.TextColor3 = accent
+	tagL.ZIndex = 12
+	tagL.Parent = holder
+	local ts = Instance.new("UIStroke")
+	ts.Color = Color3.new(0, 0, 0)
+	ts.Thickness = 2
+	ts.Parent = tagL
+	local nameL = Instance.new("TextLabel")
+	nameL.BackgroundTransparency = 1
+	nameL.AnchorPoint = Vector2.new(0.5, 0.5)
+	nameL.Position = UDim2.fromScale(0.5, 0.7)
+	nameL.Size = UDim2.fromScale(0.94, 0.36)
+	nameL.Font = Enum.Font.GothamBold
+	nameL.TextScaled = true
+	nameL.Text = uname
+	nameL.TextColor3 = Color3.new(1, 1, 1)
+	nameL.ZIndex = 12
+	nameL.Parent = holder
+	local ns = Instance.new("UIStroke")
+	ns.Color = Color3.new(0, 0, 0)
+	ns.Thickness = 2
+	ns.Parent = nameL
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.5
+	scale.Parent = holder
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	sparkleBurst(holder, accent)
+	-- auto-hide: TEN banner znika po ~1.9s. Self-contained (destroy TYLKO wlasny holder) — bez token-race,
+	-- ktory przy szybkich/kolejnych odkryciach potrafil skasowac swiezy banner. Nowe odkrycie w miedzyczasie
+	-- i tak czysci poprzedni przez old:Destroy() na starcie funkcji.
+	local myHolder = holder
+	local myPill = pill
+	task.delay(1.9, function()
+		if not myHolder.Parent then return end
+		for _, d in ipairs(myHolder:GetDescendants()) do
+			if d:IsA("TextLabel") then
+				TweenService:Create(d, TweenInfo.new(0.35), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+			elseif d:IsA("UIStroke") then
+				TweenService:Create(d, TweenInfo.new(0.35), { Transparency = 1 }):Play()
+			end
+		end
+		TweenService:Create(myPill, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.4, function()
+			if myHolder then myHolder:Destroy() end
+		end)
+	end)
+end
 
 -- ── elementy UI (resolve raz w start) ─────────────────────────────────────────────
 local _gui, _canvas, _tabs, _gridList, _gridTemplate, _petWindow
@@ -529,6 +664,19 @@ function IndexController.start()
 		end
 	end)
 
+	-- G: prebuduj _catsById.discovered na starcie (niezaleznie od otwarcia panelu) -> celebracje odkryc
+	-- dzialaja OD RAZU (gracz odkrywa jednostki rollujac z ZAMKNIETYM Indeksem). openPanel i tak rebuilduje.
+	task.spawn(function()
+		if next(_catsById) ~= nil then return end
+		local ok, state = pcall(function() return Net.get("GetIndexState"):InvokeServer() end)
+		if ok and state and next(_catsById) == nil then
+			for _, c in ipairs(state.categories or {}) do
+				c.discovered = c.discovered or {}
+				if c.variant then _catsById[c.variant] = c end
+			end
+		end
+	end)
+
 	-- live: nowy wpis per-wariant + %/luck
 	Net.get("IndexUpdated").OnClientEvent:Connect(function(p)
 		if not p then return end
@@ -538,6 +686,7 @@ function IndexController.start()
 				cat.discovered[p.unitId] = true
 				cat.count = (cat.count or 0) + 1
 				_overall.count = (_overall.count or 0) + 1
+				celebrateDiscovery(p.unitId, p.variant) -- G: banner + sparkle na pierwszym odkryciu
 			end
 		end
 		_overall.percent = p.percent or _overall.percent

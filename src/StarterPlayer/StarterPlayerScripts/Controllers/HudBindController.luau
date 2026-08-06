@@ -43,6 +43,59 @@ local function setText(inst, txt)
 	end
 end
 
+-- COUNT-UP monet: licznik „tyka" do nowej wartosci (easeOut) zamiast skakac, + POP (UIScale) przy
+-- wiekszych skokach (fala/boss/offline). Male przyrosty (per-kill) tylko plynnie ticka, bez popa.
+local function makeCoinAnimator(label)
+	if not label then return function() end end
+	local frame = label.Parent -- CoinsFrame (na nim robimy pop)
+	local scale = frame and frame:FindFirstChild("WR_CoinPop")
+	if frame and not scale then
+		scale = Instance.new("UIScale")
+		scale.Name = "WR_CoinPop"
+		scale.Scale = 1
+		scale.Parent = frame
+	end
+	local current = 0
+	local token = 0
+	return function(target, snap)
+		target = math.floor(tonumber(target) or 0)
+		if snap then
+			current = target
+			setText(label, fmt(target))
+			return
+		end
+		local delta = target - current
+		if delta == 0 then return end
+		-- POP tylko przy znaczacym wzroscie (>=100), zeby per-kill nie skakalo
+		if delta >= 100 and scale then
+			TweenService:Create(scale, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1.16 }):Play()
+			task.delay(0.1, function()
+				TweenService:Create(scale, TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+			end)
+		end
+		token += 1
+		local myToken = token
+		local from = current
+		local dur = math.clamp(math.abs(delta) / 5000, 0.2, 0.6) -- wiekszy skok = dluzszy count-up (cap 0.6s)
+		local t0 = os.clock()
+		task.spawn(function()
+			while true do
+				if myToken ~= token then return end -- nowsza zmiana przejela animacje
+				local a = math.clamp((os.clock() - t0) / dur, 0, 1)
+				local eased = 1 - (1 - a) * (1 - a) -- easeOutQuad
+				current = math.floor(from + (target - from) * eased)
+				setText(label, fmt(current))
+				if a >= 1 then
+					current = target
+					setText(label, fmt(target))
+					return
+				end
+				task.wait()
+			end
+		end)
+	end
+end
+
 -- feedback wciśnięcia (obby-style): press -> 0.9 -> spring back do 1 (UIScale doklejony raz)
 local PRESS_DOWN = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local PRESS_UP = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -74,6 +127,8 @@ function HudBindController.start()
 	local rollBtn = resolve(sb, "BottomCanvas", "Buttons", "Roll")
 	local rollNum = resolve(sb, "BottomCanvas", "Buttons", "Roll", "GoldenRoll", "Number")
 	local coinsL = resolve(sb, "LeftCanvas", "Coins", "CoinsFrame", "Coins")
+	local setCoins = makeCoinAnimator(coinsL) -- count-up + pop
+
 	local offCoins = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Coins", "Coins")
 	local offRolls = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Rolls", "Rolls")
 	local waveNum = resolve(sb, "TopCanvas", "Notifications", "WaveInfo", "WaveNumber")
@@ -244,14 +299,14 @@ function HudBindController.start()
 	task.spawn(function()
 		local ok, st = pcall(function() return Net.get("GetSkillState"):InvokeServer() end)
 		if ok and type(st) == "table" then
-			if st.coins ~= nil then setText(coinsL, fmt(st.coins)) end
+			if st.coins ~= nil then setCoins(st.coins, true) end -- snap na starcie
 			if st.spendableRolls ~= nil then setText(rollNum, fmt(st.spendableRolls)) end
 		end
 	end)
 
 	-- ── waluty / rolki ──
 	Net.get("CoinsSync").OnClientEvent:Connect(function(p)
-		if p and p.balance ~= nil then setText(coinsL, fmt(p.balance)) end
+		if p and p.balance ~= nil then setCoins(p.balance) end -- count-up + pop
 	end)
 	Net.get("RollsSync").OnClientEvent:Connect(function(p)
 		if type(p) == "table" and p.spendableRolls ~= nil then setText(rollNum, fmt(p.spendableRolls)) end

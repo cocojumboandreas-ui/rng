@@ -12,10 +12,11 @@ local LP = Players.LocalPlayer
 local AMP = 6.0 -- amplituda (stopnie): kolysze od -AMP do +AMP
 local HALF = 0.5 -- czas polowy kolysniecia (s) -> pelny cykl ~1s ("co sekunde")
 
-local function sway(btn, startNeg)
+local function sway(btn, startNeg, amp)
 	if not (btn and btn:IsA("GuiObject")) then return end
-	local from = startNeg and -AMP or AMP
-	local to = startNeg and AMP or -AMP
+	amp = amp or AMP
+	local from = startNeg and -amp or amp
+	local to = startNeg and amp or -amp
 	btn.Rotation = from
 	local info = TweenInfo.new(HALF, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true) -- inf + reverses = ciagle kolysanie
 	TweenService:Create(btn, info, { Rotation = to }):Play()
@@ -32,6 +33,12 @@ function AttentionBob.start()
 	end
 	sway(path("BottomCanvas", "Buttons", "Roll"), true) -- Roll: -6 -> +6 ...
 	sway(path("LeftCanvas", "Buttons", "Store"), false) -- Sklep: +6 -> -6 ... (przeciwfaza)
+
+	-- guzik Invite (Friends' Luck) — DELIKATNE kolysanie (amp 3.5, bo anchor po lewej) przyciaga uwage do
+	-- zapraszania znajomych (=+luck). Wlasne gui WR_Invite (nie SideButtons); widoczny tylko gdy owns n74+.
+	local inviteGui = pg:FindFirstChild("WR_Invite")
+	local inviteBtn = inviteGui and inviteGui:FindFirstChild("InviteBtn")
+	sway(inviteBtn, true, 3.5)
 end
 
 return AttentionBob

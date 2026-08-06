@@ -33,6 +33,7 @@ local ORDER = {
 	"SkillService",
 	"PurchaseService",
 	"DevService",
+	"PlotBestService", -- tablica-rekord per plot (fizyczny znak + rekordy DPS/HP/fala)
 }
 
 for _, name in ipairs(ORDER) do

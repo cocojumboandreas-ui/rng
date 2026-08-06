@@ -20,26 +20,55 @@ function InviteController.start()
 	gui.DisplayOrder = 500 -- nad przyciskami bocznymi (SideButtons), pod rewealem (1000)
 	gui.Parent = player:WaitForChild("PlayerGui")
 
+	-- Styl spojny z HUD designera (wzorzec: SideButtons StartWave — zielony pionowy gradient + ciemny obrys).
 	local btn = Instance.new("TextButton")
 	btn.Name = "InviteBtn"
 	btn.AnchorPoint = Vector2.new(0, 0.5)
 	btn.Position = UDim2.new(0, 16, 0.74, 0) -- lewa krawedz, luka pod Index nad Offline Earnings
-	btn.Size = UDim2.fromOffset(186, 52)
-	btn.BackgroundColor3 = Color3.fromRGB(60, 170, 90)
+	btn.Size = UDim2.fromOffset(190, 54)
+	btn.BackgroundColor3 = Color3.fromRGB(64, 178, 92)
 	btn.AutoButtonColor = true
 	btn.Text = "🎁 Invite Friends"
-	btn.Font = Enum.Font.GothamBlack
+	btn.Font = Enum.Font.FredokaOne -- chunky, zaokraglony font jak etykiety designera
 	btn.TextColor3 = Color3.new(1, 1, 1)
-	btn.TextSize = 20
+	btn.TextSize = 21
 	btn.Visible = false
 	btn.ZIndex = 60
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 12)
 	corner.Parent = btn
+	-- pionowy gradient zieleni (jasniej u gory -> ciemniej u dolu), jak StartWave
+	local grad = Instance.new("UIGradient")
+	grad.Rotation = 90
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(122, 226, 142)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(74, 190, 102)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(48, 150, 78)),
+	})
+	grad.Parent = btn
+	-- ciemny obrys krawedzi pigulki (near-black, idiom designera 0.106)
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(20, 80, 40)
-	stroke.Thickness = 2
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Color = Color3.fromRGB(27, 27, 27)
+	stroke.Thickness = 2.5
 	stroke.Parent = btn
+	-- ciemny obrys TEKSTU dla czytelnosci (osobny label z ApplyStrokeMode=Contextual)
+	local textStroke = Instance.new("UIStroke")
+	textStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	textStroke.Color = Color3.fromRGB(27, 27, 27)
+	textStroke.Thickness = 1.6
+	local textHolder = Instance.new("TextLabel")
+	textHolder.Name = "Label"
+	textHolder.BackgroundTransparency = 1
+	textHolder.Size = UDim2.fromScale(1, 1)
+	textHolder.Font = btn.Font
+	textHolder.Text = btn.Text
+	textHolder.TextColor3 = btn.TextColor3
+	textHolder.TextSize = btn.TextSize
+	textHolder.ZIndex = 61
+	textStroke.Parent = textHolder
+	textHolder.Parent = btn
+	btn.Text = "" -- tekst rysuje label z obrysem
 	btn.Parent = gui
 
 	btn.Activated:Connect(function()

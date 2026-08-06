@@ -30,6 +30,9 @@ local PROFILE_TEMPLATE = {
 	offlineTs = 0, -- os.time() zapisywany w ProfileReleasing
 	purchaseLog = {}, -- idempotencja ProcessReceipt
 	serverLuckBuys = 0, -- licznik do rosnacej ceny server luck
+	bestWave = 0, -- REKORD tablicy plotu: najlepsza fala. Writer: PlotBestService. Reconcile() dolewa.
+	bestDPS = 0, -- REKORD: szczytowy sumaryczny DPS jednostek na planszy. Writer: PlotBestService.
+	bestHP = 0, -- REKORD: szczytowe sumaryczne HP jednostek na planszy. Writer: PlotBestService.
 }
 
 local ProfileService = {}
