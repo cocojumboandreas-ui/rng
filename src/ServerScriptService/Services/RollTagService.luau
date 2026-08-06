@@ -21,11 +21,47 @@ local function fmt(n)
 	return (s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", ""))
 end
 
+-- Kostka rysowana w UI (biala scianka „5" z ciemnymi oczkami) — pewna biel, bez zaleznosci od assetu.
+local PIPS = { -- pozycje oczek (scale) dla scianki 5
+	Vector2.new(0.28, 0.28), Vector2.new(0.72, 0.28),
+	Vector2.new(0.5, 0.5),
+	Vector2.new(0.28, 0.72), Vector2.new(0.72, 0.72),
+}
+local function buildDie(parent)
+	local die = Instance.new("Frame")
+	die.LayoutOrder = 1
+	die.Size = UDim2.fromOffset(20, 20)
+	die.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- biala kostka
+	die.BorderSizePixel = 0
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.28, 0)
+	corner.Parent = die
+	local edge = Instance.new("UIStroke") -- lekki ciemny obrys jak u wzorca
+	edge.Color = Color3.fromRGB(0, 0, 0)
+	edge.Thickness = 1.4
+	edge.Transparency = 0.15
+	edge.Parent = die
+	for _, p in ipairs(PIPS) do
+		local pip = Instance.new("Frame")
+		pip.AnchorPoint = Vector2.new(0.5, 0.5)
+		pip.Position = UDim2.fromScale(p.X, p.Y)
+		pip.Size = UDim2.fromScale(0.2, 0.2)
+		pip.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- ciemne oczka
+		pip.BorderSizePixel = 0
+		local pc = Instance.new("UICorner")
+		pc.CornerRadius = UDim.new(1, 0)
+		pc.Parent = pip
+		pip.Parent = die
+	end
+	die.Parent = parent
+	return die
+end
+
 local function updateTag(player)
 	local t = _tags[player]
 	if not t or not t.label.Parent then return end
 	local data = _profile.GetProfile(player)
-	t.label.Text = "🎲 " .. fmt(data and data.lifetimeRolls or 0)
+	t.label.Text = fmt(data and data.lifetimeRolls or 0)
 end
 
 local function buildTag(player, char)
@@ -34,47 +70,45 @@ local function buildTag(player, char)
 	local old = head:FindFirstChild("WR_RollTag")
 	if old then old:Destroy() end
 
+	-- Czysty styl (jak u wzorca): kostka + biala liczba z czarnym obrysem, BEZ tla.
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "WR_RollTag"
-	gui.Size = UDim2.fromOffset(150, 40)
-	gui.StudsOffset = Vector3.new(0, 2.8, 0) -- nad domyslnym nametagiem
+	gui.Size = UDim2.fromOffset(150, 30)
+	gui.StudsOffset = Vector3.new(0, 2.6, 0) -- pod domyslnym nametagiem-nickiem
 	gui.MaxDistance = 80
 	gui.LightInfluence = 0
 	gui.Adornee = head
 	gui.ResetOnSpawn = false
 	gui.Parent = head
 
-	local pill = Instance.new("Frame")
-	pill.AnchorPoint = Vector2.new(0.5, 0.5)
-	pill.Position = UDim2.fromScale(0.5, 0.5)
-	pill.Size = UDim2.fromScale(1, 0.72)
-	pill.BackgroundColor3 = Color3.fromRGB(28, 30, 26)
-	pill.BackgroundTransparency = 0.12
-	pill.BorderSizePixel = 0
-	pill.Parent = gui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = pill
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(255, 210, 70)
-	stroke.Thickness = 1.6
-	stroke.Transparency = 0.15
-	stroke.Parent = pill
+	local row = Instance.new("Frame")
+	row.Size = UDim2.fromScale(1, 1)
+	row.BackgroundTransparency = 1
+	row.Parent = gui
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = row
+
+	buildDie(row) -- biala kostka (UI) po lewej
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(0.92, 0.8)
-	label.Position = UDim2.fromScale(0.5, 0.5)
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.LayoutOrder = 2
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.Size = UDim2.fromOffset(0, 26)
 	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBlack
-	label.TextScaled = true
-	label.TextColor3 = Color3.fromRGB(255, 225, 90)
-	label.Text = "🎲 0"
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 22
+	label.TextColor3 = Color3.fromRGB(255, 255, 255) -- bialy napis
+	label.Text = "0"
 	local ls = Instance.new("UIStroke")
 	ls.Color = Color3.new(0, 0, 0)
-	ls.Thickness = 2
+	ls.Thickness = 2.4
+	ls.Transparency = 0.05
 	ls.Parent = label
-	label.Parent = pill
+	label.Parent = row
 
 	_tags[player] = { label = label }
 	updateTag(player)
