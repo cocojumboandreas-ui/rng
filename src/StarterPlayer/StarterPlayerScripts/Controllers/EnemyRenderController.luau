@@ -475,12 +475,11 @@ end
 
 -- MONETY z killa: wypadaja, ladują na ziemi i KRECA sie (walec), potem MAGNES gracza sciaga je do postaci
 -- (leca do gracza + kurcza sie). Realne monety liczy serwer (nagroda per fala) — to warstwa VISUAL/juice.
-local COIN_A = Vector3.new(0.22, 1.05, 1.05)
-local COIN_B = Vector3.new(0.1, 0.35, 0.35)
--- biala swietlna smuga (ogon) za moneta — jak w ref wwwr.png; najladniej podczas magnesu do gracza
+local COIN_IMG = "rbxassetid://79510076315488" -- ikona monety z UI (ta sama co HUD)
+-- biala swietlna smuga (ogon) za moneta — STONOWANA: krotka, cienka, lekka (ref wwwr.png)
 local COIN_TRAIL_COL = ColorSequence.new(Color3.fromRGB(255, 255, 255))
 local COIN_TRAIL_TRANS = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 0.15), -- glowa (przy monecie) — jasna
+	NumberSequenceKeypoint.new(0, 0.4), -- glowa (przy monecie) — lekka poswiata
 	NumberSequenceKeypoint.new(1, 1), -- ogon — zanika
 })
 local COIN_TRAIL_WIDTH = NumberSequence.new({
@@ -488,15 +487,15 @@ local COIN_TRAIL_WIDTH = NumberSequence.new({
 	NumberSequenceKeypoint.new(1, 0), -- zweza sie do szpica (kometa)
 })
 local function addCoinTrail(part)
-	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0, 0.3, 0); a0.Parent = part
-	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(0, -0.3, 0); a1.Parent = part
+	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0, 0.22, 0); a0.Parent = part
+	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(0, -0.22, 0); a1.Parent = part
 	local tr = Instance.new("Trail")
 	tr.Attachment0 = a0; tr.Attachment1 = a1
 	tr.Color = COIN_TRAIL_COL
 	tr.Transparency = COIN_TRAIL_TRANS
 	tr.WidthScale = COIN_TRAIL_WIDTH
-	tr.Lifetime = 0.26
-	tr.LightEmission = 1 -- swiecacy, addytywny bialy
+	tr.Lifetime = 0.18 -- krotki ogon
+	tr.LightEmission = 0.5 -- lekka poswiata (nie oslepia)
 	tr.FaceCamera = true
 	tr.Parent = part
 end
@@ -507,10 +506,17 @@ local function coinDrop(pos, halfH)
 	for _ = 1, nCoins do
 		if _coinActive >= COIN_CAP then return end
 		_coinActive += 1
+		-- nosnik ruchu (przezroczysty) + sprite ikony monety z UI + ogon
 		local c = Instance.new("Part")
-		c.Shape = Enum.PartType.Cylinder; c.Size = COIN_A
+		c.Size = Vector3.new(0.5, 0.5, 0.5); c.Transparency = 1
 		c.Anchored = true; c.CanCollide = false; c.CanQuery = false; c.CanTouch = false; c.CastShadow = false
-		c.Material = Enum.Material.Neon; c.Color = Color3.fromRGB(255, 205, 60); c.Parent = _fxFolder
+		c.Parent = _fxFolder
+		local bb = Instance.new("BillboardGui")
+		bb.Adornee = c; bb.Size = UDim2.fromOffset(48, 48); bb.LightInfluence = 0
+		bb.Parent = c
+		local img = Instance.new("ImageLabel")
+		img.Size = UDim2.fromScale(1, 1); img.BackgroundTransparency = 1; img.Image = COIN_IMG
+		img.Parent = bb
 		addCoinTrail(c) -- bialy ogon-smuga (kometa)
 		local land = Vector3.new(pos.X + (math.random() - 0.5) * 5, groundY, pos.Z + (math.random() - 0.5) * 5)
 		local p0 = pos + Vector3.new(0, 1.5, 0)
@@ -520,14 +526,13 @@ local function coinDrop(pos, halfH)
 			while c.Parent do
 				local a = math.min((os.clock() - t0) / d1, 1)
 				local p = p0:Lerp(land, a) + Vector3.new(0, math.sin(a * math.pi) * 2.2, 0)
-				c.CFrame = CFrame.new(p) * CFrame.Angles(0, os.clock() * 9, math.rad(90))
+				c.CFrame = CFrame.new(p)
 				if a >= 1 then break end
 				RunService.Heartbeat:Wait()
 			end
-			-- 2) lezy na ziemi i sie kreci (krotko)
-			local t1 = os.clock(); local d2 = 0.45 + math.random() * 0.4
+			-- 2) lezy na ziemi (krotko)
+			local t1 = os.clock(); local d2 = 0.35 + math.random() * 0.3
 			while c.Parent and os.clock() - t1 < d2 do
-				c.CFrame = CFrame.new(land) * CFrame.Angles(0, os.clock() * 6, math.rad(90))
 				RunService.Heartbeat:Wait()
 			end
 			-- 3) magnes: lec do gracza (przyspiesza) + kurcz sie -> znika w postaci
@@ -538,8 +543,9 @@ local function coinDrop(pos, halfH)
 				local char = Players.LocalPlayer.Character
 				local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
 				local target = (hrp and hrp.Position + Vector3.new(0, 1.5, 0)) or from
-				c.CFrame = CFrame.new(from:Lerp(target, a * a)) * CFrame.Angles(0, os.clock() * 22, math.rad(90))
-				c.Size = COIN_A:Lerp(COIN_B, a)
+				c.CFrame = CFrame.new(from:Lerp(target, a * a))
+				local s = math.floor(48 * (1 - 0.7 * a) + 0.5) -- kurczy sie do ~30% -> "wsiaka" w gracza
+				bb.Size = UDim2.fromOffset(s, s)
 				if a >= 1 then break end
 				RunService.Heartbeat:Wait()
 			end

@@ -130,6 +130,7 @@ function HudBindController.start()
 	local setCoins = makeCoinAnimator(coinsL) -- count-up + pop
 	-- posiadane rolki (waluta do umiejetnosci) NAD monetami — wypalony blok RollsOwned (ikona=kostka z offline)
 	local rollsOwnedL = resolve(sb, "LeftCanvas", "RollsOwned", "CoinsFrame", "Coins")
+	local _coinMult = 1 -- aktualny mnoznik monet (z GetStats/StatsSync) — do comba nad graczem
 
 	local offCoins = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Coins", "Coins")
 	local offRolls = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Rolls", "Rolls")
@@ -284,6 +285,7 @@ function HudBindController.start()
 	end
 	local function applyLuck(s)
 		if type(s) ~= "table" then return end
+		if s.coinMult then _coinMult = s.coinMult end -- combo nad graczem skaluje sie mnoznikiem monet
 		if luckLbl and s.luck then luckLbl.Text = fmtMul(s.luck) .. "x" end
 		if diceLbl and s.rollSpeed then diceLbl.Text = fmtMul(s.rollSpeed) .. "s" end
 		if tipSkill and s.luckSkill then tipSkill.Text = "×" .. fmtMul(s.luckSkill) end
@@ -323,6 +325,105 @@ function HudBindController.start()
 		applyLuck(s) -- luck + offline earnings/h (coins & rolki)
 	end)
 
+	-- ── COMBO monet NAD GRACZEM (juice): dolicza gold per kill (~realne monety fali), reset po 3s bez killa ──
+	local COMBO_COIN_IMG = "rbxassetid://79510076315488" -- ikona monety z UI
+	local WCFG, ECFG = GameConfig.Wave, GameConfig.Economy
+	local function waveCoinReward(n)
+		local w = WCFG.waves[n]
+		local base = (w and w.coinReward) or (WCFG.waves[1].coinReward * (((WCFG.scaling and WCFG.scaling.coinGrowth) or 1) ^ (n - 1)))
+		if WCFG.bossWave and WCFG.bossWave > 0 and n % WCFG.bossWave == 0 then
+			base = base * (WCFG.bossRewardMult or 1)
+		end
+		return base
+	end
+	local combo = { total = 0, displayed = 0, lastKill = 0, wave = -1, killed = 0, token = 0 }
+	local function buildComboGui()
+		local char = LP.Character
+		local head = char and char:FindFirstChild("Head")
+		if not head then return end
+		if combo.gui then combo.gui:Destroy() end
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "WR_ComboCoins"; gui.Size = UDim2.fromOffset(160, 46)
+		gui.StudsOffset = Vector3.new(0, 3.7, 0) -- nad nickiem + licznikiem rolek
+		gui.MaxDistance = 90; gui.LightInfluence = 0; gui.Adornee = head
+		gui.ResetOnSpawn = false; gui.Enabled = false; gui.Parent = head
+		local row = Instance.new("Frame"); row.Size = UDim2.fromScale(1, 1); row.BackgroundTransparency = 1; row.Parent = gui
+		local ll = Instance.new("UIListLayout"); ll.FillDirection = Enum.FillDirection.Horizontal
+		ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.VerticalAlignment = Enum.VerticalAlignment.Center
+		ll.Padding = UDim.new(0, 4); ll.Parent = row
+		local sc = Instance.new("UIScale"); sc.Parent = row
+		local icon = Instance.new("ImageLabel"); icon.LayoutOrder = 1; icon.Size = UDim2.fromOffset(32, 32)
+		icon.BackgroundTransparency = 1; icon.Image = COMBO_COIN_IMG; icon.Parent = row
+		local label = Instance.new("TextLabel"); label.LayoutOrder = 2; label.AutomaticSize = Enum.AutomaticSize.X
+		label.Size = UDim2.fromOffset(0, 36); label.BackgroundTransparency = 1; label.Font = Enum.Font.GothamBlack
+		label.TextSize = 28; label.TextColor3 = Color3.fromRGB(255, 225, 90); label.Text = "+0"
+		local ls = Instance.new("UIStroke"); ls.Color = Color3.new(0, 0, 0); ls.Thickness = 2.6; ls.Parent = label
+		label.Parent = row
+		combo.gui, combo.label, combo.icon, combo.scale = gui, label, icon, sc
+	end
+	local function comboShow()
+		if not combo.gui or not combo.gui.Parent then buildComboGui() end
+		if not combo.gui then return end
+		combo.gui.Enabled = true
+		if combo.label then combo.label.TextTransparency = 0 end
+		if combo.icon then combo.icon.ImageTransparency = 0 end
+		if combo.scale then -- pop przy kazdym dolozeniu
+			combo.scale.Scale = 1.18
+			TweenService:Create(combo.scale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		end
+	end
+	local function comboCountTo(target)
+		combo.token += 1; local tok = combo.token
+		local from = combo.displayed or 0
+		local t0 = os.clock(); local dur = 0.3
+		task.spawn(function()
+			while combo.token == tok do
+				local a = math.clamp((os.clock() - t0) / dur, 0, 1)
+				local v = math.floor(from + (target - from) * (1 - (1 - a) * (1 - a)))
+				combo.displayed = v
+				if combo.label then combo.label.Text = "+" .. fmt(v) end
+				if a >= 1 then
+					combo.displayed = target
+					if combo.label then combo.label.Text = "+" .. fmt(target) end
+					break
+				end
+				task.wait()
+			end
+		end)
+	end
+	-- reset po 3s bez killa: zanik -> wyzeruj -> schowaj
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+			if combo.total > 0 and (os.clock() - combo.lastKill) > 3 then
+				combo.total = 0; combo.displayed = 0
+				if combo.gui and combo.gui.Enabled then
+					if combo.label then TweenService:Create(combo.label, TweenInfo.new(0.35), { TextTransparency = 1 }):Play() end
+					if combo.icon then TweenService:Create(combo.icon, TweenInfo.new(0.35), { ImageTransparency = 1 }):Play() end
+					local g = combo.gui
+					task.delay(0.4, function() if combo.total == 0 and g then g.Enabled = false end end)
+				end
+			end
+		end
+	end)
+	LP.CharacterAdded:Connect(function() -- respawn -> odbuduj + wyzeruj combo
+		combo.wave = -1; combo.killed = 0; combo.total = 0; combo.displayed = 0
+		task.defer(buildComboGui)
+	end)
+	if LP.Character then task.defer(buildComboGui) end
+	local function comboOnWave(wn, killed, pool)
+		wn = wn or 1; killed = killed or 0; pool = pool or 0
+		local kills = (wn ~= combo.wave) and killed or (killed - combo.killed)
+		combo.wave = wn; combo.killed = killed
+		if kills and kills > 0 then
+			local per = (waveCoinReward(wn) / math.max(pool, 1) + (ECFG.killReward or 0)) * _coinMult
+			combo.total += kills * per
+			combo.lastKill = os.clock()
+			comboShow()
+			comboCountTo(math.floor(combo.total + 0.5))
+		end
+	end
+
 	-- ── postęp fali (WaveProgress: {waveNumber, killed, pool}) ──
 	local function showWave(waveNumber, killed, pool)
 		if waveInfo then waveInfo.Visible = true end
@@ -338,6 +439,7 @@ function HudBindController.start()
 	Net.get("WaveProgress").OnClientEvent:Connect(function(p)
 		if type(p) == "table" then
 			showWave(p.waveNumber, p.killed, p.pool)
+			comboOnWave(p.waveNumber, p.killed, p.pool) -- combo monet nad graczem
 			setWaveActiveUI(true) -- fala trwa -> pokaz "Zakoncz fale"
 			if not _waveActive then
 				setBuildLocked(true) -- pierwsza fala runu -> przyciemnij Buduj + zamknij panel jesli otwarty
