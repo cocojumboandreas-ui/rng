@@ -34,6 +34,7 @@ local ORDER = {
 	"PurchaseService",
 	"DevService",
 	"PlotBestService", -- tablica-rekord per plot (fizyczny znak + rekordy DPS/HP/fala)
+	"LeaderboardService", -- 3 globalne leaderboardy (fale/monety/rolki) na fizycznych tablicach Workspace.Top
 }
 
 for _, name in ipairs(ORDER) do
