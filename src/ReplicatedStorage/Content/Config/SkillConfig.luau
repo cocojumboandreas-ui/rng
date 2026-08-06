@@ -75,6 +75,9 @@ local COMBAT_EFFECT = {
 	n109 = { stat = "fireRateMult", perRank = 0.05 }, -- Faster Shooting I:  +5%
 	n110 = { stat = "fireRateMult", perRank = 0.05 }, -- Faster Shooting II: +5% (skumulowane 10%)
 	n111 = { stat = "fireRateMult", perRank = 0.20 }, -- Faster Shooting III:+20% (skumulowane 30%)
+	n112 = { stat = "rangeMult", perRank = 0.10 }, -- Longer Range I:   +10% zasiegu jednostek
+	n113 = { stat = "rangeMult", perRank = 0.15 }, -- Longer Range II:  +15% (skumulowane 25%)
+	n114 = { stat = "rangeMult", perRank = 0.25 }, -- Longer Range III: +25% (skumulowane 50%)
 }
 for id, eff in pairs(COMBAT_EFFECT) do
 	if nodes[id] then

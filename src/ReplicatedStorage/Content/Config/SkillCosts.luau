@@ -18,4 +18,7 @@ return {
 	n109 = { coin = 100000,  roll = 0 },  -- Faster Shooting I   (+5% szybkostrzelnosci)
 	n110 = { coin = 350000,  roll = 0 },  -- Faster Shooting II  (+10%)
 	n111 = { coin = 900000,  roll = 0 },  -- Faster Shooting III (+30%)
+	n112 = { coin = 120000,  roll = 0 },  -- Longer Range I   (+10% zasiegu jednostek)
+	n113 = { coin = 400000,  roll = 0 },  -- Longer Range II  (skumulowane +25%)
+	n114 = { coin = 1000000, roll = 0 },  -- Longer Range III (skumulowane +50%)
 }

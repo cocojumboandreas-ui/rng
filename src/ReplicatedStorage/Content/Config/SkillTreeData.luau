@@ -99,4 +99,7 @@ return {
 	{ id="n109", parent="n3", dir="GoraLewo", label="Faster Shooting I", coin=0, roll=0, desc="Your units shoot 5% faster." },
 	{ id="n110", parent="n109", dir="GoraLewo", label="Faster Shooting II", coin=0, roll=0, desc="Your units shoot 10% faster." },
 	{ id="n111", parent="n110", dir="Dol", label="Faster Shooting III", coin=0, roll=0, desc="Your units shoot 30% faster." },
+	{ id="n112", parent="n105", dir="Dol", label="Longer Range I", coin=0, roll=0, desc="Your units target enemies from 10% farther away." },
+	{ id="n113", parent="n112", dir="Dol", label="Longer Range II", coin=0, roll=0, desc="Your units target enemies from 25% farther away." },
+	{ id="n114", parent="n113", dir="Dol", label="Longer Range III", coin=0, roll=0, desc="Your units target enemies from 50% farther away." },
 }
