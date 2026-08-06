@@ -24,11 +24,13 @@ local LP = Players.LocalPlayer
 -- shadows=false dopiero od T3 (cienie to duzy koszt na slabych GPU). fillerRefresh=false od T4
 -- (reel przestaje przebudowywac modele viewport co cykl — znane zrodlo scinek przy auto-rollu).
 local TIERS = {
-	[1] = { name = "Ultra", shadows = true, auto = {}, budgets = { confetti = 1, rain = 1, coins = 1, heavy = 1 }, fillerRefresh = true },
-	[2] = { name = "High", shadows = true, auto = {}, budgets = { confetti = 0.7, rain = 0.66, coins = 0.66, heavy = 0.8 }, fillerRefresh = true },
-	[3] = { name = "Medium", shadows = false, auto = { attackAnim = false }, budgets = { confetti = 0.5, rain = 0.45, coins = 0.5, heavy = 0.5 }, fillerRefresh = true },
-	[4] = { name = "Low", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false }, budgets = { confetti = 0.3, rain = 0.25, coins = 0.25, heavy = 0.3 }, fillerRefresh = false },
-	[5] = { name = "Potato", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false, soldierAnim = false }, budgets = { confetti = 0.15, rain = 0, coins = 0, heavy = 0.2 }, fillerRefresh = false },
+	-- animDist: mnoznik progu dystansu kamery (bazowo 150 studow), za ktorym wrogowie NIE animuja
+	-- konczyn/bobu i NIE aktualizuja paskow HP (EnemyRenderController) — ruch po sciezce zostaje.
+	[1] = { name = "Ultra", shadows = true, auto = {}, budgets = { confetti = 1, rain = 1, coins = 1, heavy = 1, animDist = 1 }, fillerRefresh = true },
+	[2] = { name = "High", shadows = true, auto = {}, budgets = { confetti = 0.7, rain = 0.66, coins = 0.66, heavy = 0.8, animDist = 0.8 }, fillerRefresh = true },
+	[3] = { name = "Medium", shadows = false, auto = { attackAnim = false }, budgets = { confetti = 0.5, rain = 0.45, coins = 0.5, heavy = 0.5, animDist = 0.55 }, fillerRefresh = true },
+	[4] = { name = "Low", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false }, budgets = { confetti = 0.3, rain = 0.25, coins = 0.25, heavy = 0.3, animDist = 0.4 }, fillerRefresh = false },
+	[5] = { name = "Potato", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false, soldierAnim = false }, budgets = { confetti = 0.15, rain = 0, coins = 0, heavy = 0.2, animDist = 0.25 }, fillerRefresh = false },
 }
 
 -- ── histereza ────────────────────────────────────────────────────────────────

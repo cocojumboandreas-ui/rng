@@ -1030,6 +1030,11 @@ local function renderStep(dt)
 	local sAttack = PerfSettings.eff("attackAnim")
 	local sShowOthers = PerfSettings.eff("showOthers")
 	local sDmg = PerfSettings.eff("damageCounter")
+	-- THROTTLING PO DYSTANSIE KAMERY: dalecy wrogowie bez animacji konczyn/bobu i bez paskow HP
+	-- (z daleka i tak nieczytelne, a kosztuja CFrame/layout co klatke). Prog skaluje sie tierem governora.
+	local camPos = (Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.Position) or Vector3.zero
+	local animDist = 150 * PerfSettings.budget("animDist", 1)
+	local animDist2 = animDist * animDist
 	for _, e in pairs(_active) do
 		local own = (e.plotId == ownPlot)
 		local render = own or (sShowOthers and e.plotId == _focused)
@@ -1045,6 +1050,10 @@ local function renderStep(dt)
 				local d = ahead - pos
 				if d.Magnitude > 0.01 then e.dir = d.Unit end
 				local dir = e.dir or Vector3.new(0, 0, 1)
+				-- dystans kamera->wrog (XZ): far = poza progiem -> tnij animacje/paski (ruch po sciezce zostaje)
+				local dxC, dzC = pos.X - camPos.X, pos.Z - camPos.Z
+				local far = (dxC * dxC + dzC * dzC) > animDist2
+				local animOn = sAnim and not far
 
 				-- ANIM ruchu + ROZSTAW: podskok/lot + offset prostopadly do sciezki (render-only)
 				e.animPhase += dt
@@ -1053,12 +1062,12 @@ local function renderStep(dt)
 				local roll = 0
 				if rig then
 					local rp = rig.prof
-					if rp.hoverH then -- lot: utrzymaj WYSOKOSC lotu zawsze; bujanie/przechyl tylko gdy anim ON
-						baseY += rp.hoverH + (sAnim and math.sin(e.animPhase * HOVER_FREQ) * (rp.bob or 0) or 0)
-						if sAnim and rp.bank then roll = math.sin(e.animPhase * HOVER_FREQ * 0.6) * rp.bank end
-					elseif sAnim and rig.kind == "walk" then -- marsz: podskok tulowia
+					if rp.hoverH then -- lot: utrzymaj WYSOKOSC lotu zawsze; bujanie/przechyl tylko gdy anim ON i blisko
+						baseY += rp.hoverH + (animOn and math.sin(e.animPhase * HOVER_FREQ) * (rp.bob or 0) or 0)
+						if animOn and rp.bank then roll = math.sin(e.animPhase * HOVER_FREQ * 0.6) * rp.bank end
+					elseif animOn and rig.kind == "walk" then -- marsz: podskok tulowia
 						baseY += math.abs(math.sin(e.animPhase * WALK_FREQ)) * BODY_BOB
-					elseif sAnim and rp.bob then -- jazda: lekki bujak (jeep/tank)
+					elseif animOn and rp.bob then -- jazda: lekki bujak (jeep/tank)
 						baseY += math.abs(math.sin(e.animPhase * 11)) * rp.bob
 					end
 				end
@@ -1075,7 +1084,7 @@ local function renderStep(dt)
 				-- (TextLabel.Text = przeliczanie layoutu = drogie; wrog z pelnym HP nie przelicza co klatke).
 				local hb = _hpBarByModel[e.model]
 				if hb then
-					if sDmg then
+					if sDmg and not far then
 						if not hb.gui.Enabled then hb.gui.Enabled = true end
 						local pct = math.clamp(e.hpPct or 1, 0, 1)
 						if hb.lastPct == nil or math.abs(pct - hb.lastPct) > 0.004 then
@@ -1090,8 +1099,8 @@ local function renderStep(dt)
 					end
 				end
 
-				-- napedy: nogi (chod) / kola / wirniki — TYLKO gdy Soldier Animations ON (oszczedza CFrame/klatke)
-				if sAnim and rig then
+				-- napedy: nogi (chod) / kola / wirniki — TYLKO gdy Soldier Animations ON i wrog BLISKO kamery
+				if animOn and rig then
 					if rig.kind == "walk" then
 						for _, leg in ipairs(rig.legs) do
 							local s = math.sin(e.animPhase * WALK_FREQ + leg.phase) * LEG_AMP

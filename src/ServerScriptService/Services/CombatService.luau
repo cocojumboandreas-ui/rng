@@ -48,7 +48,15 @@ local _playerKills: { [any]: number } = {} -- player -> liczba wrogow zabitych p
 local MAX_STEPS_PER_FRAME = 3 -- max krokow symulacji na 1 Heartbeat; nadwyzka = PORZUCONY dlug (gra zwalnia, nie umiera)
 local OVERRUN_WARN_EVERY = 5 -- [s] jak rzadko warnowac o porzuceniu dlugu / przepelnieniu sync (nie zalewaj outputu)
 local _lastOverrunWarn = -math.huge
-local _dtStep = 1 / (GameConfig.Sim.simHz or 10) -- staly krok symulacji [s] (bylo lokalne w Start)
+local _dtStep = 1 / (GameConfig.Sim.simHz or 10) -- krok symulacji [s]; ADAPTACYJNY (patrz nizej)
+-- ADAPTACYJNY TICK (PerfGovernor serwera): gdy sredni koszt kroku (EMA) przekracza budzet przy duzych
+-- falach, zejdz z bazowego simHz na SIM_HZ_LOW — mniej krokow/s, serwer oddycha; wroc gdy znow tanio.
+-- Symulacja jest dt-skalowana (akumulator), wiec predkosc gry sie NIE zmienia — tylko granulacja.
+local _dtBase = _dtStep
+local SIM_HZ_LOW = 7
+local STEP_MS_HIGH = 12 -- EMA powyzej -> zejdz na SIM_HZ_LOW
+local STEP_MS_LOW = 6 -- EMA ponizej -> wroc na bazowy simHz
+local _stepEma = 0
 -- FIX P0: chunkowanie EnemySync (UnreliableRemoteEvent dropuje CALY pakiet >~900B).
 local ENEMIES_PER_PACKET = 180 -- 180*4B + 2B naglowek = 722B < 900B; wiecej wrogow -> kolejne chunki
 local MAX_SYNC_CHUNKS = 8 -- twardy sufit: powyzej ENEMIES_PER_PACKET*8 wrogow nadwyzka NIE jest wysylana (+warn)
@@ -569,6 +577,15 @@ local function advanceAccumulator(dt: number): number
 		_lastStepMs = (os.clock() - t0) * 1000
 		_acc -= _dtStep
 		steps += 1
+		-- EMA kosztu kroku + przelaczanie czestotliwosci z histereza (STEP_MS_HIGH/LOW)
+		_stepEma = _stepEma * 0.9 + _lastStepMs * 0.1
+		if _stepEma > STEP_MS_HIGH and _dtStep == _dtBase then
+			_dtStep = 1 / SIM_HZ_LOW
+			print(("[CombatService] adaptacyjny tick: step EMA %.1fms > %dms -> simHz %d"):format(_stepEma, STEP_MS_HIGH, SIM_HZ_LOW))
+		elseif _stepEma < STEP_MS_LOW and _dtStep ~= _dtBase then
+			_dtStep = _dtBase
+			print(("[CombatService] adaptacyjny tick: step EMA %.1fms < %dms -> simHz bazowy"):format(_stepEma, STEP_MS_LOW))
+		end
 	end
 	if _acc >= _dtStep then
 		_acc = _acc % _dtStep -- PORZUC caly zalegly dlug, zostaw tylko reszte sub-tickowa
