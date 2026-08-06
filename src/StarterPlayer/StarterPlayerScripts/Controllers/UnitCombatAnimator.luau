@@ -22,6 +22,7 @@ local Debris = game:GetService("Debris")
 local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
+local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
 
 local UnitCombatAnimator = {}
 
@@ -44,6 +45,7 @@ local PROFILES = {
 
 local _tracked = {}
 local _folder = nil
+local _rangeMult = 1 -- mnoznik zasiegu ze skilli (StatsSync) — wizual dopasowany do targetingu serwera (CombatService)
 
 -- ── prymitywy ─────────────────────────────────────────────────────────────────
 local function mkNeon(name, parent, color, shape)
@@ -357,7 +359,8 @@ local function track(model)
 	local _, sz = model:GetBoundingBox()
 	local st = {
 		model = model, prof = prof,
-		range = combat.range * (GameConfig.Sim.unitRangeMult or 1), interval = 1 / math.max(combat.fireRate, 0.05),
+		baseRange = combat.range * (GameConfig.Sim.unitRangeMult or 1),
+		range = combat.range * (GameConfig.Sim.unitRangeMult or 1) * _rangeMult, interval = 1 / math.max(combat.fireRate, 0.05),
 		acc = math.random() * 0.4,
 		baseCF = model:GetPivot(),
 		scale = math.clamp(sz.Y / 5.5, 0.35, 1.4),
@@ -385,6 +388,23 @@ end
 
 function UnitCombatAnimator.start()
 	RunService.Heartbeat:Connect(step)
+
+	-- zasieg wizualny = baza × rangeMult ze skilli (Longer Range) -> spojnosc z targetingiem serwera.
+	-- StatsSync niesie pelne staty; przy zmianie (kupno skilla) aktualizujemy zywe jednostki.
+	local function applyRange(rm)
+		_rangeMult = tonumber(rm) or 1
+		for _, st in pairs(_tracked) do
+			if st.baseRange then st.range = st.baseRange * _rangeMult end
+		end
+	end
+	task.spawn(function()
+		local ok, s = pcall(function() return Net.get("GetStats"):InvokeServer() end)
+		if ok and type(s) == "table" then applyRange(s.rangeMult) end
+	end)
+	Net.get("StatsSync").OnClientEvent:Connect(function(s)
+		if type(s) == "table" then applyRange(s.rangeMult) end
+	end)
+
 	local existing = Workspace:FindFirstChild("WR_Units")
 	if existing then
 		bindFolder(existing)
