@@ -21,40 +21,17 @@ local function fmt(n)
 	return (s:reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", ""))
 end
 
--- Kostka rysowana w UI (biala scianka „5" z ciemnymi oczkami) — pewna biel, bez zaleznosci od assetu.
-local PIPS = { -- pozycje oczek (scale) dla scianki 5
-	Vector2.new(0.28, 0.28), Vector2.new(0.72, 0.28),
-	Vector2.new(0.5, 0.5),
-	Vector2.new(0.28, 0.72), Vector2.new(0.72, 0.72),
-}
+-- Ikona kostki — TA SAMA co w „Offline Earnings" (HUD), zescalowana. Spojnosc z reszta UI.
+local DICE_ICON = "rbxassetid://83517758689278"
 local function buildDie(parent)
-	local die = Instance.new("Frame")
-	die.LayoutOrder = 1
-	die.Size = UDim2.fromOffset(20, 20)
-	die.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- biala kostka
-	die.BorderSizePixel = 0
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.28, 0)
-	corner.Parent = die
-	local edge = Instance.new("UIStroke") -- lekki ciemny obrys jak u wzorca
-	edge.Color = Color3.fromRGB(0, 0, 0)
-	edge.Thickness = 1.4
-	edge.Transparency = 0.15
-	edge.Parent = die
-	for _, p in ipairs(PIPS) do
-		local pip = Instance.new("Frame")
-		pip.AnchorPoint = Vector2.new(0.5, 0.5)
-		pip.Position = UDim2.fromScale(p.X, p.Y)
-		pip.Size = UDim2.fromScale(0.2, 0.2)
-		pip.BackgroundColor3 = Color3.fromRGB(30, 30, 30) -- ciemne oczka
-		pip.BorderSizePixel = 0
-		local pc = Instance.new("UICorner")
-		pc.CornerRadius = UDim.new(1, 0)
-		pc.Parent = pip
-		pip.Parent = die
-	end
-	die.Parent = parent
-	return die
+	local icon = Instance.new("ImageLabel")
+	icon.LayoutOrder = 1
+	icon.Size = UDim2.fromOffset(24, 24)
+	icon.BackgroundTransparency = 1
+	icon.Image = DICE_ICON
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = parent
+	return icon
 end
 
 local function updateTag(player)

@@ -128,6 +128,8 @@ function HudBindController.start()
 	local rollNum = resolve(sb, "BottomCanvas", "Buttons", "Roll", "GoldenRoll", "Number")
 	local coinsL = resolve(sb, "LeftCanvas", "Coins", "CoinsFrame", "Coins")
 	local setCoins = makeCoinAnimator(coinsL) -- count-up + pop
+	-- posiadane rolki (waluta do umiejetnosci) NAD monetami — wypalony blok RollsOwned (ikona=kostka z offline)
+	local rollsOwnedL = resolve(sb, "LeftCanvas", "RollsOwned", "CoinsFrame", "Coins")
 
 	local offCoins = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Coins", "Coins")
 	local offRolls = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Rolls", "Rolls")
@@ -300,7 +302,10 @@ function HudBindController.start()
 		local ok, st = pcall(function() return Net.get("GetSkillState"):InvokeServer() end)
 		if ok and type(st) == "table" then
 			if st.coins ~= nil then setCoins(st.coins, true) end -- snap na starcie
-			if st.spendableRolls ~= nil then setText(rollNum, fmt(st.spendableRolls)) end
+			if st.spendableRolls ~= nil then
+				setText(rollNum, fmt(st.spendableRolls))
+				setText(rollsOwnedL, fmt(st.spendableRolls)) -- licznik NAD monetami
+			end
 		end
 	end)
 
@@ -309,7 +314,10 @@ function HudBindController.start()
 		if p and p.balance ~= nil then setCoins(p.balance) end -- count-up + pop
 	end)
 	Net.get("RollsSync").OnClientEvent:Connect(function(p)
-		if type(p) == "table" and p.spendableRolls ~= nil then setText(rollNum, fmt(p.spendableRolls)) end
+		if type(p) == "table" and p.spendableRolls ~= nil then
+			setText(rollNum, fmt(p.spendableRolls))
+			setText(rollsOwnedL, fmt(p.spendableRolls)) -- licznik NAD monetami
+		end
 	end)
 	Net.get("StatsSync").OnClientEvent:Connect(function(s)
 		applyLuck(s) -- luck + offline earnings/h (coins & rolki)
