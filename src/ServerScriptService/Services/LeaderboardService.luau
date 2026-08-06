@@ -45,7 +45,7 @@ local CATS = {
 }
 
 local _profile
-local _boards = {} -- [catId] = { list, tmpl, title }
+local _boards = {} -- [catId] = { list, title, rows = {Row1..Row10 wbite w placu} }
 local _stores = {} -- [catId] = OrderedDataStore
 local _nameCache = {} -- userId -> name
 local _thumbCache = {} -- userId -> content
@@ -103,40 +103,37 @@ local function gatherTop(cat)
 	return list
 end
 
--- ── wypelnij fizyczna tablice ────────────────────────────────────────────────
+-- ── wypelnij fizyczna tablice (TYLKO update wypalonych wierszy Row1..Row10) ────
+-- Wiersze sa WBITE w placu (jak etykiety na znaku plotu) — serwer ich NIE klonuje,
+-- tylko podmienia tekst/avatar/wartosc i pokazuje/ukrywa. Zero Clone/Destroy w runtime.
 local function populate(cat, entries)
 	local b = _boards[cat.id]
 	if not b then return end
 	if b.title then b.title.Text = cat.title end
-	b.tmpl.Visible = false
-	-- usun stare wiersze
-	for _, c in ipairs(b.list:GetChildren()) do
-		if c:GetAttribute("WR_LBRow") then c:Destroy() end
-	end
 	local onlineByUid = {}
 	for _, plr in ipairs(Players:GetPlayers()) do onlineByUid[plr.UserId] = plr end
-	for i, e in ipairs(entries) do
-		local row = b.tmpl:Clone()
-		row.Name = "Row" .. i
-		row:SetAttribute("WR_LBRow", true)
-		row.Visible = true
-		row.LayoutOrder = i
-		local rank = row:FindFirstChild("Rank")
-		if rank then
-			rank.Text = "#" .. i
-			rank.TextColor3 = RANK_COLORS[i] or Color3.new(1, 1, 1)
+	for i, row in ipairs(b.rows) do
+		local e = entries[i]
+		if e then
+			row.Visible = true
+			local rank = row:FindFirstChild("Rank")
+			if rank then
+				rank.Text = "#" .. i
+				rank.TextColor3 = RANK_COLORS[i] or Color3.new(1, 1, 1)
+			end
+			local uname = row:FindFirstChild("Username")
+			if uname then uname.Text = resolveName(e.userId, onlineByUid[e.userId]) end
+			local img = row:FindFirstChild("PlayerImage")
+			if img then
+				local t = resolveThumb(e.userId)
+				if t ~= "" then img.Image = t end
+			end
+			local valFrame = row:FindFirstChild("Value")
+			local val = valFrame and valFrame:FindFirstChild("Value")
+			if val then val.Text = cat.fmt(e.value) end
+		else
+			row.Visible = false -- pusty slot — ukryty
 		end
-		local uname = row:FindFirstChild("Username")
-		if uname then uname.Text = resolveName(e.userId, onlineByUid[e.userId]) end
-		local img = row:FindFirstChild("PlayerImage")
-		if img then
-			local t = resolveThumb(e.userId)
-			if t ~= "" then img.Image = t end
-		end
-		local valFrame = row:FindFirstChild("Value")
-		local val = valFrame and valFrame:FindFirstChild("Value")
-		if val then val.Text = cat.fmt(e.value) end
-		row.Parent = b.list
 	end
 end
 
@@ -159,6 +156,7 @@ local function writePlayer(plr)
 end
 
 -- ── podepnij fizyczne tablice (Workspace.Top.*.Leaderboard) po X rosnaco ──────
+-- Zbiera WBITE w placu wiersze Row1..Row10 (attr WR_LBRow) posortowane po LayoutOrder.
 local function bindBoards()
 	local found = {}
 	for _, m in ipairs(workspace:GetChildren()) do
@@ -168,21 +166,23 @@ local function bindBoards()
 			local list = surf and surf:FindFirstChild("List")
 			local tmpl = list and list:FindFirstChild("Template")
 			if lb and list and tmpl then
-				local title
-				for _, d in ipairs(surf:GetDescendants()) do
-					if d:IsA("TextLabel") and d ~= tmpl and not d:IsDescendantOf(tmpl) and d.Parent == list then
-						title = d
-						break
+				local title, rows = nil, {}
+				for _, c in ipairs(list:GetChildren()) do
+					if c:GetAttribute("WR_LBRow") then
+						rows[#rows + 1] = c
+					elseif c:IsA("TextLabel") and c ~= tmpl then
+						title = title or c
 					end
 				end
-				found[#found + 1] = { x = lb.Position.X, list = list, tmpl = tmpl, title = title }
+				table.sort(rows, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
+				found[#found + 1] = { x = lb.Position.X, list = list, title = title, rows = rows }
 			end
 		end
 	end
 	table.sort(found, function(a, b) return a.x < b.x end)
 	for i, cat in ipairs(CATS) do
 		local b = found[i]
-		if b then _boards[cat.id] = { list = b.list, tmpl = b.tmpl, title = b.title } end
+		if b then _boards[cat.id] = { list = b.list, title = b.title, rows = b.rows } end
 	end
 end
 
