@@ -12,7 +12,7 @@ local Services = ServerScriptService:WaitForChild("Services")
 
 local LeaderboardService = {}
 
-local TOP_N = 25
+local TOP_N = 10 -- top 10 (jak na zdjeciu-wzorcu)
 local WRITE_EVERY = 45 -- s: zrzut statow online graczy do OrderedDataStore
 local READ_EVERY = 60 -- s: odczyt topN + odswiezenie tablic
 
