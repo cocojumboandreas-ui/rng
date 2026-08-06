@@ -477,6 +477,29 @@ end
 -- (leca do gracza + kurcza sie). Realne monety liczy serwer (nagroda per fala) — to warstwa VISUAL/juice.
 local COIN_A = Vector3.new(0.22, 1.05, 1.05)
 local COIN_B = Vector3.new(0.1, 0.35, 0.35)
+-- biala swietlna smuga (ogon) za moneta — jak w ref wwwr.png; najladniej podczas magnesu do gracza
+local COIN_TRAIL_COL = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+local COIN_TRAIL_TRANS = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0.15), -- glowa (przy monecie) — jasna
+	NumberSequenceKeypoint.new(1, 1), -- ogon — zanika
+})
+local COIN_TRAIL_WIDTH = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 1), -- pelna szerokosc przy monecie
+	NumberSequenceKeypoint.new(1, 0), -- zweza sie do szpica (kometa)
+})
+local function addCoinTrail(part)
+	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0, 0.3, 0); a0.Parent = part
+	local a1 = Instance.new("Attachment"); a1.Position = Vector3.new(0, -0.3, 0); a1.Parent = part
+	local tr = Instance.new("Trail")
+	tr.Attachment0 = a0; tr.Attachment1 = a1
+	tr.Color = COIN_TRAIL_COL
+	tr.Transparency = COIN_TRAIL_TRANS
+	tr.WidthScale = COIN_TRAIL_WIDTH
+	tr.Lifetime = 0.26
+	tr.LightEmission = 1 -- swiecacy, addytywny bialy
+	tr.FaceCamera = true
+	tr.Parent = part
+end
 local function coinDrop(pos, halfH)
 	local groundY = pos.Y - (halfH or 2) + 0.35
 	-- liczba monet z killa skaluje sie budzetem PerfGovernora (0 na Potato = brak FX, monety i tak liczy serwer)
@@ -488,6 +511,7 @@ local function coinDrop(pos, halfH)
 		c.Shape = Enum.PartType.Cylinder; c.Size = COIN_A
 		c.Anchored = true; c.CanCollide = false; c.CanQuery = false; c.CanTouch = false; c.CastShadow = false
 		c.Material = Enum.Material.Neon; c.Color = Color3.fromRGB(255, 205, 60); c.Parent = _fxFolder
+		addCoinTrail(c) -- bialy ogon-smuga (kometa)
 		local land = Vector3.new(pos.X + (math.random() - 0.5) * 5, groundY, pos.Z + (math.random() - 0.5) * 5)
 		local p0 = pos + Vector3.new(0, 1.5, 0)
 		task.spawn(function()
