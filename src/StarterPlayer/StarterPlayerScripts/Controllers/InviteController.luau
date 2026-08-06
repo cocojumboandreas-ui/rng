@@ -72,14 +72,12 @@ function InviteController.start()
 	btn.Parent = gui
 
 	btn.Activated:Connect(function()
-		local ok, can = pcall(function()
-			return SocialService:CanSendGameInviteAsync(player)
+		-- PromptGameInvite WPROST. Per-klik CanSendGameInviteAsync bywa NIERZETELNY:
+		-- potrafi zwrocic false albo wisiec 5s+ (web-call) -> przycisk "nie dziala jak klikam".
+		-- Prompt sam grzecznie no-opuje gdy zaproszenia niedostepne, wiec gate jest zbedny.
+		pcall(function()
+			SocialService:PromptGameInvite(player)
 		end)
-		if ok and can then
-			pcall(function()
-				SocialService:PromptGameInvite(player)
-			end)
-		end
 	end)
 
 	-- pokaz guzik gdy gracz ma JAKIKOLWIEK wezel Friends' Luck (poll co 4s; kupno w drzewku bez broadcastu)
