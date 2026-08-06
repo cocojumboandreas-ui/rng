@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
+local PerfSettings = require(script.Parent:WaitForChild("PerfSettings")) -- budzety FX PerfGovernora
 
 local WaveFxController = {}
 local LP = Players.LocalPlayer
@@ -62,7 +63,7 @@ function WaveFxController.start()
 		-- ambient: unoszace sie zielone koniczyny szczescia (echo "+szczescia" z gry-wzorca)
 		local CLOVER = Color3.fromRGB(120, 255, 130)
 		local function cloverRise()
-			for _ = 1, 14 do
+			for _ = 1, math.floor(14 * PerfSettings.budget("confetti", 1) + 0.5) do
 				local pc = Instance.new("Frame")
 				local sz = math.random(10, 20)
 				pc.Size = UDim2.fromOffset(sz, sz); pc.BackgroundColor3 = CLOVER; pc.BorderSizePixel = 0
@@ -88,7 +89,8 @@ function WaveFxController.start()
 	end
 
 	local function burst()
-		for i = 1, 70 do
+		-- liczba konfetti skaluje sie budzetem PerfGovernora (Potato: ~10 zamiast 70)
+		for i = 1, math.floor(70 * PerfSettings.budget("confetti", 1) + 0.5) do
 			local p = Instance.new("Frame")
 			local sz = math.random(8, 16)
 			p.Size = UDim2.fromOffset(sz, sz * (math.random() < 0.5 and 1 or 0.5))

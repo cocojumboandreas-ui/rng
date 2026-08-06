@@ -12,6 +12,7 @@ local Controllers = playerScripts:WaitForChild("Controllers")
 -- Uwagi z historii pliku (zachowane): stary HudController wylaczony (duplikat guzikow -> HudBindController);
 -- LevelPanelController wycofany (lewelowanie w INDEKSie); SettingsPanel = przelaczniki wydajnosci (⚙).
 local ORDER = {
+	"PerfGovernor", -- adaptacyjna wydajnosc (FPS -> tier -> auto-przelaczniki/budzety FX) — PIERWSZY, reszta czyta jego stan
 	"EnemyRenderController",
 	"SkillTreeController",
 	"IndexController",

@@ -285,7 +285,13 @@ local function buildFx()
 end
 
 -- ── ciezkie FX (rakiety/wybuchy/ogien) z twardym capem ────────────────────────────
-local function heavyTake() if _heavy >= HEAVY_CAP then return false end _heavy += 1 return true end
+-- efektywny cap skaluje sie budzetem PerfGovernora (niski FPS -> mniej rakiet/wybuchow naraz, min 2)
+local function heavyTake()
+	local cap = math.max(2, math.floor(HEAVY_CAP * PerfSettings.budget("heavy", 1)))
+	if _heavy >= cap then return false end
+	_heavy += 1
+	return true
+end
 local function heavyGive() _heavy = math.max(0, _heavy - 1) end
 
 local function boom(pos, color, scale)
@@ -473,7 +479,9 @@ local COIN_A = Vector3.new(0.22, 1.05, 1.05)
 local COIN_B = Vector3.new(0.1, 0.35, 0.35)
 local function coinDrop(pos, halfH)
 	local groundY = pos.Y - (halfH or 2) + 0.35
-	for _ = 1, 4 do
+	-- liczba monet z killa skaluje sie budzetem PerfGovernora (0 na Potato = brak FX, monety i tak liczy serwer)
+	local nCoins = math.floor(4 * PerfSettings.budget("coins", 1) + 0.5)
+	for _ = 1, nCoins do
 		if _coinActive >= COIN_CAP then return end
 		_coinActive += 1
 		local c = Instance.new("Part")
@@ -1017,10 +1025,11 @@ local function renderStep(dt)
 	updateFocus(now)
 	local ownPlot = Players.LocalPlayer:GetAttribute("PlotId")
 	-- klient-side przelaczniki wydajnosci (czytane RAZ na klatke)
-	local sAnim = PerfSettings.get("soldierAnim")
-	local sAttack = PerfSettings.get("attackAnim")
-	local sShowOthers = PerfSettings.get("showOthers")
-	local sDmg = PerfSettings.get("damageCounter")
+	-- eff() = reczny przelacznik AND warstwa auto PerfGovernora (governor dokreca w dol przy niskim FPS)
+	local sAnim = PerfSettings.eff("soldierAnim")
+	local sAttack = PerfSettings.eff("attackAnim")
+	local sShowOthers = PerfSettings.eff("showOthers")
+	local sDmg = PerfSettings.eff("damageCounter")
 	for _, e in pairs(_active) do
 		local own = (e.plotId == ownPlot)
 		local render = own or (sShowOthers and e.plotId == _focused)
