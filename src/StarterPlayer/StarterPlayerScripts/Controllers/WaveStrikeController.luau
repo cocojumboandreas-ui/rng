@@ -1,10 +1,10 @@
 --!nonstrict
 -- StarterPlayerScripts/Controllers/WaveStrikeController.luau  (KLIENT — oprawa strike'ow galezi bojowej)
 -- Dmg liczy serwer (WaveStrikeService); TU tylko teatr. Net.WaveStrike {kind, plotId, pos, radius}.
---   kind: "convoy" (przejazd + tracery) | "airRaid" (samolot + bomba) | "nuke" (grzyb + blysk + shockwave).
--- TEMPLATE-AWARE: jesli w ReplicatedStorage.WR_StrikeModels jest "Plane"/"Truck" (model z toolboxa) -> uzyj go;
---   inaczej rysuj proceduralnie (neon/part). Dzieki temu po wlaczeniu "Allow Third Party Assets" i wstawieniu
---   modeli FX podmienia sie sam, bez zmian w kodzie.
+--   kind: "airRaid" (samolot + bomba) | "nuke" (grzyb + blysk + shockwave).
+--   Military Convoy (n106) NIE idzie juz przez ten kanal — patrz ConvoyController (jeep-konwoj).
+-- TEMPLATE-AWARE: jesli w ReplicatedStorage.WR_StrikeModels jest "Plane" (model z toolboxa) -> uzyj go;
+--   inaczej rysuj proceduralnie (neon/part).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
@@ -33,7 +33,6 @@ local function part(color, size, cf, material)
 	return p
 end
 
--- kula wybuchu: rosnie i gasnie + blysk swiatla
 local function boom(pos, color, maxR, dur)
 	local ball = part(color, Vector3.new(2, 2, 2), CFrame.new(pos))
 	ball.Shape = Enum.PartType.Ball
@@ -46,7 +45,6 @@ local function boom(pos, color, maxR, dur)
 	Debris:AddItem(ball, dur + 0.2)
 end
 
--- plaski pierscien uderzeniowy (dysk na ziemi) rozchodzacy sie na zewnatrz
 local function shockwave(pos, maxR, color)
 	local ring = part(color, Vector3.new(1, 4, 4), CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90)))
 	ring.Shape = Enum.PartType.Cylinder
@@ -57,7 +55,6 @@ local function shockwave(pos, maxR, color)
 	Debris:AddItem(ring, 0.9)
 end
 
--- pelnoekranowy blysk (nuke)
 local function screenFlash(color, dur)
 	local lp = Players.LocalPlayer
 	local pg = lp and lp:FindFirstChildOfClass("PlayerGui")
@@ -72,7 +69,6 @@ local function screenFlash(color, dur)
 	Debris:AddItem(g, dur + 0.1)
 end
 
--- klon szablonu modelu (Plane/Truck) jesli istnieje; anchor + bezkolizyjnie + skala do dlugosci `wantLen`.
 local function tryTemplate(name, wantLen)
 	local root = ReplicatedStorage:FindFirstChild("WR_StrikeModels")
 	local tmpl = root and root:FindFirstChild(name)
@@ -94,7 +90,6 @@ local function tryTemplate(name, wantLen)
 	return m
 end
 
--- przesun model (pivot) z A do B w czasie t; usun po zakonczeniu
 local function flyModel(m, cfA, cfB, t)
 	m:PivotTo(cfA)
 	local cv = Instance.new("CFrameValue")
@@ -107,19 +102,16 @@ local function flyModel(m, cfA, cfB, t)
 	Debris:AddItem(m, t + 0.3)
 end
 
--- ── NUKE ────────────────────────────────────────────────────────────────────────
+-- ── NUKE ──
 local function nukeFx(pos, radius)
 	boom(pos, Color3.fromRGB(255, 240, 205), radius, 0.6)
 	shockwave(pos, radius, Color3.fromRGB(255, 220, 150))
-	-- slup ognia (kula rosnaca w gore = trzon grzyba)
-	local stem = part(Color3.fromRGB(255, 235, 200), Vector3.new(radius * 0.5, 6, radius * 0.5), CFrame.new(pos + Vector3.new(0, radius * 0.5, 0)))
+	local stem = part(Color3.fromRGB(255, 235, 200), Vector3.new(radius * 0.5, 6, radius * 0.5), CFrame.new(pos + Vector3.new(0, radius * 0.6, 0)) * CFrame.Angles(0, 0, math.rad(90)))
 	stem.Shape = Enum.PartType.Cylinder
-	stem.CFrame = CFrame.new(pos + Vector3.new(0, radius * 0.6, 0)) * CFrame.Angles(0, 0, math.rad(90))
 	TweenService:Create(stem, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Size = Vector3.new(radius * 1.4, radius * 0.35, radius * 0.35), Transparency = 1,
 	}):Play()
 	Debris:AddItem(stem, 1.3)
-	-- czapa grzyba unosi sie i puchnie
 	local cap = part(Color3.fromRGB(255, 230, 195), Vector3.new(radius, radius, radius), CFrame.new(pos + Vector3.new(0, radius * 1.3, 0)))
 	cap.Shape = Enum.PartType.Ball
 	cap.Transparency = 0.05
@@ -131,7 +123,7 @@ local function nukeFx(pos, radius)
 	screenFlash(Color3.fromRGB(255, 250, 235), 0.5)
 end
 
--- ── AIR RAID (nalot) ─────────────────────────────────────────────────────────────
+-- ── AIR RAID ──
 local function planeProcedural(cf)
 	local m = Instance.new("Model")
 	local body = part(Color3.fromRGB(95, 100, 110), Vector3.new(16, 3, 3), cf, Enum.Material.Metal); body.Parent = m
@@ -155,7 +147,6 @@ local function airRaidFx(pos, radius)
 		local startCf = CFrame.lookAt(startP, endP)
 		flyModel(planeProcedural(startCf), startCf, startCf + Vector3.new(360, 0, 0), flightT)
 	end
-	-- zrzut bomby gdy samolot nad celem (~polowa lotu) -> spadek -> wybuch
 	task.delay(flightT * 0.5, function()
 		local bomb = part(Color3.fromRGB(45, 45, 50), Vector3.new(1.4, 1.4, 2.8), CFrame.new(pos + Vector3.new(0, h - 4, 0)), Enum.Material.Metal)
 		local fallT = 0.55
@@ -168,56 +159,12 @@ local function airRaidFx(pos, radius)
 	end)
 end
 
--- ── CONVOY (konwoj) ───────────────────────────────────────────────────────────────
-local function truckProcedural(cf)
-	local m = Instance.new("Model")
-	local cab = part(Color3.fromRGB(74, 84, 62), Vector3.new(6, 4, 4), cf * CFrame.new(3, 2, 0), Enum.Material.Metal); cab.Parent = m
-	local bed = part(Color3.fromRGB(58, 68, 50), Vector3.new(10, 4, 4), cf * CFrame.new(-5, 2, 0), Enum.Material.Metal); bed.Parent = m
-	m.PrimaryPart = cab
-	m.Parent = fx()
-	return m
+-- NALOT = nowa salwa 8 rakiet z ArtilleryFxController (stary airRaidFx/samolot wycofany)
+local function airRaidSalvo(pos, radius)
+	local ok, art = pcall(function() return require(script.Parent:WaitForChild("ArtilleryFxController", 5)) end)
+	if ok and art and art.salvo then art.salvo(pos, radius or 16) end
 end
-
-local function convoyFx(pos, radius)
-	local side = radius * 0.9 + 8
-	local startP = pos + Vector3.new(-160, 0, side)
-	local endP = pos + Vector3.new(160, 0, side)
-	local startCf = CFrame.lookAt(startP, endP)
-	local driveT = 2.6
-	for i = 0, 1 do
-		local off = Vector3.new(-i * 20, 0, 0)
-		local tmpl = tryTemplate("Truck", 18)
-		if tmpl then
-			-- model: jedzie wzdluz +X w naturalnej orientacji szablonu (bez lookAt)
-			flyModel(tmpl, CFrame.new(startP + off), CFrame.new(endP + off), driveT)
-		else
-			flyModel(truckProcedural(startCf * CFrame.new(off)), startCf * CFrame.new(off), (startCf + Vector3.new(320, 0, 0)) * CFrame.new(off), driveT)
-		end
-	end
-	-- tracery z jadacego konwoju do skupiska
-	task.spawn(function()
-		local t0 = os.clock()
-		while os.clock() - t0 < driveT do
-			local prog = (os.clock() - t0) / driveT
-			local from = (startCf.Position):Lerp(endCf.Position, prog) + Vector3.new(0, 2.5, 0)
-			local len = (from - pos).Magnitude
-			local tracer = part(Color3.fromRGB(255, 220, 120), Vector3.new(0.2, 0.2, len), CFrame.lookAt(from:Lerp(pos, 0.5), pos))
-			tracer.Transparency = 0.15
-			Debris:AddItem(tracer, 0.1)
-			task.wait(0.08)
-		end
-	end)
-	-- iskry trafien na skupisku
-	task.spawn(function()
-		for _ = 1, 6 do
-			local off = Vector3.new(math.random(-radius, radius), 1, math.random(-radius, radius))
-			boom(pos + off, Color3.fromRGB(255, 185, 90), 3, 0.3)
-			task.wait(0.18)
-		end
-	end)
-end
-
-local HANDLERS = { convoy = convoyFx, airRaid = airRaidFx, nuke = nukeFx }
+local HANDLERS = { airRaid = airRaidSalvo, nuke = nukeFx }
 
 function WaveStrikeController.start()
 	Net.get("WaveStrike").OnClientEvent:Connect(function(p)

@@ -39,7 +39,7 @@ local REMOTES: { [string]: string } = {
 	GetIndexState = "RemoteFunction", -- C->S () -> {categories[], overall{count,total,percent}, luckBonus} (§3.13, ETAP2)
 	IndexUpdated = "RemoteEvent", -- S->C {unitId, variant, category, percent, luckBonus} (live wpis per-wariant)
 	ClaimIndexLuck = "RemoteFunction", -- C->S (pct) -> {ok, luckBonus?, reason?} — odbierz (claim) prog bonusu luck (ETAP 4)
-	OfflineEarnings = "RemoteEvent", -- S->C {coins, rolls, seconds}
+	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
 	UnitHp = "RemoteEvent", -- S->C {placementId, hpPct, hp, maxHp} (pasek HP jednostki: pct + liczby cur/max)
 	UnitKilled = "RemoteEvent", -- S->C {placementId} (faza 5: jednostka zginela -> poof + zdejmij pasek)
 	GetPlotInfo = "RemoteFunction", -- C->S () -> {plotId, gridOrigin(CFrame), width, depth, cellSize, faceDir} (tryb budowania)
@@ -50,6 +50,11 @@ local REMOTES: { [string]: string } = {
 	DevAction = "RemoteFunction", -- C->S {action, amount?} -> {ok, msg?} (panel DEV; serwer gated isDev)
 	SkillTreeReset = "RemoteEvent", -- S->C () — DEV wyczyscil skille -> klient czysci drzewko
 	WaveStrike = "RemoteEvent", -- S->C {kind, plotId, pos, radius} — strike galezi bojowej (konwoj/nalot/nuke) -> FX klienta
+	SalvoResult = "RemoteEvent", -- S->C {kills} — podsumowanie salwy nalotu -> banner "×N" (nagroda za skutecznosc)
+	AtomicStrike = "RemoteEvent", -- C->S () — gracz odpala ultimate ATOMOWKA (tymczasowy dev-przycisk)
+	AtomicStrikeCue = "RemoteEvent", -- S->C {impactPos} — TYLKO do gracza ktory odpalil -> cutscenka klienta
+	ConvoyStrike = "RemoteEvent", -- C->S () — gracz odpala KONWOJ (tymczasowy dev-przycisk)
+	ConvoyCue = "RemoteEvent", -- S->C {linePos, lateralAxis, offsets, entryExitOffset, driveT, fireT, plotId} — TYLKO do gracza ktory odpalil -> animacja klienta (wjazd/postoj/wyjazd)
 }
 
 local Net = {}

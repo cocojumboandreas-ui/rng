@@ -104,36 +104,8 @@ local function waveCount(waveNumber: number): number
 	return math.min(a.countCap, a.baseCount + (n - 3) * a.countStep)
 end
 
--- ILE kolumn celu na fale: fala1/2 jawne, potem colsBase (do colsHoldUntil), dalej +colsStep, clamp do szerokosci.
-local function activeColCount(waveNumber: number): number
-	local a = GameConfig.Wave.attack
-	local width = GameConfig.Grid.width
-	if not a then return width end
-	if a.colsBaseWaves[waveNumber] then return a.colsBaseWaves[waveNumber] end
-	if waveNumber <= a.colsHoldUntil then return a.colsBase end
-	-- +colsStep kolumny co colsEvery fal (lagodna rampa) — clamp do szerokosci bazy
-	return math.min(width, a.colsBase + math.ceil((waveNumber - a.colsHoldUntil) / (a.colsEvery or 1)) * a.colsStep)
-end
-
--- KTORE kolumny (1..width) atakuje fala — od srodka NA ZEWNATRZ, na przemian lewo/prawo.
--- kolejnosc dokladania: center, center-1, center+1, center-2, center+2, ... (9 -> 5,4,6,3,7,2,8,1,9).
-local function columnsFor(waveNumber: number): { number }
-	local width = GameConfig.Grid.width
-	local center = math.ceil(width / 2) -- 9 -> 5
-	local k = math.clamp(activeColCount(waveNumber), 1, width)
-	local order = { center }
-	local i = 1
-	while #order < width do
-		local l, r = center - i, center + i
-		if l >= 1 then order[#order + 1] = l end
-		if r <= width then order[#order + 1] = r end
-		i += 1
-	end
-	local chosen = {}
-	for j = 1, k do chosen[j] = order[j] end
-	table.sort(chosen)
-	return chosen
-end
+-- USUNIETE (Lane krok 2): progresja kolumn z fala (activeColCount/columnsFor). Kolumna wejscia jest teraz
+-- STALA przez cala gre — CombatService.pickLaneColumn losuje ja per-wrog z LaneConfig (wazony Random.new).
 
 -- MINI-BOSS: co miniBossEvery fal (ale NIE gdy fala = duzy boss co bossWave). Landmark retencyjny.
 local function isMiniBossWave(waveNumber: number): boolean
@@ -264,10 +236,9 @@ local function beginWave(player)
 	_phase[player] = Enums.RunPhase.WaveActive
 	_run[player] = { kills = 0, pool = pool }
 	-- BEZ resetu HP rdzenia co fale: HP przechodzi miedzy falami (fale leca ciagiem). Reset tylko na START RUNU (StartWave).
-	-- KOLUMNY CELU tej fali (srodek->zewnatrz). CombatService przydziela je wrogom round-robin (boss=srodek).
-	local targetCols = columnsFor(waveNumber)
+	-- KOLUMNA CELU: CombatService losuje ja per-wrog z LaneConfig (STALE, boss=srodek) — patrz pickLaneColumn.
 	for _, entry in ipairs(comp) do
-		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3], targetCols = targetCols, forceBoss = entry[4] })
+		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3], forceBoss = entry[4] })
 	end
 	WaveService.WaveStarted:Fire(player, waveNumber, pool) -- -> BuildService.SettleStacks (grawitacja); snapshot bazy PO niej
 	if _build and _build.SnapshotBase then _build.SnapshotBase(player) end -- stan bazy na START fali (do restore po fali)
@@ -280,6 +251,8 @@ function WaveService.StartWave(player)
 	if WaveService.GetPhase(player) ~= Enums.RunPhase.Building then
 		return -- tylko z Building (start runu)
 	end
+	local data = _profile and _profile.GetProfile(player)
+	if data then data.waveNumber = 1 end -- KAZDY nowy run startuje od fali 1, nawet po porzuconej/rozlaczonej sesji
 	_core.ResetHP(player) -- rdzen PELNY tylko na START RUNU; potem HP przechodzi miedzy falami (bez resetu co fale)
 	beginWave(player)
 end
@@ -352,6 +325,25 @@ local function endWave(player, reason)
 	if _build and _build.RestoreBase then _build.RestoreBase(player) end
 	if _combat.ResetUnitHp then _combat.ResetUnitHp(player) end
 	beginWave(player) -- nastepna fala (n+1) NATYCHMIAST, zostajemy w WaveActive (zero przerwy, zero okna budowania)
+end
+
+-- ATOMOWKA: natychmiastowy clear calej aktywnej fali (zywi wrogowie + reszta puli) przez ISTNIEJACA
+-- sciezke endWave/Cleared — bez duplikowania nagrod/wiadomosci/nastepnej-fali. Wolane przez
+-- AtomicStrikeService w klatce uderzenia (flash), NIE przez klienta bezposrednio.
+function WaveService.InstantClearWave(player: Player): boolean
+	if WaveService.GetPhase(player) ~= Enums.RunPhase.WaveActive then
+		return false
+	end
+	local run = _run[player]
+	if not run then
+		return false
+	end
+	run.kills = run.pool -- pelny zaliczony clear (jak normalny 100%)
+	if _combat and _combat.ClearPlot then
+		_combat.ClearPlot(player) -- usun zywych wrogow z tabeli (silent — bez EnemyDied, bez podwojnego liczenia)
+	end
+	endWave(player, Enums.WaveEndReason.Cleared)
+	return true
 end
 
 -- Gracz konczy run RECZNIE (przycisk „Zakończ falę") — w dowolnej fazie -> podsumowanie.

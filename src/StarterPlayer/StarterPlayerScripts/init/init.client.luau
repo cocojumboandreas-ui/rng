@@ -33,6 +33,9 @@ local ORDER = {
 	"SettingsPanelController",
 	"WaveFxController", -- konfetti + baner po wyczyszczeniu fali
 	"WaveStrikeController", -- FX strike'ow galezi bojowej (konwoj/nalot/nuke)
+	"ArtilleryFxController",
+	"AtomicStrikeController",
+	"ConvoyController",
 	"StoreController",
 	"UIHoverBinder", -- sprezyste hover/press na przyciskach
 	"AttentionBob", -- kolysanie Roll + Sklep

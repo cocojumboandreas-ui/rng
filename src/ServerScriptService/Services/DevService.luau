@@ -20,7 +20,7 @@ local DevService = {}
 -- Dodaj tu swoje UserId zeby miec panel DEV w opublikowanej grze (grupa nie ma CreatorId==UserId).
 local DEV_USER_IDS: { number } = {}
 
-local _profile, _economy, _stat, _inv = nil, nil, nil, nil
+local _profile, _economy, _stat, _inv, _wavestrike = nil, nil, nil, nil, nil
 
 local function isDev(player): boolean
 	if RunService:IsStudio() then
@@ -63,6 +63,9 @@ end
 
 -- action -> fn(player, data, amount)
 local ACTIONS = {
+	salvo = function(player)
+		if _wavestrike then _wavestrike.RunSalvo(player) end -- nalot artyleryjski (dev): salwa 8 rakiet + 2k/rakieta
+	end,
 	coins = function(player, data, amount)
 		_economy.GrantCoins(player, amount or 10000)
 	end,
@@ -121,6 +124,7 @@ function DevService.Start()
 	_economy = ServiceRegistry.get("EconomyService")
 	_stat = ServiceRegistry.get("StatProfileService")
 	_inv = ServiceRegistry.get("InventoryService")
+	_wavestrike = ServiceRegistry.get("WaveStrikeService")
 
 	Net.get("DevAction").OnServerInvoke = function(player, payload)
 		if not isDev(player) then

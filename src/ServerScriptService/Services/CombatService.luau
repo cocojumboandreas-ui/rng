@@ -24,7 +24,7 @@ local GameConfig = require(
 
 local CombatService = {}
 
-local _plot, _stat, _grid, _build, _level = nil, nil, nil, nil, nil
+local _plot, _stat, _grid, _build, _level, _convoy = nil, nil, nil, nil, nil, nil
 local _enemySync, _enemyEvents, _bossHP, _unitHpNet = nil, nil, nil, nil
 local _playerShotHit = nil -- S->C echo trafienia gracza (liczba "-N" nad wrogiem)
 local _unitHp: { [any]: { [string]: number } } = {} -- player -> {placementId -> hp} (faza 5)
@@ -32,6 +32,8 @@ local _unitHpSend: { [string]: number } = {} -- placementId -> os.clock ostatnie
 
 local _enemies: { [any]: { [number]: any } } = {} -- player -> {enemyId -> row}
 local _towerCd: { [any]: { [string]: number } } = {} -- player -> {placementId -> cooldown}
+local _mobileTowerCd: { [any]: { [number]: number } } = {} -- player -> {turretIdx -> cooldown} (KONWOJ, rownolegle do _towerCd)
+local _mobileRunDamage: { [any]: number } = {} -- player -> dmg zadany PRZEZ KONWOJ w runie (test-only isolation, nie liczy sie do UI)
 local _deaths: { [any]: { number } } = {} -- player -> {enemyId,...} (flush per tick)
 local _nextEnemyId = 0
 local _acc = 0
@@ -144,6 +146,24 @@ local function bossNameFor(waveNumber: number, id: number, isBigBoss: boolean): 
 	return bn.ranks[rankIdx] .. " " .. bn.names[nameIdx]
 end
 
+-- LOSOWANIE PASA WEJSCIA: kolumna PER-WROG, wazony Random.new NA SERWERZE (LaneConfig, STALE — bez fali).
+local function pickLaneColumn(): number
+	local laneCfg = GameConfig.Lane
+	local total = 0
+	for _, w in pairs(laneCfg.weights) do
+		total += w
+	end
+	local r = _rng:NextNumber() * total
+	local acc = 0
+	for _, col in ipairs(laneCfg.columns) do
+		acc += laneCfg.weights[col] or 0
+		if r <= acc then
+			return col
+		end
+	end
+	return laneCfg.columns[#laneCfg.columns]
+end
+
 -- ── API (§3.9) ────────────────────────────────────────────────────────────────
 function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	local et = GameConfig.Wave.enemyTypes[spec.enemyTypeId]
@@ -162,13 +182,11 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	_enemies[player] = _enemies[player] or {}
 	local enemies = _enemies[player]
 
-	-- CELOWANIE W KOLUMNY: wrogowie nie rozlewaja sie rowno — dostaja KOLUMNE CELU z zestawu fali
-	-- (round-robin po id -> rowny podzial). Boss trzyma srodek. lane = dokladne wyrownanie do kolumny siatki.
+	-- CELOWANIE W KOLUMNY: kazdy wrog dostaje kolumne celu z LaneConfig (wazony los, STALE — bez fali).
+	-- Boss trzyma srodek. lane = dokladne wyrownanie do kolumny siatki.
 	local width = GameConfig.Grid.width
 	local cellSize = GameConfig.Grid.cellSize
 	local centerCol = math.ceil(width / 2)
-	local targetCols = spec.targetCols
-	if not targetCols or #targetCols == 0 then targetCols = { centerCol } end
 	-- ROZNE TEMPA: deterministyczny mnoznik predkosci per-wrog z id (klient interpoluje z sync -> brak desync).
 	local sj = GameConfig.Wave.speedJitter
 
@@ -176,7 +194,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 	for i = 1, spec.count do
 		_nextEnemyId += 1
 		local id = _nextEnemyId
-		local col = isBoss and centerCol or targetCols[((id - 1) % #targetCols) + 1]
+		local col = isBoss and centerCol or pickLaneColumn()
 		local speedMul = 1
 		if sj then
 			local f = id * 0.7548776662466927
@@ -245,6 +263,8 @@ function CombatService.ClearPlot(player)
 	end
 	_enemies[player] = nil
 	_towerCd[player] = nil
+	_mobileTowerCd[player] = nil
+	_mobileRunDamage[player] = nil
 	_deaths[player] = nil
 	_unitHp[player] = nil
 	_runDamage[player] = nil
@@ -268,6 +288,11 @@ function CombatService.GetPlayerRunStats(player)
 end
 function CombatService.ResetRunDamage(player)
 	_runDamage[player] = nil
+end
+
+-- test-only: dmg zadany WYLACZNIE przez mobilne wiezyczki konwoju (izolacja od realnych placementow gracza)
+function CombatService._GetMobileRunDamageForTest(player): number
+	return _mobileRunDamage[player] or 0
 end
 
 -- RESET HP jednostek gracza (WaveService po fali: "wszystko odnowione" -> ocalale wracaja do pelnego HP).
@@ -442,6 +467,51 @@ local function step(dt: number)
 								enemies[best.id] = nil
 								queueDeath(player, best.id)
 								CombatService.EnemyDied:Fire(player, best.typeId)
+							end
+						end
+					end
+				end
+			end
+
+			-- 2c) MOBILNE WIEZYCZKI (KONWOJ): 1:1 namierzanie/cooldown/dmg jak "2) wieze", ale zrodlo
+			-- pozycji = ConvoyStrikeService.GetMobileTurrets (jeepy w oknie postoj+ogien) zamiast
+			-- _grid.GetPlacements. Rejestr ROWNOLEGLY, NIE dotyka GridService/realnych placementow.
+			if _convoy then
+				local turrets = _convoy.GetMobileTurrets(player)
+				if turrets then
+					_mobileTowerCd[player] = _mobileTowerCd[player] or {}
+					local mcds = _mobileTowerCd[player]
+					for i, mt in ipairs(turrets) do
+						local u = GameConfig.Units[mt.unitId]
+						if u and u.combat then
+							mcds[i] = (mcds[i] or 0) - dt
+							if mcds[i] <= 0 then
+								local tpos = mt.pos
+								local effRange = u.combat.range * rangeMult * (GameConfig.Sim.unitRangeMult or 1)
+								local bestD = effRange * effRange
+								local best = nil
+								for _, e in pairs(enemies) do
+									local epos = enemyWorldPos(plot, e.pathT, e.lane, e.fwd)
+									local dx, dz = epos.X - tpos.X, epos.Z - tpos.Z
+									local d2 = dx * dx + dz * dz
+									if d2 <= bestD then
+										bestD = d2
+										best = e
+									end
+								end
+								if best then
+									local dmg = u.combat.dmg * dmgMult * levelMult(mt.unitId)
+									local effDmg = math.min(dmg, math.max(0, best.hp))
+									_runDamage[player] = (_runDamage[player] or 0) + effDmg
+									_mobileRunDamage[player] = (_mobileRunDamage[player] or 0) + effDmg
+									best.hp -= dmg
+									mcds[i] = 1 / (u.combat.fireRate * fireRateMult)
+									if best.hp <= 0 and enemies[best.id] then
+										enemies[best.id] = nil
+										queueDeath(player, best.id)
+										CombatService.EnemyDied:Fire(player, best.typeId)
+									end
+								end
 							end
 						end
 					end
@@ -636,7 +706,7 @@ end
 -- AoE: zadaj `dmg` wszystkim wrogom gracza w promieniu `radius` (XZ) od `center`. Zwraca liczbe TRAFIONYCH.
 -- Wspolna sciezka dla Explosive Ammo (splash) i strike'ow (konwoj/nalot/nuke): te same liczniki dmg/kille/EnemyDied.
 -- Kille zbierane do listy i usuwane PO petli (nie mutujemy tabeli w trakcie wlasnego pairs).
-function CombatService.AreaDamage(player, center: Vector3, radius: number, dmg: number): number
+function CombatService.AreaDamage(player, center, radius, dmg)
 	local enemies = _enemies[player]
 	if not enemies or not dmg or dmg <= 0 then
 		return 0
@@ -655,6 +725,9 @@ function CombatService.AreaDamage(player, center: Vector3, radius: number, dmg: 
 			_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, e.hp)) -- efektywne (bez overkill)
 			e.hp -= dmg
 			hit += 1
+			if _playerShotHit and typeof(player) == "Instance" then
+				_playerShotHit:FireClient(player, plot.plotId or 0, e.id, dmg, false) -- liczba "-N" nad wrogiem (juice AoE/nalotu)
+			end
 			if e.hp <= 0 then
 				kills = kills or {}
 				kills[#kills + 1] = e.id
@@ -671,11 +744,51 @@ function CombatService.AreaDamage(player, center: Vector3, radius: number, dmg: 
 			end
 		end
 	end
-	return hit
+	return hit, (kills and #kills or 0) -- hit, kills (kills do "×N" salwy)
+end
+
+-- Rozlewa pule totalDmg na CALA fale gracza, proporcjonalnie do HP (kazdy wrog traci ten sam % HP).
+-- Suma zdjeta = min(totalDmg, HP calej fali). Uzywa Military Convoy ("8k na cala fale"). Zwraca (eff, kills).
+function CombatService.SpreadDamage(player, totalDmg: number): (number, number)
+	local enemies = _enemies[player]
+	if not enemies or not totalDmg or totalDmg <= 0 then
+		return 0, 0
+	end
+	local totalHp = 0
+	for _, e in pairs(enemies) do
+		totalHp += math.max(0, e.hp)
+	end
+	if totalHp <= 0 then
+		return 0, 0
+	end
+	local frac = math.min(1, totalDmg / totalHp) -- ten sam % HP z kazdego wroga
+	local eff = 0
+	local kills = nil
+	for _, e in pairs(enemies) do
+		local d = e.hp * frac
+		eff += math.min(d, math.max(0, e.hp))
+		e.hp -= d
+		if e.hp <= 0 then
+			kills = kills or {}
+			kills[#kills + 1] = e.id
+		end
+	end
+	_runDamage[player] = (_runDamage[player] or 0) + eff
+	if kills then
+		for _, id in ipairs(kills) do
+			local e = enemies[id]
+			if e then
+				enemies[id] = nil
+				queueDeath(player, id)
+				CombatService.EnemyDied:Fire(player, e.typeId)
+			end
+		end
+	end
+	return eff, (kills and #kills or 0)
 end
 
 -- Punkt celu strike'a: CENTROID zywych wrogow gracza w swiecie (nil gdy brak). Strike bije w skupisko.
-function CombatService.PickStrikeTarget(player): Vector3?
+function CombatService.PickStrikeTarget(player)
 	local enemies = _enemies[player]
 	if not enemies then
 		return nil
@@ -706,6 +819,7 @@ function CombatService.Start()
 	_grid = ServiceRegistry.get("GridService")
 	_build = ServiceRegistry.get("BuildService")
 	_level = ServiceRegistry.get("LevelService") -- lewelowanie TYPU (mnoznik dmg/hp) — odczyt per-krok, nie per-wieza
+	_convoy = ServiceRegistry.get("ConvoyStrikeService") -- KONWOJ: mobilne wiezyczki (GetMobileTurrets)
 	_enemySync = Net.get("EnemySync")
 	_enemyEvents = Net.get("EnemyEvents")
 	_bossHP = Net.get("BossHP")

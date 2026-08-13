@@ -16,8 +16,10 @@ return {
 	-- ── Strike'i (auto co fale, na cooldownie) ──  konwoj / nalot / nuke.
 	-- Po odblokowaniu wezla, w trakcie fali, co `cooldown` sekund uderza AoE `dmg` w promieniu `radius`
 	-- w skupisko wrogow. node = id wezla w drzewie ktory to odblokowuje.
+	-- Military Convoy (convoy) NIE uzywa juz dmg/spread/radius tutaj — ConvoyStrikeService liczy wlasny
+	-- dmg/geometrie jeep-konwoju; zostaje tylko node+cooldown (gating/cadence czyta step() w WaveStrikeService).
 	strikes = {
-		convoy = { node = "n106", cooldown = 22, dmg = 60, radius = 14 }, -- Military Convoy
+		convoy = { node = "n106", cooldown = 22 }, -- Military Convoy: jeep-konwoj (ConvoyStrikeService)
 		airRaid = { node = "n108", cooldown = 32, dmg = 180, radius = 16 }, -- Air Raid (nalot)
 		nuke = { node = "n107", cooldown = 95, dmg = 900, radius = 42 }, -- Nuke (bomba atomowa)
 	},
