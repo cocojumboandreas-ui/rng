@@ -27,10 +27,11 @@ local _holdUntil = 0
 
 -- WR: FlagGroundCFrame (per-plot, zapisane przy stawianiu w Studio) ma yaw ustawiony ~rownolegle
 -- do faceDirection plota (potwierdzone na 5/6 placow) — plotno flagi jednak stoi wtedy BOKIEM
--- (krawedziowo) do gracza zamiast NAPRZECIW. Korekta o stala 90 stopni w LEWO w kodzie (nie per-plac
--- w Studio) naprawia to spojnie na wszystkich placach jednym miejscem, bo dziala na SUROWYM
+-- (krawedziowo) do gracza zamiast NAPRZECIW. Korekta o -90 stopni (90+180, na zyczenie druga
+-- strona plotna) w kodzie (nie per-plac w Studio) naprawia to spojnie na wszystkich placach
+-- jednym miejscem, bo dziala na SUROWYM
 -- _groundCF przed pochyleniem HP — przechyl (pitch) dalej liczy sie wzgledem nowej, poprawionej ramki.
-local FLAG_YAW_FIX = CFrame.Angles(0, math.rad(90), 0)
+local FLAG_YAW_FIX = CFrame.Angles(0, math.rad(-90), 0)
 
 local function angleFor(pct: number): number
 	pct = math.clamp(pct, 0, 1)
