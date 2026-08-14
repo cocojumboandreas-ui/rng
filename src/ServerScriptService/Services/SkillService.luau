@@ -133,8 +133,17 @@ function SkillService.Start()
 			ranks = SkillService.GetRanks(player),
 			coins = _economy.GetCoins(player),
 			spendableRolls = (data and data.spendableRolls) or 0,
+			autoRollEnabled = not (data and data.autoRollEnabled == false), -- WR: domyslnie ON (brak pola = nigdy nie wylaczal)
 		}
 	end
+
+	-- Net.SetAutoRollEnabled (RemoteEvent, C->S) -> zapisz preferencje auto-roll ON/OFF gracza (persystencja).
+	Net.get("SetAutoRollEnabled").OnServerEvent:Connect(function(player, isEnabled)
+		local data = _profile and _profile.GetProfile(player)
+		if data then
+			data.autoRollEnabled = (isEnabled == true)
+		end
+	end)
 end
 
 -- Hooki TYLKO do testow.

@@ -15,23 +15,37 @@ function AutoRollController.start()
 	local RollClient = require(ReplicatedStorage:WaitForChild("Roll"):WaitForChild("RollClient"))
 	local owned = false
 
+	-- WR: persystencja preferencji auto ON/OFF w ProfileStore (Net.SetAutoRollEnabled, C->S fire-and-forget).
+	-- Kazda zmiana _isAuto (klik gracza LUB nasze programowe ustawienie ponizej) -> zapisz na serwerze.
+	RollClient.setIsAutoChangedCallback(function(isAuto)
+		pcall(function()
+			Net.get("SetAutoRollEnabled"):FireServer(isAuto)
+		end)
+	end)
+
 	-- czekaj az gracz ma n2 (poll co 4s; kupno w drzewku bez broadcastu)
 	task.spawn(function()
+		local persistedEnabled = true
 		while not owned do
 			local ok, st = pcall(function()
 				return Net.get("GetSkillState"):InvokeServer()
 			end)
 			if ok and st and st.ranks and (st.ranks[AUTO_NODE] or 0) > 0 then
 				owned = true
+				if st.autoRollEnabled == false then
+					persistedEnabled = false -- WR: gracz mial auto wylaczone przed wyjsciem -> zostaw wylaczone
+				end
 			else
 				task.wait(4)
 			end
 		end
 		RollClient.setIsCompact(true) -- auto = MALY reel na gorze-srodku
-		RollClient.setIsAuto(true) -- pack: po zakonczeniu WSZYSTKICH reeli -> requestRoll znowu (petla)
-		pcall(function()
-			RollClient.requestRoll()
-		end) -- start
+		RollClient.setIsAuto(persistedEnabled) -- WR: respektuj zapisana preferencje (domyslnie ON przy pierwszym odblokowaniu)
+		if persistedEnabled then
+			pcall(function()
+				RollClient.requestRoll()
+			end) -- start
+		end
 	end)
 
 	-- watchdog: restart TYLKO gdy auto GENUINIE stanelo (nie kreci sie przez >=3s z rzedu). NIE reaguj na
