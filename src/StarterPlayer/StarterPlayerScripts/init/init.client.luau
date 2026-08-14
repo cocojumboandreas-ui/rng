@@ -22,6 +22,7 @@ local ORDER = {
 	"UnitCombatAnimator",
 	"UnitHealthController",
 	"CoreHealthController",
+	"CoreFlagController", -- flaga zamiast neonowego bloku rdzenia, przechyla sie wg HP (Net.CoreHP)
 	"WeaponCameraGate",
 	"BuildController",
 	"UnitTooltipController", -- dymek podgladu jednostki (ikona + DMG/s + HP)
