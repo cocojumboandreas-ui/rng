@@ -38,6 +38,73 @@ local function angleFor(pct: number): number
 	return 90 * (1 - pct) ^ 1.5
 end
 
+-- FALOWANIE (czysto kosmetyczne, klient-only): sztywny MeshPart bez riga wiec prawdziwe
+-- uginanie tkaniny odpada — zludzenie wiatru robimy lekkim obrotem calego platna wokol
+-- osi drzewca (lokalny Y pivotu flagi = origin obrotu, bo PrimaryPart to drzewce), plynnie
+-- tam-i-z-powrotem w nieskonczonosc przez TweenService (NumberValue kata, Sine InOut,
+-- RepeatCount=-1, Reverses=true) — NIE recznym sin() w RenderStepped. Changed-signal tego
+-- NumberValue przelicza CFrame platna z aktualnego _flag:GetPivot() (ktore juz zawiera
+-- biezacy pitch HP) — nakladane NA WIERZCH przechylu, nie zastepuje ani nie zeruje PivotTo
+-- z apply(). Dziala na WSZYSTKICH flagach naraz (nie tylko wlasnej), bo to czysto wizualna
+-- dekoracja terenu, nie stan gry. Grid.003 + Grid.004 (dwie niemal wspollinowe warstwy tego
+-- samego platna) faluja RAZEM identyczna transformacja — gdyby falowaly niezaleznie,
+-- minimalny rozjazd geometrii powodowalby przenikanie siatek (z-fighting) miedzy warstwami.
+local WAVE_CANVAS_NAMES = { "Meshes/TedyThings_Grid.003", "Meshes/TedyThings_Grid.004" }
+local WAVE_AMPLITUDE_DEG = 4 -- subtelne wychylenie (+/-)
+local WAVE_HALF_PERIOD = 1.3 -- [s] czas przejscia w jedna strone (Sine InOut)
+local _waveFlags = {} -- [flagModel] = { angleValue:NumberValue, parts:{ {part=MeshPart, baseOffset=CFrame} } }
+
+local function updateWaveVisual(flagModel: Instance, data)
+	if not flagModel.Parent then
+		return
+	end
+	local pivot = flagModel:GetPivot()
+	local hingeWave = CFrame.Angles(0, math.rad(data.angleValue.Value), 0)
+	for _, entry in ipairs(data.parts) do
+		entry.part.CFrame = pivot * hingeWave * entry.baseOffset
+	end
+end
+
+local function registerWaveFlag(flagModel: Instance)
+	if _waveFlags[flagModel] then
+		return
+	end
+	local pivot = flagModel:GetPivot()
+	local parts = {}
+	for _, partName in ipairs(WAVE_CANVAS_NAMES) do
+		local part = flagModel:FindFirstChild(partName)
+		if part then
+			table.insert(parts, { part = part, baseOffset = pivot:ToObjectSpace(part.CFrame) })
+		end
+	end
+	if #parts == 0 then
+		return
+	end
+
+	local angleValue = Instance.new("NumberValue")
+	angleValue.Value = -WAVE_AMPLITUDE_DEG
+	local data = { angleValue = angleValue, parts = parts }
+	_waveFlags[flagModel] = data
+
+	angleValue:GetPropertyChangedSignal("Value"):Connect(function()
+		updateWaveVisual(flagModel, data)
+	end)
+	updateWaveVisual(flagModel, data)
+
+	-- offset fazy per-plac (deterministyczny z PlotId) zeby flagi nie falowaly idealnie w unisono —
+	-- DelayTime przesuwa tylko START tweena, dalej leci wlasny nieskonczony Reverses=true cykl.
+	local plotId = flagModel:GetAttribute("PlotId") or 0
+	local startDelay = (plotId * 0.577) % WAVE_HALF_PERIOD
+
+	local tween = TweenService:Create(
+		angleValue,
+		TweenInfo.new(WAVE_HALF_PERIOD, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true, startDelay),
+		{ Value = WAVE_AMPLITUDE_DEG }
+	)
+	tween:Play()
+	data.tween = tween
+end
+
 local function apply()
 	if not (_flag and _pole and _groundCF and _halfH) then
 		return
@@ -122,11 +189,18 @@ function CoreFlagController.start()
 			task.wait(0.3)
 		end
 	end)
-	CollectionService:GetInstanceAddedSignal("WR_CoreFlag"):Connect(function()
+	CollectionService:GetInstanceAddedSignal("WR_CoreFlag"):Connect(function(f)
+		registerWaveFlag(f)
 		if ensureFlag() then
 			apply()
 		end
 	end)
+
+	-- falowanie: WSZYSTKIE flagi na mapie, nie tylko wlasna (dekoracja terenu) — kazda dostaje
+	-- wlasny nieskonczony TweenService cykl (patrz registerWaveFlag), nic tu wiecej nie trzeba spinac.
+	for _, f in ipairs(CollectionService:GetTagged("WR_CoreFlag")) do
+		registerWaveFlag(f)
+	end
 end
 
 return CoreFlagController
