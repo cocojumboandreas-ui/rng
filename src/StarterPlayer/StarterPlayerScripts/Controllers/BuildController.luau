@@ -17,6 +17,8 @@ local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -35,6 +37,7 @@ local RED = Color3.fromRGB(220, 70, 70)
 local WHITE = Color3.fromRGB(255, 255, 255) -- obrys jak przy najechaniu na Start Wave (bialy, swiecacy)
 local FIT_MARGIN = 0.8 -- MUSI zgadzac sie z BuildService.FIT_MARGIN (ghost == realny model)
 local LERP = 0.35 -- plynnosc dojazdu ghosta (0..1; wiecej = szybciej)
+local POP_SOUND_ID = "rbxassetid://15675055424" -- "Roblox_UI_Cute_Pop", ten sam co RollRevealController
 
 -- 2.9K / 10.0K / 1.2M (statystyki na karcie przy najechaniu)
 local function fmtNum(n)
@@ -55,8 +58,11 @@ local _rot = 0 -- reczny obrot yaw (0/90/180/270), utrzymywany miedzy postawieni
 local _moving = nil -- placementId przenoszonej jednostki (nil = stawiamy nowa z inventory)
 local _movingModel = nil -- oryginalny model schowany podczas przenoszenia
 local _ghost, _ring = nil, nil
-local _ghostPos = nil -- Vector3 lerpowanej pozycji ghosta
+local _ghostPos = nil -- Vector3 lerpowanej pozycji ghosta (XZ + grunt)
+local _ghostYaw = nil -- stopnie: lerpowany obrot ghosta (persystuje jak _rot; NIE resetujemy przy makeGhost/R)
+local _ghostSurfaceY = nil -- lerpowana wysokosc (siadanie na wierzchu stosu); resetuje sie jak _ghostPos
 local _cell = nil -- {x,z} aktualna kratka pod kursorem
+local _suppressGhost = false -- mobile: nie przesuwaj ghosta gdy palec dotyka przyciskow Accept/Rotate/Cancel
 local _hovered = nil -- WLASNA jednostka pod kursorem (podswietlona do edycji, gdy nic nie stawiamy)
 local _coreSet = {} -- kratki rdzenia (nie mozna tam stawiac) — z GetPlotInfo.coreCells
 local _thumbCache = {}
@@ -237,14 +243,27 @@ local function validAt(x, z)
 end
 
 -- ── ghost + kolo zasiegu ──
-local function orientAt(pos, groundY)
-	return CFrame.lookAlong(Vector3.new(pos.X, groundY, pos.Z), _plot.faceDir) * CFrame.Angles(0, math.rad(_rot), 0)
+-- dt-znormalizowany wspolczynnik lerpa: LERP = tempo przy referencyjnych 60fps (exponential smoothing),
+-- niezalezne od FPS — przy niskich klatkach ghost dogania w tym samym TEMPIE co przy wysokich.
+local function ghostAlpha(dt)
+	return 1 - (1 - LERP) ^ (math.max(dt or 0, 0) * 60)
+end
+
+-- lerp kata (w stopniach) NAJKROTSZA droga — np. 350->10 idzie przez 0, nie przez 180.
+local function lerpAngleDeg(cur, target, alpha)
+	local diff = ((target - cur + 180) % 360) - 180
+	return cur + diff * alpha
+end
+
+local function orientAt(pos, groundY, yawDeg)
+	return CFrame.lookAlong(Vector3.new(pos.X, groundY, pos.Z), _plot.faceDir) * CFrame.Angles(0, math.rad(yawDeg), 0)
 end
 
 local function clearGhost()
 	if _ghost then _ghost:Destroy(); _ghost = nil end
 	if _ring then _ring:Destroy(); _ring = nil end
 	_ghostPos = nil
+	_ghostSurfaceY = nil
 end
 
 -- Buduje ghost DOKLADNIE tak jak serwer stawia model (orientacja faceDir*rot -> pomiar -> skala FIT_MARGIN ->
@@ -305,12 +324,34 @@ local function makeGhost()
 		_ring = ring
 	end
 	_ghostPos = nil -- nastepna klatka snapuje na kratke (bez dojazdu z poprzedniego miejsca)
+	_ghostSurfaceY = nil -- jw. dla wysokosci (nie "spada" z poprzedniej wysokosci stosu)
+	-- UWAGA: _ghostYaw CELOWO nie resetujemy — _rot persystuje miedzy postawieniami (patrz stan wyzej),
+	-- wiec obrot ghosta ma plynnie dojechac do _rot zamiast skakac przy kazdym makeGhost() (np. klawisz R).
 end
 
-local function updateGhost()
+-- czy wskaznik/palec jest GEOMETRYCZNIE nad kontrolkami mobilnymi (co klatke, bez timingu/gp)?
+-- To gwarantuje: klik po GUI NIE rusza ghosta ("sztywno", input nie przebija guzika w swiat).
+local function guiAtHitsControls(x, y)
+	local ok, objs = pcall(function() return LP.PlayerGui:GetGuiObjectsAtPosition(x, y) end)
+	if not ok or not objs then return false end
+	for _, o in ipairs(objs) do
+		if o == _mobileControls or o:IsDescendantOf(_mobileControls) then return true end
+	end
+	return false
+end
+local function pointerOverControls()
+	if not _mobileControls or not _mobileControls.Visible then return false end
+	local mp = UserInputService:GetMouseLocation()
+	local inset = GuiService:GetGuiInset()
+	-- GetMouseLocation jest z insetem, GetGuiObjectsAtPosition liczy w AbsolutePosition (bez insetu) —
+	-- sprawdzamy OBIE przestrzenie, zeby test byl odporny na inset (BuildMode ma IgnoreGuiInset=true).
+	return guiAtHitsControls(mp.X - inset.X, mp.Y - inset.Y) or guiAtHitsControls(mp.X, mp.Y)
+end
+
+local function updateGhost(dt)
 	if not _ghost or not _plot then return end
 	local c = cursorCell()
-	if c then _cell = c end -- ray trafil w plaszczyzne -> zaktualizuj (clamped). Miss (sky) -> zostaw ostatnia kratke.
+	if c and not _suppressGhost and not pointerOverControls() then _cell = c end -- ray trafil w plaszczyzne -> zaktualizuj (clamped). Miss/palec-na-przyciskach -> zostaw ostatnia kratke.
 	if not _cell then
 		-- jeszcze nigdy nie bylo kratki (start) -> schowaj do pierwszego trafienia
 		_ghost.Parent = nil
@@ -322,11 +363,14 @@ local function updateGhost()
 	local groundY = _plot.gridOrigin.Position.Y
 	local surfaceY = groundY + heightAt(_cell.x, _cell.z) * _plot.cellSize -- STACK: siada na wierzchu stosu
 	local targetPos = Vector3.new(center.X, groundY, center.Z)
-	_ghostPos = _ghostPos and _ghostPos:Lerp(targetPos, LERP) or targetPos
-	-- pozycja (plynnie) + orientacja (natychmiast, wg _rot), potem posadz na WIERZCHU stosu (surfaceY)
-	_ghost:PivotTo(orientAt(_ghostPos, groundY))
+	local alpha = ghostAlpha(dt)
+	_ghostPos = _ghostPos and _ghostPos:Lerp(targetPos, alpha) or targetPos
+	_ghostYaw = _ghostYaw and lerpAngleDeg(_ghostYaw, _rot, alpha) or _rot
+	_ghostSurfaceY = _ghostSurfaceY and (_ghostSurfaceY + (surfaceY - _ghostSurfaceY) * alpha) or surfaceY
+	-- WSZYSTKIE TRZY osie plynne i dt-znormalizowane: pozycja XZ, obrot, wysokosc (siadanie na stosie)
+	_ghost:PivotTo(orientAt(_ghostPos, groundY, _ghostYaw))
 	local bbCf, bbSize = _ghost:GetBoundingBox()
-	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, surfaceY - (bbCf.Position.Y - bbSize.Y * 0.5), 0))
+	_ghost:PivotTo(_ghost:GetPivot() + Vector3.new(0, _ghostSurfaceY - (bbCf.Position.Y - bbSize.Y * 0.5), 0))
 	-- RECENTER XZ: STOPY (HumanoidRootPart) w srodek kratki — nie pistolet/bbox. Dla blokow/pojazdow: srodek bbox.
 	local anchor = _ghost:FindFirstChild("HumanoidRootPart", true)
 	local aPos = (anchor and anchor:IsA("BasePart")) and anchor.Position or (select(1, _ghost:GetBoundingBox())).Position
@@ -340,7 +384,7 @@ local function updateGhost()
 	end
 	if _ring then
 		_ring.Parent = Workspace
-		_ring.CFrame = CFrame.new(_ghostPos.X, surfaceY + 0.3, _ghostPos.Z) * CFrame.Angles(0, 0, math.rad(90))
+		_ring.CFrame = CFrame.new(_ghostPos.X, _ghostSurfaceY + 0.3, _ghostPos.Z) * CFrame.Angles(0, 0, math.rad(90))
 		_ring.Color = ok and GREEN or RED
 	end
 end
@@ -410,12 +454,89 @@ local function setPcControls(vis)
 	if _mobileControls then _mobileControls.Visible = vis and IS_MOBILE end
 end
 
+-- ── feedback: scale-pop przy postawieniu, scale-down+dzwiek przy usunieciu ──
+-- Model.Scale (property) jest tylko-do-odczytu-ze-skryptu (Studio-only, dokumentacja Roblox) — jedyny sposob
+-- animowania skali z LocalScript to tweenowanie posredniego NumberValue i wolanie Model:ScaleTo() na kazdej zmianie.
+local function tweenModelScale(model, fromScale, toScale, duration, style, dir)
+	if not model or not model.Parent then return end
+	if not pcall(function() model:ScaleTo(fromScale) end) then return end
+	local proxy = Instance.new("NumberValue")
+	proxy.Value = fromScale
+	local conn
+	conn = proxy.Changed:Connect(function(v)
+		if model.Parent then pcall(function() model:ScaleTo(v) end) end
+	end)
+	local tw = TweenService:Create(proxy, TweenInfo.new(duration, style or Enum.EasingStyle.Back, dir or Enum.EasingDirection.Out), { Value = toScale })
+	tw.Completed:Connect(function()
+		conn:Disconnect()
+		proxy:Destroy()
+	end)
+	tw:Play()
+end
+
+local function playPopSound(parent, pitch)
+	local snd = Instance.new("Sound")
+	snd.SoundId = POP_SOUND_ID
+	snd.Volume = 0.45
+	snd.PlaybackSpeed = pitch or 1
+	snd.Parent = parent
+	snd:Play()
+	Debris:AddItem(snd, 2)
+end
+
+-- scale-pop 0.9->1.0 na swiezo postawionym/przesunietym modelu (serwer juz potwierdzil, res.ok)
+local function popPlaced(model)
+	if not model then return end
+	tweenModelScale(model, 0.9, 1.0, 0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	playPopSound(model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart") or model, 1)
+end
+
+-- szybki scale-down + dzwiek TUZ PRZED wyslaniem RemoveUnit — serwer niszczy model natychmiast (bez animacji),
+-- wiec cala animacja usuwania musi zdazyc zagrac lokalnie zanim replikacja Destroy() dogoni model.
+local function playRemoveFx(model)
+	if not model then return end
+	local okScale, curScale = pcall(function() return model:GetScale() end)
+	tweenModelScale(model, okScale and curScale or 1, 0.05, 0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	playPopSound(model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart") or model, 0.75)
+end
+
+-- poll (kilka klatek) po WR_Units — replikacja spawnu modelu z serwera nie jest natychmiastowa
+local function findModelByPlacementId(id, maxTries)
+	for _ = 1, (maxTries or 10) do
+		local units = Workspace:FindFirstChild("WR_Units")
+		if units then
+			for _, m in ipairs(units:GetChildren()) do
+				if m:GetAttribute("PlacementId") == id then return m end
+			end
+		end
+		task.wait()
+	end
+	return nil
+end
+
+-- j.w., ale dla MoveUnit — serwer nie zwraca nowego placementId, wiec szukamy po wlasciciel+kratka docelowa
+local function findModelAtCell(x, z, maxTries)
+	for _ = 1, (maxTries or 10) do
+		local units = Workspace:FindFirstChild("WR_Units")
+		if units then
+			for _, m in ipairs(units:GetChildren()) do
+				if m:GetAttribute("OwnerUserId") == LP.UserId and m:GetAttribute("CellX") == x and m:GetAttribute("CellZ") == z then
+					return m
+				end
+			end
+		end
+		task.wait()
+	end
+	return nil
+end
+
 -- ── akcje ──
 local function place()
 	if not _sel or not _cell then return end
 	if not validAt(_cell.x, _cell.z) then return end
 	if _moving then
 		-- przenoszenie juz postawionej jednostki (bez zwrotu do inventory)
+		local destX, destZ = _cell.x, _cell.z
 		local res = Net.get("MoveUnit"):InvokeServer(_moving, _cell.x, _cell.z, _rot)
 		if res and res.ok then
 			_moving = nil; _movingModel = nil -- serwer zniszczyl stary i postawil nowy model
@@ -423,6 +544,7 @@ local function place()
 			clearGhost()
 			setPcControls(false); setCursor(false)
 			BuildController._refreshCounter()
+			task.spawn(function() popPlaced(findModelAtCell(destX, destZ, 10)) end)
 		end
 		return
 	end
@@ -436,6 +558,9 @@ local function place()
 		end
 		BuildController._refreshCounter()
 		BuildController._refreshPanel()
+		if res.placementId then
+			task.spawn(function() popPlaced(findModelByPlacementId(res.placementId, 10)) end)
+		end
 	end
 end
 
@@ -475,7 +600,7 @@ local function clearHover()
 	_hovered = nil
 end
 
-local function updateHover()
+local function updateHover(color)
 	local m = unitUnderCursor()
 	if m == _hovered then return end
 	clearHover()
@@ -484,7 +609,7 @@ local function updateHover()
 		hl.Name = "WR_HoverHL"
 		hl.Adornee = m
 		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.OutlineColor = WHITE
+		hl.OutlineColor = color or WHITE
 		hl.OutlineTransparency = 0
 		hl.FillColor = Color3.new(0, 0, 0) -- lekkie przyciemnienie jednostki
 		hl.FillTransparency = 0.6
@@ -532,6 +657,7 @@ end
 local function deleteAt()
 	local m = unitUnderCursor()
 	if m then
+		playRemoveFx(m)
 		Net.get("RemoveUnit"):InvokeServer(m:GetAttribute("PlacementId"))
 		BuildController._refreshCounter()
 	end
@@ -820,11 +946,21 @@ function BuildController.start()
 			local function wireMobile(childName, fn)
 				local f = _mobileControls:FindFirstChild(childName)
 				local btn = f and (f:FindFirstChild("Button") or (f:IsA("GuiButton") and f)) or nil
-				if btn and btn:IsA("GuiButton") then btn.MouseButton1Click:Connect(fn) end
+				if btn and btn:IsA("GuiButton") then
+					btn.MouseButton1Click:Connect(fn)
+					-- palec DOTYKA przycisku -> zamroz ghosta (inaczej dotyk przenosi jednostke pod przycisk)
+					btn.MouseButton1Down:Connect(function() _suppressGhost = true end)
+				end
 			end
 			wireMobile("Accept", function() if _sel and _cell and validAt(_cell.x, _cell.z) then place() end end)
 			wireMobile("Rotate", function() if _sel then _rot = (_rot + 90) % 360; makeGhost() end end)
 			wireMobile("Cancel", function() if _sel then cancelSelection() end end)
+			-- odmroz ghosta po puszczeniu palca (globalnie, na wypadek zjechania palcem poza przycisk)
+			UserInputService.InputEnded:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+					_suppressGhost = false
+				end
+			end)
 		end
 		setPcControls(false)
 		buildMode.Enabled = false
@@ -840,6 +976,11 @@ function BuildController.start()
 	-- input: LPM stawia/podnosi/usuwa, PPM usuwa, R obraca, X anuluje
 	UserInputService.InputBegan:Connect(function(input, gp)
 		if not _on then return end
+		-- DOTYK/KLIK w GUI (przyciski Accept/Rotate/Cancel, panele) -> zamroz ghosta, zeby nie skoczyl pod palec.
+		-- gameProcessedEvent jest niezawodne dla dotyku (inaczej niz MouseButton1Down na GuiButton).
+		if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
+			_suppressGhost = gp
+		end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			if gp then return end -- klik w UI panelu (karty) — nie stawiaj
 			if _mode == "delete" then
@@ -877,7 +1018,7 @@ function BuildController.start()
 	RunService.RenderStepped:Connect(function(dt)
 		if not _on then return end
 		if _mode == "place" and _sel and _ghost then
-			updateGhost()
+			updateGhost(dt)
 		end
 		-- celownik: siedzi DOKLADNIE na srodku kratki (rzut world->ekran), a poza siatka — pod myszka.
 		-- gui ma IgnoreGuiInset=true, wiec dodajemy GetGuiInset (WorldToViewportPoint/GetMouseLocation sa bez topbara).
@@ -893,6 +1034,8 @@ function BuildController.start()
 				local aboveY = _plot.gridOrigin.Position.Y + bbSize.Y + 2.5
 				local sp = cam:WorldToViewportPoint(Vector3.new(_ghostPos.X, aboveY, _ghostPos.Z))
 				_reticle.Position = UDim2.fromOffset(sp.X + inset.X, sp.Y + inset.Y)
+				-- MOBILE: przyciski Accept/Rotate/Cancel NAD itemem (ghostem), sledza go; poza wyborem itemu ukryte.
+				if IS_MOBILE and _mobileControls then _mobileControls.Position = UDim2.fromOffset(sp.X + inset.X, sp.Y + inset.Y - 8) end
 				_reticle.Rotation = (_reticle.Rotation + dt * 45) % 360 -- powolny obrot (efekt)
 				local ok = validAt(_cell.x, _cell.z)
 				tintCursor(ok and GREEN or Color3.new(1, 1, 1))
@@ -905,7 +1048,7 @@ function BuildController.start()
 		else
 			-- nic nie stawiamy: podswietl wlasna jednostke pod kursorem (klik = edycja/przestawienie).
 			-- Tylko w trybie stawiania (w trybie Usun LPM kasuje, wiec bez hover-edycji).
-			if _mode == "place" then updateHover() else clearHover() end
+			if _mode == "place" then updateHover(WHITE) elseif _mode == "delete" then updateHover(RED) else clearHover() end
 			if _cursorGui.Enabled then setCursor(false) end
 		end
 	end)
