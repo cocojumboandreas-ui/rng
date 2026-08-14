@@ -39,6 +39,7 @@ function AutoRollController.start()
 				task.wait(4)
 			end
 		end
+		RollClient.setAutoUnlocked(true) -- gate widocznosci przycisku Auto (tylko po odblokowaniu n2)
 		RollClient.setIsCompact(true) -- auto = MALY reel na gorze-srodku
 		RollClient.setIsAuto(persistedEnabled) -- WR: respektuj zapisana preferencje (domyslnie ON przy pierwszym odblokowaniu)
 		if persistedEnabled then
