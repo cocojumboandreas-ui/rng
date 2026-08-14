@@ -14,6 +14,7 @@ local Services = ServerScriptService:WaitForChild("Services")
 -- CoreService -> CombatService -> WaveService -> BaseDoorService -> SkillService -> PurchaseService.
 local ORDER = {
 	"ProfileService",
+	"IntroService", -- hasSeenIntro (Faza 1B cutscenki intro); zalezy tylko od ProfileService
 	"StatProfileService",
 	"PlotService",
 	"EconomyService",

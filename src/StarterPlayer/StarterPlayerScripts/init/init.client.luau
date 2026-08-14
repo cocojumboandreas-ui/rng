@@ -37,6 +37,7 @@ local ORDER = {
 	"ArtilleryFxController",
 	"AtomicStrikeController",
 	"ConvoyController",
+	"IntroController", -- cutscenka intro (Faza 1B); pyta serwer o hasSeenIntro async, nie blokuje startu
 	"StoreController",
 	"UIHoverBinder", -- sprezyste hover/press na przyciskach
 	"AttentionBob", -- kolysanie Roll + Sklep

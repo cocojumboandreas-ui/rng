@@ -41,6 +41,8 @@ local REMOTES: { [string]: string } = {
 	IndexUpdated = "RemoteEvent", -- S->C {unitId, variant, category, percent, luckBonus} (live wpis per-wariant)
 	ClaimIndexLuck = "RemoteFunction", -- C->S (pct) -> {ok, luckBonus?, reason?} — odbierz (claim) prog bonusu luck (ETAP 4)
 	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
+	GetIntroState = "RemoteFunction", -- C->S () -> {hasSeenIntro:boolean} (Faza 1B: cutscenka intro)
+	MarkIntroSeen = "RemoteEvent", -- C->S () — gracz obejrzal/pominal intro -> ustaw hasSeenIntro=true w profilu
 	UnitHp = "RemoteEvent", -- S->C {placementId, hpPct, hp, maxHp} (pasek HP jednostki: pct + liczby cur/max)
 	UnitKilled = "RemoteEvent", -- S->C {placementId} (faza 5: jednostka zginela -> poof + zdejmij pasek)
 	GetPlotInfo = "RemoteFunction", -- C->S () -> {plotId, gridOrigin(CFrame), width, depth, cellSize, faceDir} (tryb budowania)

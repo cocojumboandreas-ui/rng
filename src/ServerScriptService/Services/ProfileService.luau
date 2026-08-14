@@ -33,6 +33,7 @@ local PROFILE_TEMPLATE = {
 	bestWave = 0, -- REKORD tablicy plotu: najlepsza fala. Writer: PlotBestService. Reconcile() dolewa.
 	bestDPS = 0, -- REKORD: szczytowy sumaryczny DPS jednostek na planszy. Writer: PlotBestService.
 	bestHP = 0, -- REKORD: szczytowe sumaryczne HP jednostek na planszy. Writer: PlotBestService.
+	hasSeenIntro = false, -- cutscenka intro (Faza 1B): true po dokonczeniu LUB pominieciu. Writer: IntroService.
 }
 
 local ProfileService = {}
