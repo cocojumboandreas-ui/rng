@@ -36,8 +36,11 @@ end
 
 local function unitTypeCount(): number
 	local n = 0
-	for _ in pairs(GameConfig.Units) do
-		n += 1
+	for id in pairs(GameConfig.Units) do
+		-- test_* = zaslepki deweloperskie (nadal w puli Roll, celowo NIE ruszane) — wykluczone TYLKO z liczby Indeksu
+		if string.sub(id, 1, 5) ~= "test_" then
+			n += 1
+		end
 	end
 	return n
 end

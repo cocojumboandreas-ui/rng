@@ -344,7 +344,7 @@ local function buildSlot(unitId, discovered, order)
 		if petIcon then petIcon.ImageTransparency = 1 end
 		setText(nameLbl, "?")
 		if stats then stats.Visible = false end
-		slot.BackgroundTransparency = math.min(1, (_gridTemplate.BackgroundTransparency or 0) + 0.35)
+		slot.BackgroundTransparency = math.min(0.4, (_gridTemplate.BackgroundTransparency or 0) + 0.10)
 	end
 	slot.Parent = _gridList
 	return slot
@@ -542,7 +542,10 @@ function IndexController.start()
 	-- kolejnosc jednostek: rarityN rosnaco
 	_unitOrder = {}
 	for id in pairs(GameConfig.Units) do
-		_unitOrder[#_unitOrder + 1] = id
+		-- test_* = zaslepki deweloperskie (nadal w puli Roll, celowo NIE ruszane) — wykluczone TYLKO z Indeksu
+		if string.sub(id, 1, 5) ~= "test_" then
+			_unitOrder[#_unitOrder + 1] = id
+		end
 	end
 	table.sort(_unitOrder, function(a, b)
 		return GameConfig.Units[a].rarityN < GameConfig.Units[b].rarityN
