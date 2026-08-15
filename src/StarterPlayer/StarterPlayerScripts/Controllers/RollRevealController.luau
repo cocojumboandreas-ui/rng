@@ -24,10 +24,11 @@ local REEL_REVEAL = true
 
 local RARITY_COLOR = {
 	[1] = Color3.fromRGB(185, 185, 195), -- common
-	[2] = Color3.fromRGB(90, 200, 120), -- uncommon
-	[3] = Color3.fromRGB(90, 160, 255), -- rare
-	[4] = Color3.fromRGB(195, 110, 255), -- epic
-	[5] = Color3.fromRGB(255, 205, 80), -- legendary
+	[2] = Color3.fromRGB(90, 200, 120), -- rare
+	[3] = Color3.fromRGB(90, 160, 255), -- super rare
+	[4] = Color3.fromRGB(195, 110, 255), -- mystic
+	[5] = Color3.fromRGB(255, 205, 80), -- legend
+	[6] = Color3.fromRGB(230, 60, 70), -- mysterious
 }
 
 -- ── KONICZYNY-MNOZNIKI (kaskada jak w referencji port.mp4) ──
@@ -86,7 +87,7 @@ local function deriveTier(rarityN: number): number
 			return t.revealTier
 		end
 	end
-	return 5
+	return 6
 end
 
 -- resolver dla RollReelReveal: rarityN -> { color, name } (kolor tieru + nazwa rzadkosci)
@@ -97,7 +98,7 @@ local function resolveTier(rarityN: number)
 		end
 	end
 	local last = GameConfig.Rarity.tiers[#GameConfig.Rarity.tiers]
-	return { color = RARITY_COLOR[5], name = last and last.name or "Legendary" }
+	return { color = RARITY_COLOR[6], name = last and last.name or "Mysterious" }
 end
 
 local function params(tier: number)

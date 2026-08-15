@@ -28,6 +28,7 @@ local TIER_COLOR = {
 	[3] = Color3.fromRGB(90, 160, 255),
 	[4] = Color3.fromRGB(195, 110, 255),
 	[5] = Color3.fromRGB(255, 205, 80),
+	[6] = Color3.fromRGB(255, 70, 90),
 }
 
 local function tierColor(rarityN: number): Color3
@@ -36,7 +37,7 @@ local function tierColor(rarityN: number): Color3
 			return TIER_COLOR[t.revealTier] or TIER_COLOR[1]
 		end
 	end
-	return TIER_COLOR[5]
+	return TIER_COLOR[6]
 end
 
 local function mkPart(name: string, size: Vector3, color: Color3): Part

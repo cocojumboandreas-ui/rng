@@ -229,7 +229,7 @@ end
 local TIER_COLOR = {
 	[1] = Color3.fromRGB(150, 150, 160), [2] = Color3.fromRGB(90, 190, 110),
 	[3] = Color3.fromRGB(80, 140, 230), [4] = Color3.fromRGB(170, 90, 220),
-	[5] = Color3.fromRGB(240, 180, 60),
+	[5] = Color3.fromRGB(240, 180, 60), [6] = Color3.fromRGB(230, 60, 70),
 }
 local function tierFor(rarityN)
 	for _, t in ipairs(GameConfig.Rarity.tiers) do
