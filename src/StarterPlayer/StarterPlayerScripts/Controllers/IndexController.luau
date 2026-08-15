@@ -219,6 +219,16 @@ local function setTextDeep(inst, txt)
 	end
 end
 
+-- jak setTextDeep ale dla TextColor3 — kit renderuje tekst warstwowo (zagniezdzona kopia rysuje sie NA WIERZCHU
+-- i przykrywa kolor rodzica), wiec sam kolor na labelu-rodzicu jest niewidoczny bez tego
+local function setTextColorDeep(inst, color)
+	if not inst then return end
+	if inst:IsA("TextLabel") or inst:IsA("TextButton") then inst.TextColor3 = color end
+	for _, c in ipairs(inst:GetDescendants()) do
+		if c:IsA("TextLabel") or c:IsA("TextButton") then c.TextColor3 = color end
+	end
+end
+
 -- koszt WYSWIETLANY (mirror LevelService.GetCost)
 local function costOf(unitId, level)
 	local u = GameConfig.Units[unitId]
@@ -396,7 +406,7 @@ function IndexController._selectUnit(unitId)
 
 	setText(_pw.name, u.displayName or unitId)
 	setText(_pw.rarity, tier.name) -- tier jednostki (Common/Rare/Super Rare/Mystic/Legend/Mysterious), nie wariant zakladki
-	if _pw.rarity then _pw.rarity.TextColor3 = TIER_COLOR[tier.revealTier] or TIER_COLOR[1] end
+	if _pw.rarity then setTextColorDeep(_pw.rarity, TIER_COLOR[tier.revealTier] or TIER_COLOR[1]) end
 	setText(_pw.levelInfo, "Level " .. (level + 1)) -- display-only +1: stored level 0-based, shown as 1-based
 
 	-- 3D ikona w detalu
