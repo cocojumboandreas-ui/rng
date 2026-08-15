@@ -12,6 +12,7 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
+local NukeFxLib = require(script.Parent:WaitForChild("NukeFxLib"))
 
 local AtomicStrikeController = {}
 local LP = Players.LocalPlayer
@@ -26,26 +27,6 @@ local BAR_SCALE = 0.12
 local SKY_H = 260
 local SIDE_X = 42
 local ROCKET_LEN = 9
-
-local _fxFolder
-local function fxFolder()
-	if _fxFolder and _fxFolder.Parent then
-		return _fxFolder
-	end
-	_fxFolder = Instance.new("Folder")
-	_fxFolder.Name = "WR_AtomicFxWorld"
-	_fxFolder.Parent = Workspace
-	return _fxFolder
-end
-
-local function mkPart(color, size, cf, shape, material)
-	local p = Instance.new("Part")
-	p.Anchored = true; p.CanCollide = false; p.CanQuery = false; p.CanTouch = false; p.CastShadow = false
-	p.Material = material or Enum.Material.Neon; p.Color = color; p.Size = size; p.CFrame = cf
-	if shape then p.Shape = shape end
-	p.Parent = fxFolder()
-	return p
-end
 
 -- CFrame rakiety: nos (-X) skierowany wzdluz `dir` (jak ArtilleryFxController.rocketCf)
 local function rocketLookCf(pos, dir)
@@ -94,68 +75,8 @@ local function mkRocketModel()
 	tr.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
 	tr.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2.2), NumberSequenceKeypoint.new(1, 0) })
 	tr.FaceCamera = true; tr.Parent = rocket
-	rocket.Parent = fxFolder()
+	rocket.Parent = NukeFxLib.fxFolder()
 	return rocket
-end
-
--- GRZYB ATOMOWY + KOPULA SWIATLA + SHOCKWAVE przez CALA MAPE. R=120 (bylo 90) — kolejny skok wg
--- feedbacku "jeszcze wiekszy wybuch". NOWY "lightDome": wielka niemal-nieprzezroczysta kula swiatla
--- trzymana ~2.2s (transp 0.12) po czym gasnie przez ~0.8s (razem ~3s) — "pochlania cala mape
--- swiatlem", NIEPRZEZROCZYSTE wg briefu (poprzednie warstwy za szybko gasly do pelnej przezroczystosci).
-local function bigMushroom(pos: Vector3)
-	local R = 120
-
-	local core = mkPart(Color3.fromRGB(255, 250, 230), Vector3.new(4, 4, 4), CFrame.new(pos), Enum.PartType.Ball)
-	local light = Instance.new("PointLight")
-	light.Color = Color3.fromRGB(255, 245, 220); light.Range = 160; light.Brightness = 28; light.Parent = core
-	TweenService:Create(core, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = Vector3.new(R * 1.5, R * 1.5, R * 1.5) }):Play()
-	TweenService:Create(light, TweenInfo.new(0.6), { Brightness = 0 }):Play()
-	task.delay(0.45, function()
-		if core.Parent then
-			TweenService:Create(core, TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-				Size = Vector3.new(R * 0.7, R * 0.7, R * 0.7), Transparency = 1, Color = Color3.fromRGB(90, 45, 20),
-			}):Play()
-		end
-	end)
-	Debris:AddItem(core, 1.8)
-
-	local lightDome = mkPart(Color3.fromRGB(255, 248, 225), Vector3.new(4, 4, 4), CFrame.new(pos), Enum.PartType.Ball)
-	lightDome.Transparency = 0.05
-	local domeLight = Instance.new("PointLight")
-	domeLight.Color = Color3.fromRGB(255, 240, 210); domeLight.Range = 300; domeLight.Brightness = 12; domeLight.Parent = lightDome
-	TweenService:Create(lightDome, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = Vector3.new(R * 12, R * 12, R * 12), Transparency = 0.12,
-	}):Play()
-	task.delay(2.2, function()
-		if lightDome.Parent then
-			TweenService:Create(lightDome, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
-			TweenService:Create(domeLight, TweenInfo.new(0.8), { Brightness = 0 }):Play()
-		end
-	end)
-	Debris:AddItem(lightDome, 3.0)
-
-	local ring = mkPart(Color3.fromRGB(255, 245, 210), Vector3.new(2, 4, 4), CFrame.new(pos + Vector3.new(0, 2, 0)) * CFrame.Angles(0, 0, math.rad(90)), Enum.PartType.Cylinder)
-	ring.Transparency = 0.05
-	TweenService:Create(ring, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = Vector3.new(2, R * 5, R * 5), Transparency = 1 }):Play()
-	Debris:AddItem(ring, 0.7)
-
-	local dome = mkPart(Color3.fromRGB(255, 225, 160), Vector3.new(2, 4, 4), CFrame.new(pos + Vector3.new(0, 1, 0)) * CFrame.Angles(0, 0, math.rad(90)), Enum.PartType.Cylinder)
-	dome.Transparency = 0.05
-	TweenService:Create(dome, TweenInfo.new(1.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = Vector3.new(2, R * 8, R * 8), Transparency = 1 }):Play()
-	Debris:AddItem(dome, 2.1)
-
-	local stem = mkPart(Color3.fromRGB(230, 210, 180), Vector3.new(2, R * 0.5, R * 0.5), CFrame.new(pos + Vector3.new(0, R * 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), Enum.PartType.Cylinder)
-	TweenService:Create(stem, TweenInfo.new(2.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = Vector3.new(R * 2.6, R * 0.42, R * 0.42), Transparency = 0.6 }):Play()
-	Debris:AddItem(stem, 2.7)
-
-	local cap = mkPart(Color3.fromRGB(255, 225, 190), Vector3.new(R * 1.1, R * 1.1, R * 1.1), CFrame.new(pos + Vector3.new(0, R * 2.4, 0)), Enum.PartType.Ball)
-	cap.Transparency = 0.02
-	TweenService:Create(cap, TweenInfo.new(2.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = Vector3.new(R * 3.6, R * 2.3, R * 3.6),
-		Position = pos + Vector3.new(0, R * 4.4, 0),
-		Transparency = 0.55,
-	}):Play()
-	Debris:AddItem(cap, 3.1)
 end
 
 -- ── UI: bary + blysk ──
@@ -305,7 +226,7 @@ local function runCutscene(impactPos: Vector3, corePos: Vector3, enemyBasePos: V
 			end
 		end)
 		shake(4.5, EXPLOSION_T)
-		bigMushroom(impactPos)
+		NukeFxLib.bigMushroom(impactPos)
 	end)
 
 	task.delay(TOTAL_FALL + EXPLOSION_T, function()

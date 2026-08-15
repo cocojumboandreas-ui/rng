@@ -18,6 +18,7 @@ local CoreService = {}
 local _stat, _plot = nil, nil
 local _coreHP = nil -- remote (guard nil w tescie)
 local _hp: { [any]: number } = {} -- player -> aktualne hp
+local _invuln: { [any]: boolean } = {} -- player -> true = ATOMOWKA "plansza zamrozona" (cutscenka w locie, rdzen nie moze zginac)
 
 local function maxHpOf(player): number
 	return (_stat and _stat.Get(player).coreHP) or GameConfig.StatBase.coreHP
@@ -40,7 +41,16 @@ local function pushHP(player, hp, maxHp)
 	end
 end
 
+-- ATOMOWKA: "plansza zamrozona" na czas cutscenki (lot rakiety + kadr bazy) — rdzen NIE moze zginac
+-- w oknie miedzy odpaleniem a impaktem, inaczej ultimate mialby-ratowac moglby run ZAKONCZYC zamiast.
+function CoreService.SetInvulnerable(player, on: boolean)
+	_invuln[player] = on or nil
+end
+
 function CoreService.ApplyDamage(player, amount: number)
+	if _invuln[player] then
+		return
+	end
 	local hp, maxHp = CoreService.GetHP(player)
 	hp = math.max(0, hp - amount)
 	_hp[player] = hp
@@ -79,6 +89,7 @@ function CoreService.Start()
 
 	Players.PlayerRemoving:Connect(function(player)
 		_hp[player] = nil
+		_invuln[player] = nil
 	end)
 end
 

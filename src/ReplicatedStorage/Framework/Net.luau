@@ -58,6 +58,8 @@ local REMOTES: { [string]: string } = {
 	AtomicStrikeCue = "RemoteEvent", -- S->C {impactPos} — TYLKO do gracza ktory odpalil -> cutscenka klienta
 	ConvoyStrike = "RemoteEvent", -- C->S () — gracz odpala KONWOJ (tymczasowy dev-przycisk)
 	ConvoyCue = "RemoteEvent", -- S->C {linePos, lateralAxis, offsets, entryExitOffset, driveT, fireT, plotId} — TYLKO do gracza ktory odpalil -> animacja klienta (wjazd/postoj/wyjazd)
+	IntroTeleportHome = "RemoteEvent", -- C->S () — gracz dotarl do finalu Kroku 5 (biala biel), prosi serwer o powrot na realny plac
+	IntroTeleportHomeDone = "RemoteEvent", -- S->C () — TYLKO do gracza ktory poprosil, potwierdzenie ze PivotTo na realny plac zakonczony -> klient gasi flash
 }
 
 local Net = {}

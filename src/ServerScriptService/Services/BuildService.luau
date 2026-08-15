@@ -30,6 +30,7 @@ local BuildService = {}
 local _inv, _grid, _plot, _wave, _profile = nil, nil, nil, nil, nil
 local _models: { [any]: { [string]: Instance } } = {} -- player -> {placementId -> Model}
 local _snapshot: { [any]: any } = {} -- player -> {pid -> placementCopy} — stan bazy na START fali (restore po fali)
+local _restoredOnLeave: { [any]: boolean } = {} -- player -> guard: RestoreBase@ProfileReleasing max RAZ na wyjscie
 local _unitsFolder: Folder? = nil
 
 -- ── helpers czyste ───────────────────────────────────────────────────────────
@@ -267,9 +268,14 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	-- CanQuery = true: KLUCZOWE dla trybu budowania — klient raycastuje jednostki (hover/pickup/delete).
 	-- CanCollide = true: jednostki sa NIEPRZECHODNE — gracz nie przechodzi przez nie, moze na nie wskoczyc.
 	--   Wrogowie chodza po pathT (CFrame, bez fizyki), wiec kolizja jednostek ich nie blokuje.
+	-- R6 humanoid: realne animacje (Animator) -> kotwicz TYLKO HRP + spaw dodatkow (RigAnimSetup).
+	-- Reszta (pojazdy, wieze, bloki): zakotwicz wszystko jak dotychczas.
+	local isR6 = require(ReplicatedStorage.Framework.RigAnimSetup).prepare(model) ~= nil
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
-			d.Anchored = true
+			if not isR6 then
+				d.Anchored = true
+			end
 			d.CanCollide = true
 			d.CanQuery = true
 		end
@@ -529,6 +535,26 @@ function BuildService.Start()
 		end)
 	end
 
+	-- BUG 2B: gracz wychodzi w trakcie NIEDOKONCZONEJ fali -> jednostki zabite w tej fali (KillUnit usunal
+	-- je z data.placements) maja wrocic PRZED zapisem profilu, tak samo jak przy naturalnym koncu fali.
+	-- ProfileReleasing odpala sie w ProfileService.onPlayerRemoving PRZED profile:EndSession() (patrz linia
+	-- 84 ProfileService) -> RestoreBase mutuje ta sama zywa tabele data ktora zaraz potem trafia do save.
+	-- CELOWO NIE pod Players.PlayerRemoving w tym serwisie: BuildService startuje PO ProfileService w ORDER
+	-- (init.server ORDER), wiec ten handler odpalilby sie PO profile:EndSession() — za pozno, fix by nic nie dal.
+	-- Guard _restoredOnLeave: RestoreBase ma pojsc DOKLADNIE RAZ na wyjscie (idempotencja na wypadek gdyby
+	-- ProfileReleasing kiedys odpalilo sie wiecej niz raz dla tego samego gracza).
+	if _profile.ProfileReleasing then
+		_profile.ProfileReleasing:Connect(function(player)
+			if _restoredOnLeave[player] then
+				warn(("[BuildService] ProfileReleasing: RestoreBase juz wywolane dla %s, pomijam duplikat"):format(player.Name))
+				return
+			end
+			_restoredOnLeave[player] = true
+			BuildService.RestoreBase(player)
+			print(("[BuildService] ProfileReleasing: RestoreBase odtworzyl stan bazy przed zapisem profilu (%s)"):format(player.Name))
+		end)
+	end
+
 	Players.PlayerRemoving:Connect(function(player)
 		local byPid = _models[player]
 		if byPid then
@@ -538,6 +564,7 @@ function BuildService.Start()
 		end
 		_models[player] = nil
 		_snapshot[player] = nil
+		_restoredOnLeave[player] = nil
 	end)
 end
 

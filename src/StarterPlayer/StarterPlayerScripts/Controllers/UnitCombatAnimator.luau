@@ -24,6 +24,10 @@ local GameConfig = require(
 )
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
 
+local RigAnimSetup = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("RigAnimSetup"))
+local ANIM_IDLE = "rbxassetid://114633582166730"
+local ANIM_SHOT = "rbxassetid://109739383922402"
+
 local UnitCombatAnimator = {}
 
 local PROFILES = {
@@ -41,6 +45,20 @@ local PROFILES = {
 	helicopter = { kind = "heli", flash = Color3.fromRGB(255, 205, 120), tracer = Color3.fromRGB(255, 180, 80), width = 0.18, flashTime = 0.05, muzzles = 2,
 		spin = { { name = "Propeller", axis = "Y", speed = 35 }, { name = "BackPropeller", axis = "X", speed = 28 } }, hover = { h = 4.0, bob = 0.7 } },
 	jet = { kind = "jet", laser = Color3.fromRGB(255, 60, 60), width = 0.28, flashTime = 0.11, muzzles = 2, hover = { h = 6.0, bob = 0.5 }, engine = true },
+
+	-- ── HEAVY WEAPONS (mesh/items) — obracaja sie PRZODEM w strone wroga, strzelaja NABOJAMI (nie lasery), AoE ──
+	-- aim=true -> yaw modelu sledzi cel. aimOffset (rad) koryguje os "przodu" meshu jesli art nie patrzy w -Z.
+	-- kind "mg"       -> obrot + pociski-smugi z muzzle (pooled).             (MG Nest / Minigun / Dual Minigun)
+	-- kind "launcher" -> obrot + SEKWENCYJNE rakiety-mesh z tub + WYBUCH AoE. (Rocket Launcher x2/x4/x6)
+	-- kind "drone"    -> baza stoi; dron-mesh startuje, parabola z gory, AoE, respawn po 3s, dym silnika.
+	mg_nest_a = { kind = "mg", aim = true, muzzles = 1, flash = Color3.fromRGB(255, 225, 140), bullet = Color3.fromRGB(255, 235, 150), recoil = 0.10, flashTime = 0.04 },
+	mg_nest_b = { kind = "mg", aim = true, muzzles = 1, flash = Color3.fromRGB(255, 215, 120), bullet = Color3.fromRGB(255, 230, 140), recoil = 0.12, flashTime = 0.04 },
+	minigun_turret = { kind = "mg", aim = true, muzzles = 1, flash = Color3.fromRGB(255, 210, 120), bullet = Color3.fromRGB(255, 225, 130), recoil = 0.06, flashTime = 0.03 },
+	dual_minigun = { kind = "mg", aim = true, muzzles = 2, flash = Color3.fromRGB(255, 205, 110), bullet = Color3.fromRGB(255, 220, 120), recoil = 0.05, flashTime = 0.03 },
+	rocket_launcher_x2 = { kind = "launcher", aim = true, tubes = 2, proj = Color3.fromRGB(70, 70, 70), flash = Color3.fromRGB(255, 170, 90), boom = Color3.fromRGB(255, 140, 40), boomScale = 14, recoil = 0.25, flashTime = 0.07 },
+	rocket_launcher_x4 = { kind = "launcher", aim = true, tubes = 4, proj = Color3.fromRGB(70, 70, 70), flash = Color3.fromRGB(255, 170, 90), boom = Color3.fromRGB(255, 140, 40), boomScale = 16, recoil = 0.22, flashTime = 0.07 },
+	rocket_launcher_x6 = { kind = "launcher", aim = true, tubes = 6, proj = Color3.fromRGB(70, 70, 70), flash = Color3.fromRGB(255, 170, 90), boom = Color3.fromRGB(255, 140, 40), boomScale = 18, recoil = 0.20, flashTime = 0.07 },
+	drone_base = { kind = "drone", aim = false, boom = Color3.fromRGB(255, 150, 50), boomScale = 26, flash = Color3.fromRGB(255, 180, 90), flashTime = 0.06 },
 }
 
 local _tracked = {}
@@ -84,7 +102,7 @@ end
 local function boom(pos, color, scale)
 	local ball = mkNeon("WR_Boom", worldParent(), color, Enum.PartType.Ball)
 	ball.Position = pos; ball.Transparency = 0.1; ball.Size = Vector3.new(1, 1, 1)
-	local light = Instance.new("PointLight"); light.Color = color; light.Range = 16; light.Brightness = 6; light.Parent = ball
+	local light = Instance.new("PointLight"); light.Color = color; light.Range = 12 + scale; light.Brightness = 6; light.Parent = ball
 	Debris:AddItem(ball, 0.45)
 	task.spawn(function()
 		local t0 = os.clock()
@@ -119,6 +137,115 @@ local function launchProjectile(muzzle, target, projColor, boomColor, boomScale)
 	end)
 end
 
+-- ── HEAVY WEAPONS: pociski proceduralne (pooling obowiazkowy) ──────────────────────
+local ITEM_MODELS = ReplicatedStorage:FindFirstChild("WR_ItemModels")
+
+-- NABOJE: krotka jasna smuga muzzle->cel, szybka. Pool wspoldzielony (miniguny sypia duzo).
+local _bulletPool = {}
+local function fireBullet(muzzle, target, color)
+	local b = table.remove(_bulletPool)
+	if not b then
+		b = Instance.new("Part")
+		b.Name = "WR_Bullet"; b.Anchored = true; b.CanCollide = false; b.CanQuery = false; b.CanTouch = false; b.CastShadow = false
+		b.Material = Enum.Material.Neon
+	end
+	b.Color = color; b.Size = Vector3.new(0.45, 0.45, 3.0); b.Transparency = 0
+	b.CFrame = CFrame.lookAt(muzzle, target)
+	b.Parent = worldParent()
+	task.spawn(function()
+		local dur = math.clamp((target - muzzle).Magnitude / 260, 0.03, 0.22)
+		local t0 = os.clock()
+		while true do
+			local a = (os.clock() - t0) / dur
+			if a >= 1 then break end
+			b.CFrame = CFrame.lookAt(muzzle:Lerp(target, a), target)
+			RunService.Heartbeat:Wait()
+		end
+		b.Parent = nil
+		if #_bulletPool < 64 then _bulletPool[#_bulletPool + 1] = b else b:Destroy() end
+	end)
+end
+
+local function stripPhys(inst)
+	for _, d in ipairs(inst:GetDescendants()) do
+		if d:IsA("BasePart") then d.Anchored = true; d.CanCollide = false; d.CanQuery = false; d.CanTouch = false; d.CastShadow = false end
+	end
+	if inst:IsA("BasePart") then inst.Anchored = true; inst.CanCollide = false; inst.CanQuery = false; inst.CanTouch = false; inst.CastShadow = false end
+end
+local function place(inst, cf) if inst:IsA("Model") then inst:PivotTo(cf) else inst.CFrame = cf end end
+-- os X meshy = przod (rakietka/dron 2.0 w X) -> obrot +90deg wokol Y ustawia +X w kierunek lotu (tunable).
+local function noseCf(pos, look) return CFrame.lookAt(pos, look) * CFrame.Angles(0, math.rad(90), 0) end
+
+-- RAKIETY-MESH: klon WR_RocketAmmo leci muzzle->cel lekkim lukiem, WYBUCH AoE na miejscu. Pool.
+local _rocketPool = {}
+local function fireRocketMesh(muzzle, target, prof)
+	local r = table.remove(_rocketPool)
+	if not r then
+		local tmpl = ITEM_MODELS and ITEM_MODELS:FindFirstChild("WR_RocketAmmo")
+		if tmpl then r = tmpl:Clone(); stripPhys(r)
+		else r = Instance.new("Part"); r.Size = Vector3.new(1.6, 0.5, 0.5); r.Color = prof.proj or Color3.fromRGB(70, 70, 70); r.Material = Enum.Material.SmoothPlastic; r.Anchored = true; r.CanCollide = false; r.CanQuery = false; r.CastShadow = false end
+	end
+	place(r, noseCf(muzzle, target)); r.Parent = worldParent()
+	task.spawn(function()
+		local dur = math.clamp((target - muzzle).Magnitude / 95, 0.2, 0.7)
+		local t0 = os.clock()
+		local prev = muzzle
+		while true do
+			local a = (os.clock() - t0) / dur
+			if a >= 1 then break end
+			local pos = muzzle:Lerp(target, a) + Vector3.new(0, math.sin(a * math.pi) * 3, 0)
+			place(r, noseCf(pos, pos + (pos - prev))); prev = pos
+			RunService.Heartbeat:Wait()
+		end
+		r.Parent = nil
+		if #_rocketPool < 24 then _rocketPool[#_rocketPool + 1] = r else r:Destroy() end
+		boom(target, prof.boom or Color3.fromRGB(255, 140, 40), prof.boomScale or 6)
+	end)
+end
+
+-- DRON: klon WR_DroneShahed startuje z bazy, parabola (start->apex->cel), AoE na dole, dym silnika. Pool.
+local _dronePool = {}
+local function launchDrone(basePos, target, prof, onDone)
+	local d = table.remove(_dronePool)
+	if not d then
+		local tmpl = ITEM_MODELS and ITEM_MODELS:FindFirstChild("WR_DroneShahed")
+		if tmpl then d = tmpl:Clone(); stripPhys(d)
+		else d = Instance.new("Part"); d.Size = Vector3.new(2, 0.4, 1.6); d.Color = Color3.fromRGB(60, 60, 60); d.Anchored = true; d.CanCollide = false; d.CanQuery = false; d.CastShadow = false end
+		local host = d:IsA("Model") and (d.PrimaryPart or d:FindFirstChildWhichIsA("BasePart")) or d
+		local smoke = Instance.new("ParticleEmitter")
+		smoke.Name = "WR_DroneSmoke"
+		smoke.Color = ColorSequence.new(Color3.fromRGB(90, 90, 90), Color3.fromRGB(40, 40, 40))
+		smoke.Texture = "rbxasset://textures/particles/smoke_main.dds"
+		smoke.Lifetime = NumberRange.new(0.4, 0.7); smoke.Rate = 40; smoke.Speed = NumberRange.new(2, 4); smoke.SpreadAngle = Vector2.new(10, 10)
+		smoke.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 2) })
+		smoke.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1) })
+		smoke.Enabled = false; smoke.Parent = host
+	end
+	local host = d:IsA("Model") and (d.PrimaryPart or d:FindFirstChildWhichIsA("BasePart")) or d
+	local sm = host and host:FindFirstChild("WR_DroneSmoke")
+	if sm then sm.Enabled = true end
+	local startP = basePos + Vector3.new(0, 2, 0)
+	local apex = Vector3.new((startP.X + target.X) / 2, math.max(startP.Y, target.Y) + 42, (startP.Z + target.Z) / 2)
+	place(d, noseCf(startP, apex)); d.Parent = worldParent()
+	task.spawn(function()
+		local dur = 1.8
+		local t0 = os.clock()
+		local prev = startP
+		while true do
+			local a = (os.clock() - t0) / dur
+			if a >= 1 then break end
+			local pos = startP:Lerp(apex, a):Lerp(apex:Lerp(target, a), a) -- kwadratowa bezier
+			place(d, noseCf(pos, pos + (pos - prev))); prev = pos
+			RunService.Heartbeat:Wait()
+		end
+		if sm then sm.Enabled = false end
+		d.Parent = nil
+		if #_dronePool < 6 then _dronePool[#_dronePool + 1] = d else d:Destroy() end
+		boom(target, prof.boom or Color3.fromRGB(255, 150, 50), prof.boomScale or 7)
+		if onDone then onDone() end
+	end)
+end
+
 -- ── strzal ────────────────────────────────────────────────────────────────────
 local function emitBeam(em, muzzle, target, width, color, showT)
 	local dir = target - muzzle
@@ -138,6 +265,8 @@ local function fire(st, target)
 	local pivot = st.model:GetPivot()
 	local now = os.clock()
 
+	if st.r6 and st.r6.shot then st.r6.shot:Play(0.06); st.r6.shot:AdjustSpeed(1.3) end
+
 	if prof.kind == "flame" then
 		local muzzle = (pivot * st.muzzleLocals[1]).Position
 		if st.flameEmitter then
@@ -145,7 +274,7 @@ local function fire(st, target)
 			st.flameEmitter.Enabled = true
 			st.flameUntil = now + 0.14
 		end
-		st.recoilAmt = (prof.recoil or 0) * st.scale
+		if not st.isR6 then st.recoilAmt = (prof.recoil or 0) * st.scale end
 		return
 	end
 
@@ -156,7 +285,7 @@ local function fire(st, target)
 		st.emitters[1].light.Brightness = 3
 		st.flashUntil = now + (prof.flashTime or 0.06)
 		launchProjectile(muzzle, target, prof.proj, prof.boom, 5)
-		st.recoilAmt = (prof.recoil or 0) * st.scale
+		if not st.isR6 then st.recoilAmt = (prof.recoil or 0) * st.scale end
 		return
 	end
 
@@ -169,6 +298,46 @@ local function fire(st, target)
 		return
 	end
 
+	if prof.kind == "mg" then
+		for i, mloc in ipairs(st.muzzleLocals) do
+			local muzzle = (pivot * mloc).Position
+			local em = st.emitters[i]
+			if em then em.flash.Position = muzzle; em.flash.Transparency = 0.15; em.light.Brightness = 2.5 end
+			fireBullet(muzzle, target, prof.bullet or prof.flash)
+		end
+		if prof.spinBarrel then st.spinning = now + 0.15 end -- rozkrec wiazke luf
+		st.flashUntil = now + (prof.flashTime or 0.04)
+		if (prof.recoil or 0) > 0 then st.recoilAmt = prof.recoil * st.scale end
+		return
+	end
+
+	if prof.kind == "launcher" then
+		-- SEKWENCYJNIE: tuba 1, potem 2, ... z krotkim odstepem; cel-snapshot (AoE).
+		if (prof.recoil or 0) > 0 then st.recoilAmt = prof.recoil * st.scale end
+		for i, mloc in ipairs(st.muzzleLocals) do
+			task.delay((i - 1) * 0.09, function()
+				if not st.model.Parent then return end
+				local muzzle = (st.model:GetPivot() * mloc).Position
+				local em = st.emitters[i]
+				if em then em.flash.Position = muzzle; em.flash.Transparency = 0.1; em.light.Brightness = 3; st.flashUntil = os.clock() + (prof.flashTime or 0.07) end
+				fireRocketMesh(muzzle, target, prof)
+			end)
+		end
+		return
+	end
+
+	if prof.kind == "drone" then
+		if st.droneBusy then return end
+		st.droneBusy = true
+		local base = pivot.Position
+		local em = st.emitters[1]
+		if em then em.flash.Position = base; em.flash.Transparency = 0.2; em.light.Brightness = 2; st.flashUntil = now + (prof.flashTime or 0.06) end
+		launchDrone(base, target, prof, function()
+			task.delay(3.0, function() st.droneBusy = false end) -- respawn/gotowosc po 3s od uderzenia
+		end)
+		return
+	end
+
 	-- gun / minigun / heli / jet: strzal z KAZDEGO muzzle
 	local col = prof.laser or prof.tracer
 	for i, mloc in ipairs(st.muzzleLocals) do
@@ -177,7 +346,7 @@ local function fire(st, target)
 	end
 	st.flashUntil = now + (prof.flashTime or 0.05)
 	if prof.kind == "minigun" then st.spinning = now + 0.12 end
-	if (prof.recoil or 0) > 0 then st.recoilAmt = prof.recoil * st.scale end
+	if (prof.recoil or 0) > 0 and not st.isR6 then st.recoilAmt = prof.recoil * st.scale end
 end
 
 -- ── petla ─────────────────────────────────────────────────────────────────────
@@ -185,8 +354,27 @@ local function step(dt)
 	local now = os.clock()
 	for model, st in pairs(_tracked) do
 		if model.Parent then
+			-- 0) AIM: wieze obracaja sie PRZODEM (-Z) w strone najblizszego wroga (yaw, plynnie)
+			if st.aim then
+				st.aimAcc = (st.aimAcc or 0) + dt
+				if st.aimAcc >= 0.08 or st.aimTarget == nil then
+					st.aimAcc = 0
+					st.aimTarget = nearestEnemy(st.basePos.X, st.basePos.Z, st.range)
+				end
+				local tp = st.aimTarget
+				if tp then
+					local dx, dz = tp.X - st.basePos.X, tp.Z - st.basePos.Z
+					if dx * dx + dz * dz > 1 then
+						local desired = math.atan2(-dx, -dz) + (st.prof.aimOffset or 0)
+						local diff = ((desired - st.yaw + math.pi) % (2 * math.pi)) - math.pi
+						st.yaw += diff * math.clamp(dt * 8, 0, 1)
+					end
+				end
+				local back = (st.recoilAmt and st.recoilAmt > 0.005) and st.recoilAmt or 0
+				model:PivotTo(CFrame.new(st.basePos) * CFrame.Angles(0, st.yaw, 0) * CFrame.new(0, 0, back))
+				if st.recoilAmt then st.recoilAmt *= 0.72 end
 			-- 1) transform modelu: hover (heli/jet) + odrzut modelu (piechota)
-			if st.hover then
+			elseif st.hover then
 				st.hoverPhase += dt * 2.2
 				local y = (st.hover.h + math.sin(st.hoverPhase) * st.hover.bob) * st.scale
 				local back = (st.recoilAmt and st.recoilAmt > 0.005) and st.recoilAmt or 0
@@ -213,6 +401,16 @@ local function step(dt)
 				st.spinAngle = (st.spinAngle + st.prof.spin * dt) % (math.pi * 2)
 				st.barrel.CFrame = pivot * st.barrelLocal * CFrame.Angles(0, 0, st.spinAngle)
 			end
+			-- HEAVY minigun/dual: kreci wiazka luf wokol osi -Z przy strzale
+			if st.spinners and st.spinning and now < st.spinning then
+				st.barrelSpin = (st.barrelSpin or 0) + (st.prof.spin or 22) * dt
+				for _, sp in ipairs(st.spinners) do
+					for k, rod in ipairs(sp.rods) do
+						local a = (k / 4) * 6.28318 + st.barrelSpin
+						rod.CFrame = (pivot * sp.mloc) * CFrame.new(math.cos(a) * st.spinRad, math.sin(a) * st.spinRad, -0.1)
+					end
+				end
+			end
 			if st.cannon then
 				if st.cannonRecoilAmt and st.cannonRecoilAmt > 0.01 then
 					st.cannon.CFrame = pivot * st.cannonLocal * CFrame.new(0, 0, st.cannonRecoilAmt)
@@ -234,12 +432,11 @@ local function step(dt)
 				st.flameUntil = nil
 			end
 
-			-- 4) kadencja ognia
+			-- 4) kadencja ognia — GOTOWY do strzalu gdy cel wejdzie w zasieg (bez czekania caly interval)
 			st.acc += dt
 			if st.acc >= st.interval then
-				st.acc = 0
 				local target = nearestEnemy(pivot.Position.X, pivot.Position.Z, st.range)
-				if target then fire(st, target) end
+				if target then st.acc = 0; fire(st, target) else st.acc = st.interval end
 			end
 		end
 	end
@@ -270,6 +467,30 @@ local function computeMuzzleLocals(prof, sx, sy, sz)
 		return { CFrame.new(-sx * 0.35, -sy * 0.05, -sz * 0.3), CFrame.new(sx * 0.35, -sy * 0.05, -sz * 0.3) }
 	elseif prof.kind == "jet" then
 		return { CFrame.new(-sx * 0.32, 0, -sz * 0.42), CFrame.new(sx * 0.32, 0, -sz * 0.42) }
+	elseif prof.kind == "mg" then
+		local fy = sy * 0.42 -- wysokosc lufy (lekko w dol — naboje szly nad lufami)
+		if (prof.muzzles or 1) >= 2 then
+			return { CFrame.new(-sx * 0.18, fy, -(sz * 0.5 + 0.2)), CFrame.new(sx * 0.18, fy, -(sz * 0.5 + 0.2)) }
+		end
+		return { CFrame.new(0, fy, -(sz * 0.5 + 0.2)) }
+	elseif prof.kind == "launcher" then
+		local n = prof.tubes or 2
+		local cols = (n <= 2) and n or math.ceil(n / 2)
+		local rows = math.ceil(n / cols)
+		local locs, i = {}, 0
+		for r = 1, rows do
+			for c = 1, cols do
+				i += 1
+				if i <= n then
+					local tx = (cols == 1) and 0 or ((c - 1) / (cols - 1) - 0.5)
+					local ty = (rows == 1) and 0 or ((r - 1) / (rows - 1) - 0.5)
+					locs[i] = CFrame.new(tx * sx * 0.38, sy * 0.46 + ty * sy * 0.24, -(sz * 0.5 + 0.02)) -- siatka OTWOROW tub, na wysokosci dziur
+				end
+			end
+		end
+		return locs
+	elseif prof.kind == "drone" then
+		return { CFrame.new(0, sy * 0.5, 0) } -- szczyt bazy = punkt startu drona
 	end
 	return { CFrame.new(0, sy * 0.12, -(sz * 0.5 + 0.4)) } -- pojedynczy przod
 end
@@ -296,6 +517,26 @@ local function setupFx(model, prof, st, sx, sy, sz)
 	st.emitters = {}
 	for _ = 1, #st.muzzleLocals do
 		st.emitters[#st.emitters + 1] = mkEmitter(model, prof.flash or col, col, prof.width or 0.14)
+	end
+
+	-- HEAVY minigun/dual: obracajaca sie wiazka luf (4 prety) na kazdym muzzle; kreci sie przy strzale
+	if prof.spinBarrel then
+		st.spinRad = sy * 0.09
+		st.spinners = {}
+		for _, mloc in ipairs(st.muzzleLocals) do
+			local rods = {}
+			for k = 1, 4 do
+				local rod = Instance.new("Part")
+				rod.Size = Vector3.new(sy * 0.07, sy * 0.07, sz * 0.5)
+				rod.Anchored = true; rod.CanCollide = false; rod.CanQuery = false; rod.CanTouch = false; rod.CastShadow = false
+				rod.Material = Enum.Material.Metal; rod.Color = Color3.fromRGB(38, 40, 44)
+				local a = (k / 4) * 6.28318
+				rod.CFrame = (st.baseCF * mloc) * CFrame.new(math.cos(a) * st.spinRad, math.sin(a) * st.spinRad, -0.1)
+				rod.Parent = model
+				rods[k] = rod
+			end
+			st.spinners[#st.spinners + 1] = { rods = rods, mloc = mloc }
+		end
 	end
 
 	-- minigun (piechota): lufa do obrotu przy strzale
@@ -347,6 +588,26 @@ local function setupFx(model, prof, st, sx, sy, sz)
 end
 
 -- ── track/untrack ───────────────────────────────────────────────────────────────
+-- R6: prawdziwe animacje (klient). Serwer (BuildService/RigAnimSetup) juz odkotwiczyl rig i dodal Animator.
+-- Idle w petli + Shot przy strzale. Zwraca {idle,shot} lub nil (nie-R6 albo rig nieprzygotowany).
+local function setupR6(model)
+	local hum = model:FindFirstChildWhichIsA("Humanoid", true)
+	if not hum or hum.RigType ~= Enum.HumanoidRigType.R6 then return nil end
+	local animator = hum:FindFirstChildOfClass("Animator")
+	if not animator then return nil end
+	local function load(id, looped, prio)
+		local a = Instance.new("Animation"); a.AnimationId = id
+		local ok, tr = pcall(function() return animator:LoadAnimation(a) end)
+		if not ok or not tr then return nil end
+		tr.Looped = looped; tr.Priority = prio
+		return tr
+	end
+	local idle = load(ANIM_IDLE, true, Enum.AnimationPriority.Idle)
+	local shot = load(ANIM_SHOT, false, Enum.AnimationPriority.Action)
+	if idle then idle:Play(0.2) end
+	return { idle = idle, shot = shot }
+end
+
 local function track(model)
 	if _tracked[model] then return end
 	if model:GetAttribute("OwnerUserId") ~= Players.LocalPlayer.UserId then return end
@@ -367,8 +628,16 @@ local function track(model)
 		recoilAmt = 0, recoilApplied = false,
 	}
 	if prof.hover then st.hover = prof.hover; st.hoverPhase = math.random() * 6.28 end
+	if prof.aim then
+		st.aim = true
+		st.basePos = st.baseCF.Position
+		local _, y0 = st.baseCF:ToEulerAnglesYXZ()
+		st.yaw = y0
+	end
 	st.muzzleLocals = computeMuzzleLocals(prof, sz.X, sz.Y, sz.Z)
 	setupFx(model, prof, st, sz.X, sz.Y, sz.Z)
+	st.r6 = setupR6(model)
+	st.isR6 = st.r6 ~= nil
 	_tracked[model] = st
 end
 

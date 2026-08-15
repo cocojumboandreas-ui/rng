@@ -38,6 +38,12 @@ local HEAVY_CAP = 10 -- max jednoczesnych ciezkich FX (rakiety, wybuchy, ogien)
 local DMG_POOL = 30 -- pula floating liczb obrazen "-N" nad wrogiem
 local COIN_CAP = 48 -- max jednoczesnych monet-FX (fontanna z killa)
 
+local RigAnimSetup = require(Framework:WaitForChild("RigAnimSetup"))
+local ENEMY_ANIM = { idle = "rbxassetid://114633582166730", walk = "rbxassetid://123805470740320", shot = "rbxassetid://109739383922402" }
+local ANIM_WALK_SPEED = 1.5 -- mnoznik tempa animacji chodu wroga (feet-slide fix)
+local ANIM_SHOT_SPEED = 1.3 -- mnoznik tempa animacji strzalu wroga
+local MOVE_SMOOTH = 16 -- tlumienie ruchu HRP (lerp/klatke); wyzej = szybciej dogania cel, mniej wygladzania
+
 local EnemyRenderController = {}
 
 local _folder = nil
@@ -237,7 +243,26 @@ local function buildEnemyModel(modelName, isBoss): Model?
 		_hpBarByModel[m] = { gui = gui, fill = fill, label = label }
 	end
 	_weaponByModel[m] = resolveWeapon(m, modelName) -- rozpoznaj bron raz (part przesuwa sie z modelem przez PivotTo)
-	_rigByModel[m] = resolveRig(m, modelName) -- rozpoznaj rig anim raz (nogi/kola/wirniki)
+	local rig = resolveRig(m, modelName) -- rozpoznaj rig anim raz (nogi/kola/wirniki)
+	_rigByModel[m] = rig
+	-- R6 zolnierze (kind=="walk"): PRAWDZIWE animacje (Animator) zamiast proceduralnego chodu.
+	-- prepare() odkotwicza konczyny (tylko HRP zakotwiczony), spawia dodatki, dodaje Animator.
+	if rig and rig.kind == "walk" then
+		local animator = RigAnimSetup.prepare(m)
+		if animator then
+			rig.animator = animator
+			rig.real = true -- tracki wczytywane LENIWIE przy 1. renderze (prewarm-load 360 naraz dawal len=0)
+		end
+		-- Po odkotwiczeniu rigu Humanoid RAZ wlacza Torso.CanCollide=true (silnikowo, NIE lapie Changed).
+		-- Wrog tylko wizualny -> Torso niekolizyjny (pilnowane w renderStep). Torso rigu = BasePart bezposrednio
+		-- pod Dummy (Humanoid.Parent); NIE FindFirstChild rekurencyjnie, bo Uniform ma pod-MODEL "Torso".
+		local humB = m:FindFirstChildWhichIsA("Humanoid", true)
+		local torsoPart = humB and humB.Parent and humB.Parent:FindFirstChild("Torso")
+		if torsoPart and torsoPart:IsA("BasePart") then
+			rig.torso = torsoPart
+			rig.torso.CanCollide = false
+		end
+	end
 	m:PivotTo(PARK)
 	m.Parent = _folder
 	return m
@@ -261,6 +286,12 @@ end
 
 local function release(model, poolKey)
 	if not model then return end
+	local rrig = _rigByModel[model]
+	if rrig and rrig.real then
+		if rrig.tWalk then rrig.tWalk:Stop(0) end
+		if rrig.tIdle then rrig.tIdle:Stop(0) end
+		if rrig.tShot then rrig.tShot:Stop(0) end
+	end
 	model:PivotTo(PARK)
 	model:SetAttribute("WR_EnemyId", nil) -- sparkowany wrog nie moze byc trafiony przez bron FPS
 	local hb = _hpBarByModel[model]
@@ -476,15 +507,15 @@ end
 -- MONETY z killa: wypadaja, ladują na ziemi i KRECA sie (walec), potem MAGNES gracza sciaga je do postaci
 -- (leca do gracza + kurcza sie). Realne monety liczy serwer (nagroda per fala) — to warstwa VISUAL/juice.
 local COIN_IMG = "rbxassetid://79510076315488" -- ikona monety z UI (ta sama co HUD)
--- biala swietlna smuga (ogon) za moneta — STONOWANA: krotka, cienka, lekka (ref wwwr.png)
+-- biala swietlna smuga (ogon) za moneta — jak w ref wwwr.png; najladniej podczas magnesu do gracza
 local COIN_TRAIL_COL = ColorSequence.new(Color3.fromRGB(255, 255, 255))
 local COIN_TRAIL_TRANS = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 0.4), -- glowa (przy monecie) — lekka poswiata
-	NumberSequenceKeypoint.new(1, 1), -- ogon — zanika
+	NumberSequenceKeypoint.new(0, 0.4),
+	NumberSequenceKeypoint.new(1, 1),
 })
 local COIN_TRAIL_WIDTH = NumberSequence.new({
-	NumberSequenceKeypoint.new(0, 1), -- pelna szerokosc przy monecie
-	NumberSequenceKeypoint.new(1, 0), -- zweza sie do szpica (kometa)
+	NumberSequenceKeypoint.new(0, 1),
+	NumberSequenceKeypoint.new(1, 0),
 })
 local function addCoinTrail(part)
 	local a0 = Instance.new("Attachment"); a0.Position = Vector3.new(0, 0.22, 0); a0.Parent = part
@@ -506,7 +537,6 @@ local function coinDrop(pos, halfH)
 	for _ = 1, nCoins do
 		if _coinActive >= COIN_CAP then return end
 		_coinActive += 1
-		-- nosnik ruchu (przezroczysty) + sprite ikony monety z UI + ogon
 		local c = Instance.new("Part")
 		c.Size = Vector3.new(0.5, 0.5, 0.5); c.Transparency = 1
 		c.Anchored = true; c.CanCollide = false; c.CanQuery = false; c.CanTouch = false; c.CastShadow = false
@@ -517,11 +547,10 @@ local function coinDrop(pos, halfH)
 		local img = Instance.new("ImageLabel")
 		img.Size = UDim2.fromScale(1, 1); img.BackgroundTransparency = 1; img.Image = COIN_IMG
 		img.Parent = bb
-		addCoinTrail(c) -- bialy ogon-smuga (kometa)
+			addCoinTrail(c) -- bialy ogon-smuga (kometa)
 		local land = Vector3.new(pos.X + (math.random() - 0.5) * 5, groundY, pos.Z + (math.random() - 0.5) * 5)
 		local p0 = pos + Vector3.new(0, 1.5, 0)
 		task.spawn(function()
-			-- 1) wyrzut na ziemie (luk)
 			local t0 = os.clock(); local d1 = 0.3 + math.random() * 0.15
 			while c.Parent do
 				local a = math.min((os.clock() - t0) / d1, 1)
@@ -530,12 +559,11 @@ local function coinDrop(pos, halfH)
 				if a >= 1 then break end
 				RunService.Heartbeat:Wait()
 			end
-			-- 2) lezy na ziemi (krotko)
 			local t1 = os.clock(); local d2 = 0.35 + math.random() * 0.3
 			while c.Parent and os.clock() - t1 < d2 do
+				c.CFrame = CFrame.new(land)
 				RunService.Heartbeat:Wait()
 			end
-			-- 3) magnes: lec do gracza (przyspiesza) + kurcz sie -> znika w postaci
 			local from = c.Position
 			local t2 = os.clock(); local d3 = 0.4
 			while c.Parent do
@@ -544,7 +572,7 @@ local function coinDrop(pos, halfH)
 				local hrp = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
 				local target = (hrp and hrp.Position + Vector3.new(0, 1.5, 0)) or from
 				c.CFrame = CFrame.new(from:Lerp(target, a * a))
-				local s = math.floor(48 * (1 - 0.7 * a) + 0.5) -- kurczy sie do ~30% -> "wsiaka" w gracza
+				local s = math.floor(48 * (1 - 0.7 * a) + 0.5) -- kurczy sie -> "wsiaka" w gracza
 				bb.Size = UDim2.fromOffset(s, s)
 				if a >= 1 then break end
 				RunService.Heartbeat:Wait()
@@ -558,6 +586,12 @@ end
 local function neutralPose(model)
 	local pivot = model:GetPivot()
 	local rig = _rigByModel[model]
+	if rig and rig.real then
+		if rig.tWalk then rig.tWalk:Stop(0) end
+		if rig.tIdle then rig.tIdle:Stop(0) end
+		if rig.tShot then rig.tShot:Stop(0) end
+		return
+	end
 	if rig and rig.kind == "walk" and rig.legs then
 		for _, leg in ipairs(rig.legs) do
 			leg.part.CFrame = pivot * leg.cf
@@ -568,7 +602,7 @@ local function neutralPose(model)
 		local arm = findExact(model, nm)
 		if arm then
 			local top = arm.Position + arm.CFrame.UpVector * (arm.Size.Y * 0.5)
-			arm.CFrame = CFrame.new(top - Vector3.new(0, arm.Size.Y * 0.5, 0)) * yaw -- rece w dol
+			arm.CFrame = CFrame.new(top - Vector3.new(0, arm.Size.Y * 0.5, 0)) * yaw
 		end
 	end
 end
@@ -582,7 +616,7 @@ local function dropWeapon(model, groundY)
 	w.Anchored = true; w.CanCollide = false; w.CanQuery = false; w.CanTouch = false; w.CastShadow = false
 	for _, d in ipairs(w:GetDescendants()) do if d:IsA("BasePart") then d.Anchored = true; d.CanCollide = false end end
 	w.Parent = _fxFolder
-	part.Transparency = 1 -- schowaj bron w rekach trupa (upada obok jako klon)
+	part.Transparency = 1
 	local from = part.Position
 	local to = Vector3.new(from.X + (math.random() - 0.5) * 4, groundY + 0.3, from.Z + (math.random() - 0.5) * 4)
 	task.spawn(function()
@@ -810,15 +844,15 @@ local function deathFall(e)
 	local model = e.model
 	local poolKey = e.poolKey
 	local halfH = e.halfH or 2
-	model:SetAttribute("WR_EnemyId", nil) -- trup nie jest trafialny bronia FPS
+	model:SetAttribute("WR_EnemyId", nil)
 	local hb = _hpBarByModel[model]
 	if hb then hb.lastPct = nil; if hb.gui.Enabled then hb.gui.Enabled = false end end
 	local start = model:GetPivot()
 	local groundY = start.Position.Y - halfH + 0.3
-	neutralPose(model) -- wyprostuj nogi + rece
-	dropWeapon(model, groundY) -- bron wypada obok
+	neutralPose(model)
+	dropWeapon(model, groundY)
 	local dir = e.dir or Vector3.new(0, 0, 1)
-	local fallen = CFrame.lookAlong(Vector3.new(start.Position.X, groundY, start.Position.Z), dir) * CFrame.Angles(math.rad(90), 0, 0) -- na plecy
+	local fallen = CFrame.lookAlong(Vector3.new(start.Position.X, groundY, start.Position.Z), dir) * CFrame.Angles(math.rad(90), 0, 0)
 	task.spawn(function()
 		local cv = Instance.new("CFrameValue")
 		cv.Value = start
@@ -829,7 +863,7 @@ local function deathFall(e)
 		tw:Play()
 		tw.Completed:Wait()
 		conn:Disconnect(); cv:Destroy()
-		task.wait(2) -- lezy 2s od przewrocenia
+		task.wait(2)
 		release(model, poolKey)
 	end)
 end
@@ -1049,6 +1083,21 @@ local function updateFocus(now)
 	_focused = best
 end
 
+-- leniwe wczytanie tracków (raz na model, przy 1. renderze — nie w prewarm, tam len=0)
+local function ensureEnemyTracks(rig)
+	if not rig or not rig.animator or rig.tracksLoaded then return end
+	rig.tracksLoaded = true
+	local function loadTr(id, looped, prio)
+		local a = Instance.new("Animation"); a.AnimationId = id
+		local ok, tr = pcall(function() return rig.animator:LoadAnimation(a) end)
+		if ok and tr then tr.Looped = looped; tr.Priority = prio; return tr end
+		return nil
+	end
+	rig.tIdle = loadTr(ENEMY_ANIM.idle, true, Enum.AnimationPriority.Idle)
+	rig.tWalk = loadTr(ENEMY_ANIM.walk, true, Enum.AnimationPriority.Movement)
+	rig.tShot = loadTr(ENEMY_ANIM.shot, false, Enum.AnimationPriority.Action)
+end
+
 local function renderStep(dt)
 	dt = dt or (1 / 60)
 	local now = os.clock()
@@ -1095,7 +1144,7 @@ local function renderStep(dt)
 					if rp.hoverH then -- lot: utrzymaj WYSOKOSC lotu zawsze; bujanie/przechyl tylko gdy anim ON i blisko
 						baseY += rp.hoverH + (animOn and math.sin(e.animPhase * HOVER_FREQ) * (rp.bob or 0) or 0)
 						if animOn and rp.bank then roll = math.sin(e.animPhase * HOVER_FREQ * 0.6) * rp.bank end
-					elseif animOn and rig.kind == "walk" then -- marsz: podskok tulowia
+					elseif animOn and rig.kind == "walk" and not rig.real then -- marsz: podskok tulowia (procedura)
 						baseY += math.abs(math.sin(e.animPhase * WALK_FREQ)) * BODY_BOB
 					elseif animOn and rp.bob then -- jazda: lekki bujak (jeep/tank)
 						baseY += math.abs(math.sin(e.animPhase * 11)) * rp.bob
@@ -1107,7 +1156,18 @@ local function renderStep(dt)
 				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * (e.lane * spread) + dir * (e.fwd * spread)
 				local pivot = CFrame.lookAlong(wpos, dir)
 				if roll ~= 0 then pivot = pivot * CFrame.Angles(0, 0, roll) end
-				e.model:PivotTo(pivot)
+				if rig and rig.real and e.model.PrimaryPart then
+					-- rusz TYLKO HRP (PivotTo nadpisalby poze Animatora); reszta welded idzie za HRP, Animator pozuje konczyny.
+					-- LERP = plynny ruch/obrot (tlumi mikro-stutter); snap na 1. renderze (bez slizgu z PARK).
+					local hrp = e.model.PrimaryPart
+					if e.shown then
+						hrp.CFrame = hrp.CFrame:Lerp(pivot, math.clamp(dt * MOVE_SMOOTH, 0, 1))
+					else
+						hrp.CFrame = pivot
+					end
+				else
+					e.model:PivotTo(pivot)
+				end
 				e.shown = true
 
 				-- jawne HP: pasek nad wrogiem. Aktualizuj fill/kolor/Text TYLKO gdy % faktycznie sie zmienil
@@ -1131,7 +1191,7 @@ local function renderStep(dt)
 
 				-- napedy: nogi (chod) / kola / wirniki — TYLKO gdy Soldier Animations ON i wrog BLISKO kamery
 				if animOn and rig then
-					if rig.kind == "walk" then
+					if rig.kind == "walk" and not rig.real then
 						for _, leg in ipairs(rig.legs) do
 							local s = math.sin(e.animPhase * WALK_FREQ + leg.phase) * LEG_AMP
 							leg.part.CFrame = pivot * leg.cf * (CFrame.new(0, leg.half, 0) * CFrame.Angles(s, 0, 0) * CFrame.new(0, -leg.half, 0))
@@ -1144,6 +1204,15 @@ local function renderStep(dt)
 				end
 
 				-- wizualny ostrzal: FX pokazuj dla WLASNEGO plota zawsze; dla CUDZYCH tylko gdy attackAnim ON.
+				if rig and rig.real then
+					if rig.torso and rig.torso.CanCollide then rig.torso.CanCollide = false end -- gracz przechodzi przez wroga
+					if animOn then
+						ensureEnemyTracks(rig)
+						if rig.tWalk and not rig.tWalk.IsPlaying then rig.tWalk:Play(0.25); rig.tWalk:AdjustSpeed(ANIM_WALK_SPEED) end
+					else
+						if rig.tWalk and rig.tWalk.IsPlaying then rig.tWalk:Stop(0.15) end
+					end
+				end
 				if now >= e.nextFire then
 					e.nextFire = now + e.atkInt * (0.8 + math.random() * 0.4)
 					if own or sAttack then
@@ -1165,6 +1234,7 @@ local function renderStep(dt)
 								muzzle = Vector3.new(pos.X, pos.Y + e.halfH * 1.2, pos.Z)
 							end
 							fireWeapon(e, muzzle, target + Vector3.new(0, 1.5, 0))
+						if rig and rig.real and rig.tShot then rig.tShot:Play(0.05); rig.tShot:AdjustSpeed(ANIM_SHOT_SPEED) end
 						end
 					end
 				end
@@ -1172,6 +1242,11 @@ local function renderStep(dt)
 		elseif e.shown then
 			e.model:PivotTo(PARK)
 			e.shown = false
+			local prig = e.rig
+			if prig and prig.real then
+				if prig.tWalk then prig.tWalk:Stop(0.1) end
+				if prig.tIdle then prig.tIdle:Stop(0.1) end
+			end
 			local hb = _hpBarByModel[e.model]
 			if hb then hb.lastPct = nil; if hb.gui.Enabled then hb.gui.Enabled = false end end
 		end

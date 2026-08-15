@@ -79,6 +79,59 @@ local Units = {
 		model = "Jet", displayName = "Jet",
 	},
 
+	-- ── HEAVY WEAPONS (mesh/items, upload 2026-08, grupa 664399796) ────────────────
+	-- 8 nowych meshy w Assets.Units. rollowalne + w Indeksie + stawialne. DPS na drabinie (rzadsze=mocniejsze).
+	-- special = zaczep dla proceduralnego zachowania (sekwencyjne rakiety / obrot+naboje / dron); dopoki brak
+	-- handlera, dzialaja jak zwykla wieza przez CombatService (combat.dmg*fireRate). AoE/dron = kolejny etap.
+	mg_nest_a = {
+		kind = W, rarityN = 250, footprint = { w = 1, d = 1 }, hp = 350,
+		combat = { dmg = 8, fireRate = 8.0, range = 28 }, -- KM na trojnogu, szybkie naboje, daleki zasieg: DPS 64
+		model = "MG Nest A", displayName = "MG Nest",
+		special = "mg",
+	},
+	rocket_launcher_x2 = {
+		kind = W, rarityN = 500, footprint = { w = 1, d = 1 }, hp = 300,
+		combat = { dmg = 110, fireRate = 1.0, range = 44 }, -- wyrzutnia 2-tub, AoE daleki zasieg: DPS 110
+		model = "Rocket Launcher x2", displayName = "Rocket Launcher II",
+		special = "launcher", tubes = 2, aoe = 12,
+	},
+	mg_nest_b = {
+		kind = W, rarityN = 600, footprint = { w = 1, d = 1 }, hp = 450,
+		combat = { dmg = 11, fireRate = 10.0, range = 30 }, -- ciezszy KM, daleki zasieg: DPS 110
+		model = "MG Nest B", displayName = "Heavy MG Nest",
+		special = "mg",
+	},
+	minigun_turret = {
+		kind = W, rarityN = 1000, footprint = { w = 1, d = 1 }, hp = 600, def = 6,
+		combat = { dmg = 16, fireRate = 12.0, range = 34 }, -- minigan obrotowy, daleki zasieg: DPS 192
+		model = "Minigun Turret", displayName = "Minigun Turret",
+		special = "minigun",
+	},
+	rocket_launcher_x4 = {
+		kind = W, rarityN = 1200, footprint = { w = 1, d = 1 }, hp = 400,
+		combat = { dmg = 230, fireRate = 1.0, range = 46 }, -- wyrzutnia 4-tub, 1 salwa/s (4 rakiety AoE), daleki zasieg: DPS 230
+		model = "Rocket Launcher x4", displayName = "Rocket Launcher IV",
+		special = "launcher", tubes = 4, aoe = 14,
+	},
+	dual_minigun = {
+		kind = W, rarityN = 2500, footprint = { w = 1, d = 1 }, hp = 800, def = 10,
+		combat = { dmg = 24, fireRate = 16.0, range = 38 }, -- podwojny minigan, daleki zasieg: DPS 384
+		model = "Dual Minigun", displayName = "Dual Minigun",
+		special = "minigun",
+	},
+	rocket_launcher_x6 = {
+		kind = W, rarityN = 3500, footprint = { w = 1, d = 1 }, hp = 500,
+		combat = { dmg = 468, fireRate = 1.0, range = 50 }, -- wyrzutnia 6-tub, 1 salwa/s (6 rakiet AoE), daleki zasieg: DPS 468
+		model = "Rocket Launcher x6", displayName = "Rocket Launcher VI",
+		special = "launcher", tubes = 6, aoe = 16,
+	},
+	drone_base = {
+		kind = W, rarityN = 5000, footprint = { w = 2, d = 2 }, hp = 600, -- baza = 2x2 pola (dron startuje/wraca)
+		combat = { dmg = 200, fireRate = 1.0, range = 55 }, -- dron: parabola z gory, AoE bardzo daleki zasieg: DPS 200
+		model = "Drone Base", displayName = "Drone Base",
+		special = "drone", aoe = 16,
+	},
+
 	-- ── TEST CONTENT (placeholder, nazwy do podmiany; ids/klucze zostaja EN) ──────
 	-- Modele budowane w RUNTIME przez UnitModelFactory (brak `model` -> placeholder z kodu).
 	-- BLOKI: kind=Block, footprint 1x1, brak combat (PASYWNE - NIE strzelaja, NIE zadaja obrazen wrogom),

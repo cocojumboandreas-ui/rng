@@ -392,6 +392,18 @@ function PlotService.GetPlayerByPlot(plotId: number)
 	return key
 end
 
+-- Odeslij gracza z powrotem na jego WLASNY plac (ta sama sciezka co spawn po CharacterAdded).
+-- Uzywane przez finalowy teleport cutscenki intro (Krok 5) — serwer robi PivotTo we WLASNYM
+-- czasie, zero duplikacji logiki spawnu.
+function PlotService.ReturnToPlot(player: Player): boolean
+	local char = player.Character
+	if not char then
+		return false
+	end
+	positionCharacter(player, char)
+	return true
+end
+
 function PlotService.Init()
 	PlotService.PlotAssigned = Signal.new() -- (player, PlotInfo)
 	PlotService.PlotReleased = Signal.new() -- (player, plotId)
