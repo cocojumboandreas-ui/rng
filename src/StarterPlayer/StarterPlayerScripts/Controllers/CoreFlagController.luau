@@ -2,7 +2,9 @@
 -- StarterPlayerScripts/Controllers/CoreFlagController.luau  (KLIENT)
 -- Flaga ZAMIAST neonowego bloku rdzenia: przechyla sie plynnie wg HP core'a (Net.CoreHP, serwer autorytatywny).
 -- Kotwica WR_CoreAnchor zostaje logicznie (cel/kolizja/HP) — tu TYLKO wizual zamiennika.
--- Krzywa: angle(pct) = 90*(1-pct)^1.5 (100%=0 prosto .. 0%=90 plasko), obrot wokol podstawy drzewca
+-- Krzywa: angle(pct) = 90*(1-pct)^1.5 (100%=0 prosto .. 0%=90 plasko) — pct KWANTYZOWANY do
+-- FLAG_STEP_COUNT dyskretnych progow przed przelozeniem na krzywa (patrz bucketFor) — flaga ma
+-- OPADAC SKOKOWO, nie slizgac sie plynnie przy kazdym drobnym ticku HP. Obrot wokol podstawy drzewca
 -- (FlagGroundCFrame — pozycja+yaw ku faceDirection zapisane przy stawianiu flagi w Studio) do TYLU.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -18,12 +20,14 @@ local FALL_DURATION = 0.9 -- tween [s] do plaskiej pozycji (hp=0) — dluzszy, d
 local FALL_HOLD = 0.6 -- [s] PO dojechaniu do plaskiej: ignoruj kolejne CoreHP. finishRun woła _core.ResetHP
 	-- NATYCHMIAST po CoreDestroyed (nastepny run) — bez tej blokady upadek nigdy nie bylby widoczny.
 local LIVE_DURATION = 0.45 -- tween [s] dla zwyklych zmian HP w trakcie fali
+local FLAG_STEP_COUNT = 6 -- liczba dyskretnych "skokow" opadania (0=puste/plasko .. 6=pelne/pion) — 7 pozycji katowych lacznie
 
 local _flag, _pole, _groundCF, _halfH = nil, nil, nil, nil
 local _angleValue = Instance.new("NumberValue")
 _angleValue.Value = 0
 local _activeTween = nil
 local _holdUntil = 0
+local _lastBucket = nil -- indeks ostatnio zastosowanego progu (nil = jeszcze zaden) — retweenujemy TYLKO gdy bucket sie zmieni
 
 -- WR: FlagGroundCFrame (per-plot, zapisane przy stawianiu w Studio) ma yaw ustawiony ~rownolegle
 -- do faceDirection plota (potwierdzone na 5/6 placow) — plotno flagi jednak stoi wtedy BOKIEM
@@ -36,6 +40,13 @@ local FLAG_YAW_FIX = CFrame.Angles(0, math.rad(-90), 0)
 local function angleFor(pct: number): number
 	pct = math.clamp(pct, 0, 1)
 	return 90 * (1 - pct) ^ 1.5
+end
+
+-- pct kwantyzowany do FLAG_STEP_COUNT+1 progow PRZED przelozeniem na krzywa angleFor — krzywa
+-- (i jej przyspieszenie blisko zera) zostaje, zmienia sie tylko liczba odrebnych katow docelowych.
+local function bucketFor(pct: number): number
+	pct = math.clamp(pct, 0, 1)
+	return math.floor(pct * FLAG_STEP_COUNT + 1e-6)
 end
 
 -- FALOWANIE (czysto kosmetyczne, klient-only): sztywny MeshPart bez riga wiec prawdziwe
@@ -171,8 +182,13 @@ function CoreFlagController.start()
 		end
 		local maxHp = p.maxHp
 		local pct = (maxHp and maxHp > 0) and math.clamp((p.hp or maxHp) / maxHp, 0, 1) or 1
-		local target = angleFor(pct)
-		local isFall = target >= 89.9
+		local bucket = bucketFor(pct)
+		if bucket == _lastBucket then
+			return -- ten sam prog co ostatnio — brak nowego "skoku", nie przerywaj biezacego tweena
+		end
+		_lastBucket = bucket
+		local target = angleFor(bucket / FLAG_STEP_COUNT)
+		local isFall = bucket <= 0
 		setAngle(target, isFall and FALL_DURATION or LIVE_DURATION)
 		if isFall then
 			_holdUntil = now + FALL_DURATION + FALL_HOLD
