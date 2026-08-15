@@ -238,14 +238,6 @@ local function tierFor(rarityN)
 	return GameConfig.Rarity.tiers[#GameConfig.Rarity.tiers]
 end
 
--- wariant (zakladka) -> etykieta "tieru" w detalu: Common / Golden / Rainbow (3 warianty jednostki)
-local VARIANT_LABEL = { regular = "Common", shiny = "Golden", galaxy = "Rainbow" }
-local VARIANT_COLOR = {
-	regular = Color3.fromRGB(200, 200, 210),
-	shiny = Color3.fromRGB(240, 200, 70),
-	galaxy = Color3.fromRGB(160, 120, 255),
-}
-
 -- ── ViewportFrame 3D miniatura modelu jednostki ───────────────────────────────────
 local function makeUnitViewport(modelName)
 	local src = modelName and ASSETS_UNITS:FindFirstChild(modelName)
@@ -403,9 +395,8 @@ function IndexController._selectUnit(unitId)
 	local hpMultNext = hpGrowth ^ (level + 1)
 
 	setText(_pw.name, u.displayName or unitId)
-	local variantLabel = VARIANT_LABEL[_activeVariant] or "Common"
-	setText(_pw.rarity, variantLabel) -- sam wariant (Common/Golden/Rainbow), bez "1 in N"
-	if _pw.rarity then _pw.rarity.TextColor3 = VARIANT_COLOR[_activeVariant] or Color3.new(1, 1, 1) end
+	setText(_pw.rarity, tier.name) -- tier jednostki (Common/Rare/Super Rare/Mystic/Legend/Mysterious), nie wariant zakladki
+	if _pw.rarity then _pw.rarity.TextColor3 = TIER_COLOR[tier.revealTier] or TIER_COLOR[1] end
 	setText(_pw.levelInfo, "Level " .. (level + 1)) -- display-only +1: stored level 0-based, shown as 1-based
 
 	-- 3D ikona w detalu
