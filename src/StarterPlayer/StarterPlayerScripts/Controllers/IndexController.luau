@@ -453,7 +453,9 @@ local function nextThreshold()
 end
 
 local function refreshBottom()
-	setText(_bottom.multiplier, ("+%.1f"):format(_luckBonus))
+	if _bottom.infoText then
+		setTextDeep(_bottom.infoText, ("Index luck bonus: <font color='rgb(100,230,120)'>+%.1fx</font>"):format(_luckBonus))
+	end
 	local nt = nextThreshold()
 	local pct = _overall.percent or 0
 	if nt then
@@ -461,7 +463,6 @@ local function refreshBottom()
 		if _bottom.progressFill then
 			_bottom.progressFill.Size = UDim2.new(frac, 0, _bottom.progressFill.Size.Y.Scale, _bottom.progressFill.Size.Y.Offset)
 		end
-		setText(_bottom.infoText, ("%d%% / %d%%"):format(math.floor(pct + 0.5), nt.pct))
 		if _bottom.claimBtn then
 			if nt.reached then
 				setText(_bottom.claimLbl or _bottom.claimBtn, ("CLAIM +%.1f"):format(nt.luck))
@@ -479,7 +480,6 @@ local function refreshBottom()
 		if _bottom.progressFill then
 			_bottom.progressFill.Size = UDim2.new(1, 0, _bottom.progressFill.Size.Y.Scale, _bottom.progressFill.Size.Y.Offset)
 		end
-		setText(_bottom.infoText, "100%")
 		if _bottom.claimBtn then
 			setText(_bottom.claimLbl or _bottom.claimBtn, "All claimed")
 			_bottom.claimBtn.BackgroundColor3 = Color3.fromRGB(55, 85, 60)
@@ -647,6 +647,13 @@ function IndexController.start()
 		_bottom.multiplier = resolve(bi, "Frame", "Frame", "Multiplier")
 		_bottom.infoText = resolve(bi, "Frame", "Frame", "Text")
 		_bottom.progressFill = resolve(bi, "Frame", "ProgressBar", "Progress")
+		if _bottom.multiplier then _bottom.multiplier.Visible = false end -- zlaczone w jedna linie (infoText, RichText)
+		if _bottom.infoText then
+			_bottom.infoText.RichText = true
+			for _, d in ipairs(_bottom.infoText:GetDescendants()) do
+				if d:IsA("TextLabel") then d.RichText = true end
+			end
+		end
 	end
 	if _bottom.claimBtn and _bottom.claimBtn:IsA("GuiButton") then
 		_bottom.claimBtn.MouseButton1Click:Connect(function()
