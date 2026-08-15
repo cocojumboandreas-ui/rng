@@ -422,21 +422,21 @@ function IndexController._selectUnit(unitId)
 	end
 
 	if u.combat then
-		local curDmg = math.floor(u.combat.dmg * dmgMult + 0.5)
-		local nextDmg = math.floor(u.combat.dmg * dmgMultNext + 0.5)
+		local curDps = math.floor(u.combat.dmg * dmgMult * (u.combat.fireRate or 1) + 0.5)
+		local nextDps = math.floor(u.combat.dmg * dmgMultNext * (u.combat.fireRate or 1) + 0.5)
 		local curHp = math.floor((u.hp or 0) * hpMult + 0.5)
 		local nextHp = math.floor((u.hp or 0) * hpMultNext + 0.5)
 		if _pw.atk then _pw.atk.Visible = true end
-		setText(_pw.atk, fmtNum(curDmg))
-		setText(_pw.hp, fmtNum(curHp))
-		setText(_pw.change1, ("⚔ %s → %s"):format(fmtNum(curDmg), fmtNum(nextDmg)))
-		setText(_pw.change2, ("❤ %s → %s"):format(fmtNum(curHp), fmtNum(nextHp)))
+		setText(_pw.atk, "⚔ " .. fmtNum(curDps) .. "/s")
+		setText(_pw.hp, "❤ " .. fmtNum(curHp))
+		setText(_pw.change1, ("❤ +%s"):format(fmtNum(nextHp - curHp)))
+		setText(_pw.change2, ("⚔ +%s/s"):format(fmtNum(nextDps - curDps)))
 	else
 		local curHp = math.floor((u.hp or 0) * hpMult + 0.5)
 		local nextHp = math.floor((u.hp or 0) * hpMultNext + 0.5)
 		if _pw.atk then _pw.atk.Visible = false end -- blok nie ma dmg -> pokazujemy sam HP
-		setText(_pw.hp, fmtNum(curHp))
-		setText(_pw.change1, ("❤ %s → %s"):format(fmtNum(curHp), fmtNum(nextHp)))
+		setText(_pw.hp, "❤ " .. fmtNum(curHp))
+		setText(_pw.change1, ("❤ +%s"):format(fmtNum(nextHp - curHp)))
 		setText(_pw.change2, u.def and ("Armor " .. u.def) or "")
 	end
 	refreshLevelUpBtn(unitId)
