@@ -361,18 +361,32 @@ local function step(dt: number)
 			local rangeMult = (stats and stats.rangeMult) or 1
 			local explosiveChance = (stats and stats.explosiveChance) or 0 -- Explosive Ammo: szansa splash (0 gdy brak)
 
-			-- LEWELOWANIE (Etap 3): mnoznik efektu TYPU = growthPerLevel^level. Odczyt unitLevels JEDEN raz/gracza
-			-- (NIE per-wieza), mnoznik liczony inline z LevelConfig.growthPerLevel i memoizowany per unitId
-			-- (perf: brak pow ani call serwisu per-tick per-wieza). weapon -> dmg + hp, block -> hp.
+			-- LEWELOWANIE (Etap 3): mnoznik efektu TYPU. Odczyt unitLevels JEDEN raz/gracza (NIE per-wieza),
+			-- mnozniki liczone inline z LevelConfig i memoizowane per unitId (perf: brak pow/call serwisu
+			-- per-tick per-wieza). DMG (attack/Weapon): growthPerLevel (glowna krzywa, niezmieniona).
+			-- HP: attack(Weapon) -> attackHpGrowthPerLevel (mala sekundarna), defense(Block) -> growthPerLevel
+			-- (reuse, bez zmian) — patrz LevelConfig/LevelService.GetHpLevelMult dla tej samej logiki po stronie Index UI.
 			local levels = (_level and _level.GetLevels(player)) or nil
 			local levelGrowth = GameConfig.Level.growthPerLevel
-			local levelMultMemo = {}
-			local function levelMult(unitId: string): number
-				local m = levelMultMemo[unitId]
+			local attackHpGrowth = GameConfig.Level.attackHpGrowthPerLevel or levelGrowth
+			local levelDmgMultMemo = {}
+			local function levelDmgMult(unitId: string): number
+				local m = levelDmgMultMemo[unitId]
 				if m == nil then
 					local lv = (levels and levels[unitId]) or 0
 					m = (lv > 0) and (levelGrowth ^ lv) or 1
-					levelMultMemo[unitId] = m
+					levelDmgMultMemo[unitId] = m
+				end
+				return m
+			end
+			local levelHpMultMemo = {}
+			local function levelHpMult(unitId: string, isWeapon: boolean): number
+				local m = levelHpMultMemo[unitId]
+				if m == nil then
+					local lv = (levels and levels[unitId]) or 0
+					local growth = isWeapon and attackHpGrowth or levelGrowth
+					m = (lv > 0) and (growth ^ lv) or 1
+					levelHpMultMemo[unitId] = m
 				end
 				return m
 			end
@@ -450,7 +464,7 @@ local function step(dt: number)
 							end
 						end
 						if best then
-							local dmg = u.combat.dmg * dmgMult * levelMult(pl.unitId) -- level TYPU buffuje dmg broni
+							local dmg = u.combat.dmg * dmgMult * levelDmgMult(pl.unitId) -- level TYPU buffuje dmg broni
 							_runDamage[player] = (_runDamage[player] or 0) + math.min(dmg, math.max(0, best.hp)) -- licz efektywne (bez overkill)
 							best.hp -= dmg
 							cds[pid] = 1 / (u.combat.fireRate * fireRateMult)
@@ -500,7 +514,7 @@ local function step(dt: number)
 									end
 								end
 								if best then
-									local dmg = u.combat.dmg * dmgMult * levelMult(mt.unitId)
+									local dmg = u.combat.dmg * dmgMult * levelDmgMult(mt.unitId)
 									local effDmg = math.min(dmg, math.max(0, best.hp))
 									_runDamage[player] = (_runDamage[player] or 0) + effDmg
 									_mobileRunDamage[player] = (_mobileRunDamage[player] or 0) + effDmg
@@ -525,7 +539,7 @@ local function step(dt: number)
 			for pid, pl in pairs(placements) do
 				local u = GameConfig.Units[pl.unitId]
 				if u then
-					local maxHp = (u.hp or 100) * levelMult(pl.unitId) -- level TYPU buffuje HP (weapon i block)
+					local maxHp = (u.hp or 100) * levelHpMult(pl.unitId, u.combat ~= nil) -- level TYPU buffuje HP (weapon: mala krzywa, block: glowna)
 					if uhp[pid] == nil then
 						uhp[pid] = maxHp
 						-- NIE pokazuj paska na pelnym HP przy pojawieniu (to robilo "zupe" zielonych X/Y nad

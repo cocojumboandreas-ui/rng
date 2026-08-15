@@ -49,9 +49,17 @@ function LevelService.GetCost(unitId: string, level: number): number
 	return math.floor(baseCost(unitId) * (cfg().costGrowth ^ level))
 end
 
--- Mnoznik efektu dla aktualnego poziomu typu: growthPerLevel^level (MULTIPLIKATYWNY; level 0 -> 1.0).
+-- Mnoznik DMG (attack/Weapon) dla aktualnego poziomu typu: growthPerLevel^level (MULTIPLIKATYWNY; level 0 -> 1.0).
 function LevelService.GetLevelMult(player, unitId: string): number
 	return cfg().growthPerLevel ^ LevelService.GetLevel(player, unitId)
+end
+
+-- Mnoznik HP: attack(Weapon) uzywa osobnej mniejszej krzywej attackHpGrowthPerLevel (dmg jest u nich
+-- glownym skalowaniem), defense(Block) uzywa tej samej growthPerLevel co dmg-krzywa attacka (bez zmian).
+function LevelService.GetHpLevelMult(player, unitId: string): number
+	local u = GameConfig.Units[unitId]
+	local growth = (u and u.combat) and (cfg().attackHpGrowthPerLevel or cfg().growthPerLevel) or cfg().growthPerLevel
+	return growth ^ LevelService.GetLevel(player, unitId)
 end
 
 -- Intencja gracza: kup +1 poziom TYPU. Walidacja server-side, koszt pobiera EconomyService.TrySpend.

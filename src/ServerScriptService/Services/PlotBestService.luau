@@ -38,10 +38,11 @@ local function computeTotals(player)
 	for _, p in pairs(placements) do
 		local u = GameConfig.Units[p.unitId]
 		if u then
-			local lvlMult = _level.GetLevelMult(player, p.unitId)
-			totalHp += (u.hp or 100) * lvlMult
+			local hpLvlMult = _level.GetHpLevelMult(player, p.unitId)
+			totalHp += (u.hp or 100) * hpLvlMult
 			if u.combat then
-				totalDps += (u.combat.dmg or 0) * (u.combat.fireRate or 0) * dmgMult * fireRateMult * lvlMult
+				local dmgLvlMult = _level.GetLevelMult(player, p.unitId)
+				totalDps += (u.combat.dmg or 0) * (u.combat.fireRate or 0) * dmgMult * fireRateMult * dmgLvlMult
 			end
 		end
 	end

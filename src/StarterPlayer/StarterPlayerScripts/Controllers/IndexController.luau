@@ -318,14 +318,17 @@ local function buildSlot(unitId, discovered, order)
 		end
 		setText(nameLbl, u.displayName or unitId)
 		if nameLbl then nameLbl.Visible = true end
-		local mult = GameConfig.Level.growthPerLevel ^ (_levels[unitId] or 0)
+		local lvl = _levels[unitId] or 0
+		local dmgMult = GameConfig.Level.growthPerLevel ^ lvl
+		local hpGrowth = u.combat and (GameConfig.Level.attackHpGrowthPerLevel or GameConfig.Level.growthPerLevel) or GameConfig.Level.growthPerLevel
+		local hpMult = hpGrowth ^ lvl
 		if u.combat then
-			local dps = u.combat.dmg * mult * (u.combat.fireRate or 1)
+			local dps = u.combat.dmg * dmgMult * (u.combat.fireRate or 1)
 			setText(atkFrame, "⚔ " .. fmtNum(dps) .. "/s")
-			setText(hpFrame, "❤ " .. fmtNum(math.floor((u.hp or 0) * mult + 0.5)))
+			setText(hpFrame, "❤ " .. fmtNum(math.floor((u.hp or 0) * hpMult + 0.5)))
 		else
 			if atkFrame then atkFrame.Visible = false end -- blok: bez dmg, sam HP
-			setText(hpFrame, "❤ " .. fmtNum(math.floor((u.hp or 0) * mult + 0.5)))
+			setText(hpFrame, "❤ " .. fmtNum(math.floor((u.hp or 0) * hpMult + 0.5)))
 		end
 		-- staty HP/DMG tylko na hover (domyslnie schowane -> karta pokazuje sam model 3D)
 		if stats then stats.Visible = false end
@@ -393,14 +396,17 @@ function IndexController._selectUnit(unitId)
 	if _petWindow then _petWindow.Visible = true end
 	local tier = tierFor(u.rarityN)
 	local level = _levels[unitId] or 0
-	local mult = GameConfig.Level.growthPerLevel ^ level
-	local multNext = GameConfig.Level.growthPerLevel ^ (level + 1)
+	local dmgMult = GameConfig.Level.growthPerLevel ^ level
+	local dmgMultNext = GameConfig.Level.growthPerLevel ^ (level + 1)
+	local hpGrowth = u.combat and (GameConfig.Level.attackHpGrowthPerLevel or GameConfig.Level.growthPerLevel) or GameConfig.Level.growthPerLevel
+	local hpMult = hpGrowth ^ level
+	local hpMultNext = hpGrowth ^ (level + 1)
 
 	setText(_pw.name, u.displayName or unitId)
 	local variantLabel = VARIANT_LABEL[_activeVariant] or "Common"
 	setText(_pw.rarity, variantLabel) -- sam wariant (Common/Golden/Rainbow), bez "1 in N"
 	if _pw.rarity then _pw.rarity.TextColor3 = VARIANT_COLOR[_activeVariant] or Color3.new(1, 1, 1) end
-	setText(_pw.levelInfo, "Level " .. level)
+	setText(_pw.levelInfo, "Level " .. (level + 1)) -- display-only +1: stored level 0-based, shown as 1-based
 
 	-- 3D ikona w detalu
 	if _pw.iconHolder then
@@ -416,18 +422,18 @@ function IndexController._selectUnit(unitId)
 	end
 
 	if u.combat then
-		local curDmg = math.floor(u.combat.dmg * mult + 0.5)
-		local nextDmg = math.floor(u.combat.dmg * multNext + 0.5)
-		local curHp = math.floor((u.hp or 0) * mult + 0.5)
-		local nextHp = math.floor((u.hp or 0) * multNext + 0.5)
+		local curDmg = math.floor(u.combat.dmg * dmgMult + 0.5)
+		local nextDmg = math.floor(u.combat.dmg * dmgMultNext + 0.5)
+		local curHp = math.floor((u.hp or 0) * hpMult + 0.5)
+		local nextHp = math.floor((u.hp or 0) * hpMultNext + 0.5)
 		if _pw.atk then _pw.atk.Visible = true end
 		setText(_pw.atk, fmtNum(curDmg))
 		setText(_pw.hp, fmtNum(curHp))
 		setText(_pw.change1, ("⚔ %s → %s"):format(fmtNum(curDmg), fmtNum(nextDmg)))
 		setText(_pw.change2, ("❤ %s → %s"):format(fmtNum(curHp), fmtNum(nextHp)))
 	else
-		local curHp = math.floor((u.hp or 0) * mult + 0.5)
-		local nextHp = math.floor((u.hp or 0) * multNext + 0.5)
+		local curHp = math.floor((u.hp or 0) * hpMult + 0.5)
+		local nextHp = math.floor((u.hp or 0) * hpMultNext + 0.5)
 		if _pw.atk then _pw.atk.Visible = false end -- blok nie ma dmg -> pokazujemy sam HP
 		setText(_pw.hp, fmtNum(curHp))
 		setText(_pw.change1, ("❤ %s → %s"):format(fmtNum(curHp), fmtNum(nextHp)))
