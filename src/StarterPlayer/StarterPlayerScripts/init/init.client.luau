@@ -41,6 +41,7 @@ local ORDER = {
 	"StoreController",
 	"UIHoverBinder", -- sprezyste hover/press na przyciskach
 	"AttentionBob", -- kolysanie Roll + Sklep
+	"WR_UITagDispatcher", -- Faza B UI port Krok 4: dyspozytor tagow IsAButton/OpenUI/CloseButton (Framework/UI)
 }
 
 local failed = {}
