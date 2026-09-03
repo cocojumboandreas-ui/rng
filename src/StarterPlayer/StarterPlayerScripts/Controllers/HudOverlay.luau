@@ -21,7 +21,7 @@ local function framesToHide(keepCoins)
 		path("RightCanvas"), -- przyciski fali
 		path("BottomCanvas"), -- Rolka + Zbuduj + Umiejetnosci
 		path("LeftCanvas", "Buttons"), -- Sklep + Indeks
-		path("BottomLeftCanvas", "OfflineEarns"), -- zarobki offline
+		path("BottomLeftCanvas"), -- zarobki offline (caly blok: etykieta + ikony/wartosci)
 		path("TopCanvas"), -- info fali
 	}
 	if not keepCoins then

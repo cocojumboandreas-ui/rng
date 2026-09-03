@@ -32,3 +32,9 @@ __pycache__/
 
 # Artefakty reconcyliacji driftu (lokalny slad)
 tools/_rescue/
+
+# --- Mesh pipeline working files (lokalnie, poza repo — za ciezkie na git) ---
+# GLB/FBX zrodlowe z Meshy, exporty, podglady; ~600MB, regenerowalne z Meshy/Blendera
+mesh/
+exports/
+*.glb
