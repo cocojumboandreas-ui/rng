@@ -4,7 +4,7 @@
 -- (Bar: BossName / BossHP / Progress=fill). Pokazuje sie na boss-fali (Net.BossHP),
 -- znika po pokonaniu (BossDefeated -> flourish), koncu fali (WaveEnded) lub gdy boss
 -- przestaje slac HP. Nie tworzymy nic w SideButtons — tylko sterujemy elementami po nazwach.
--- KOSMETYKA D: intro-pop paska (Back), puls przy niskim HP (<25%), odroznienie mini-bossa (⭐ + kolor).
+-- KOSMETYKA D: intro-pop paska (Back), puls przy niskim HP (<25%), odroznienie mini-bossa (kolor blekit).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -34,6 +34,24 @@ local function setColor(inst, col)
 	for _, c in ipairs(inst:GetChildren()) do
 		if c:IsA("TextLabel") then c.TextColor3 = col end
 	end
+end
+
+-- ZABEZPIECZENIE (bug 6): czysc emoji z nazwy wyswietlanej w GUI (emotki rozwalaly uklad paska).
+-- Usuwa kazdy codepoint >= U+2190 (strzalki/symbole/emoji, w tym gwiazdki i militarne), zostawia
+-- ASCII + Latin. Pusty/blad utf8 -> zwroc oryginal. Uzywac na KAZDEJ nazwie bossa przed setText.
+local function stripEmoji(s)
+	if type(s) ~= "string" then return s end
+	local ok, r = pcall(function()
+		local out = {}
+		for _, cp in utf8.codes(s) do
+			if cp < 0x2190 then
+				out[#out + 1] = utf8.char(cp)
+			end
+		end
+		return (table.concat(out):gsub("^%s+", ""):gsub("%s+$", ""))
+	end)
+	if not ok or r == "" then return s end
+	return r
 end
 
 function BossController.start()
@@ -135,14 +153,9 @@ function BossController.start()
 		_lowHp = frac <= LOW_HP_FRAC
 		setText(bossHP, ("%d / %d"):format(math.max(0, math.floor(p.hp + 0.5)), math.floor(p.maxHp + 0.5)))
 		if bossName then
-			local nm = p.name or "BOSS"
-			if p.big then
-				setText(bossName, nm)
-				setColor(bossName, BIG_NAME_COLOR)
-			else
-				setText(bossName, "⭐ " .. nm) -- mini-boss = ELITA (gwiazdka + blekit)
-				setColor(bossName, MINI_NAME_COLOR)
-			end
+			local nm = stripEmoji(p.name or "BOSS") -- bug 6: czysc emoji z nazwy (rozwalaly uklad paska)
+			setText(bossName, nm)
+			setColor(bossName, p.big and BIG_NAME_COLOR or MINI_NAME_COLOR) -- mini-boss = blekit (bez emoji)
 		end
 		if p.big and not _bigShaken then _bigShaken = true; startShake(3.5, 0.6) end -- DUZY boss wbija -> trzasnij ekranem (mini NIE)
 		show()

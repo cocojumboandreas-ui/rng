@@ -39,9 +39,8 @@ local ORDER = {
 	"ConvoyController",
 	"IntroController", -- cutscenka intro (Faza 1B); pyta serwer o hasSeenIntro async, nie blokuje startu
 	"StoreController",
-	"UIHoverBinder", -- sprezyste hover/press na przyciskach
-	"AttentionBob", -- kolysanie Roll + Sklep
-	"WR_UITagDispatcher", -- Faza B UI port Krok 4: dyspozytor tagow IsAButton/OpenUI/CloseButton (Framework/UI)
+	"UIHoverBinder", -- sprezyste hover/press na przyciskach (JEDYNA warstwa feel; AttentionBob-rotacja usunieta)
+	"WR_UITagDispatcher", -- Faza B UI port: dyspozytor tagow OpenUI/CloseButton (ButtonUI wylaczony)
 }
 
 local failed = {}

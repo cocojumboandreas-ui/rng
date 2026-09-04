@@ -10,13 +10,16 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local ButtonUI = require(ReplicatedStorage.Framework.UI.ButtonUI)
+-- ButtonUI (Faza B feel: rotacja ±1.6° / ripple / stroke-boost) WYLACZONY — decyzja: jedyna warstwa
+-- feel to UIHoverBinder. Importowany HUD ma ~65 przyciskow z tagiem IsAButton, wiec ButtonUI dekorowal
+-- WSZYSTKO (rotacja psula uklad = bug 2, stroke-boost mieszal z obrysami = bug 1/3). Zostaja tylko
+-- OpenUI/CloseButton (0 otagowanych instancji dzis = no-op; infra Fazy B zostaje na przyszlosc).
 local OpenUI = require(ReplicatedStorage.Framework.UI.OpenUI)
 local CloseButton = require(ReplicatedStorage.Framework.UI.CloseButton)
 
 local WR_UITagDispatcher = {}
 
-local TAG_MODULES = { ButtonUI, OpenUI, CloseButton }
+local TAG_MODULES = { OpenUI, CloseButton }
 
 local function WireTagModule(Module)
 	local Tag = Module.Tag
