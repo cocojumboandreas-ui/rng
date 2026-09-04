@@ -74,6 +74,7 @@ local _budgetToast = nil -- toast "board full" gdy plansza pelna (budzet wyczerp
 local fitListRows -- forward-decl (uzywane w _refreshPanel, definiowane nizej)
 local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
 local _pcControls = nil -- BottomRightCanvas.PcControls (Place/Rotate/Cancel — pokaz tylko gdy stawiamy)
+local _brSaved = {} -- zapamietana widocznosc koniczyny(Luck)+kostki(None) chowanych na czas budowania (user)
 local _mobileControls = nil -- BuildMode.MobileControls (dotykowe Accept/Rotate/Cancel — tylko na telefonie)
 local _activeTab = "weapon"
 
@@ -886,6 +887,29 @@ local function setHudHidden(hidden)
 	if hidden then HudOverlay.enter(false) else HudOverlay.exit() end
 end
 
+-- user: w trybie budowania chowamy koniczyne (Luck) i kostke (None) z prawego-dolnego rogu HUD
+-- (SideButtons.BottomRightCanvas). Zapamietujemy oryginalna widocznosc i przywracamy przy wyjsciu.
+local function hideLuckDice()
+	_brSaved = {}
+	local pg = LP:FindFirstChild("PlayerGui")
+	local sb = pg and pg:FindFirstChild("SideButtons")
+	local brc = sb and sb:FindFirstChild("BottomRightCanvas")
+	if not brc then return end
+	for _, n in ipairs({ "Luck", "None" }) do
+		local o = brc:FindFirstChild(n)
+		if o and o:IsA("GuiObject") then
+			_brSaved[#_brSaved + 1] = { o, o.Visible }
+			o.Visible = false
+		end
+	end
+end
+local function restoreLuckDice()
+	for _, rec in ipairs(_brSaved) do
+		if rec[1] and rec[1].Parent then rec[1].Visible = rec[2] end
+	end
+	_brSaved = {}
+end
+
 local function openBuild()
 	_on = true
 	_mode = "place"
@@ -901,6 +925,7 @@ local function openBuild()
 	if _bm then _bm.Enabled = true end
 	setPcControls(false)
 	setHudHidden(true)
+	hideLuckDice() -- user: schowaj koniczyne+kostke z prawego-dolnego rogu w budowaniu
 	setTab(_activeTab)
 	BuildController._refreshCounter()
 end
@@ -911,6 +936,7 @@ local function closeBuild()
 	_mode = "place"
 	if _bm then _bm.Enabled = false end
 	setHudHidden(false)
+	restoreLuckDice() -- przywroc koniczyne+kostke po wyjsciu z budowania
 	UserInputService.MouseIconEnabled = true
 end
 
