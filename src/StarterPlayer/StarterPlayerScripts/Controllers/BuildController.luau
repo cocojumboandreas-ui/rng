@@ -1041,7 +1041,8 @@ function BuildController.start()
 	end
 	BuildController.Toggle = doToggle -- HUD ziomka (SideButtons.Build) wola to
 
-	-- input: LPM stawia/podnosi/usuwa, PPM usuwa, R obraca, X anuluje
+	-- input: LPM stawia/podnosi/usuwa, R obraca, X anuluje. PPM CELOWO nic nie robi z trzymana
+	-- jednostka (user: PPM podczas trzymania ghosta NIE ma go usuwac) -> zostaje kamerze. Anulowanie = X / mobilny Cancel.
 	UserInputService.InputBegan:Connect(function(input, gp)
 		if not _on then return end
 		-- DOTYK/KLIK w GUI (przyciski Accept/Rotate/Cancel, panele) -> zamroz ghosta, zeby nie skoczyl pod palec.
@@ -1058,11 +1059,6 @@ function BuildController.start()
 			else
 				local m = unitUnderCursor() -- nic nie wybrane -> podnies jednostke do przeniesienia
 				if m then pickup(m) end
-			end
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-			-- PPM: TYLKO anuluje trzymana jednostke; NIE usuwa jednostki z planszy (usuwanie = tryb Delete).
-			if not gp then
-				if _sel then cancelSelection() end
 			end
 		elseif input.KeyCode == Enum.KeyCode.R then
 			if _sel then
