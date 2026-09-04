@@ -131,7 +131,7 @@ function HudBindController.start()
 	local setCoins = makeCoinAnimator(coinsL) -- count-up + pop
 	-- posiadane rolki (waluta do umiejetnosci) NAD monetami — wypalony blok RollsOwned (ikona=kostka z offline)
 	local rollsOwnedL = resolve(sb, "LeftCanvas", "RollsOwned", "CoinsFrame", "Coins")
-	local _coinMult = 1 -- aktualny mnoznik monet (z GetStats/StatsSync) — do comba nad graczem
+	local _coinMult = 1 -- aktualny mnoznik monet (z GetStats/StatsSync) — do comba monet
 
 	local offCoins = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Coins", "Coins")
 	local offRolls = resolve(sb, "BottomLeftCanvas", "OfflineEarns", "Rolls", "Rolls")
@@ -289,7 +289,7 @@ function HudBindController.start()
 	end
 	local function applyLuck(s)
 		if type(s) ~= "table" then return end
-		if s.coinMult then _coinMult = s.coinMult end -- combo nad graczem skaluje sie mnoznikiem monet
+		if s.coinMult then _coinMult = s.coinMult end -- combo monet skaluje sie mnoznikiem monet
 		if luckLbl and s.luck then luckLbl.Text = fmtMul(s.luck) .. "x" end
 		if diceLbl and s.rollSpeed then diceLbl.Text = fmtMul(s.rollSpeed) .. "s" end
 		if tipSkill and s.luckSkill then tipSkill.Text = "×" .. fmtMul(s.luckSkill) end
@@ -340,7 +340,7 @@ function HudBindController.start()
 		applyLuck(s) -- luck + offline earnings/h (coins & rolki)
 	end)
 
-	-- ── COMBO monet NAD GRACZEM (juice): dolicza gold per kill (~realne monety fali), reset po 3s bez killa ──
+	-- ── COMBO monet na HUD (juice): dolicza gold per kill (~realne monety fali), reset po 3s bez killa ──
 	local COMBO_COIN_IMG = "rbxassetid://79510076315488" -- ikona monety z UI
 	local WCFG, ECFG = GameConfig.Wave, GameConfig.Economy
 	local function waveCoinReward(n)
@@ -352,34 +352,39 @@ function HudBindController.start()
 		return base
 	end
 	local combo = { total = 0, displayed = 0, lastKill = 0, wave = -1, killed = 0, token = 0 }
+	-- coiny #2: combo-kill "+N" laduje na HUD (styl Muscle Evolution) zamiast BillboardGui nad glowa.
+	-- ScreenGui w PlayerGui: wysrodkowany w gornej strefie (nad akcja, pod paskiem fali), pop przy killu,
+	-- float-up + zanik przy resecie. Logika combo (comboShow/comboCountTo/reset) niezmieniona (uzywa
+	-- combo.gui.Enabled — ScreenGui tez ma .Enabled — oraz combo.label/icon/scale).
+	local COMBO_BASE_Y = 0.20 -- gorna strefa: nad nametagiem gracza (~0.30), pod paskiem fali (~0.06)
 	local function buildComboGui()
-		local char = LP.Character
-		local head = char and char:FindFirstChild("Head")
-		if not head then return end
+		if combo.gui and combo.gui.Parent then return end -- ScreenGui przezywa respawn (ResetOnSpawn=false)
 		if combo.gui then combo.gui:Destroy() end
-		local gui = Instance.new("BillboardGui")
-		gui.Name = "WR_ComboCoins"; gui.Size = UDim2.fromOffset(160, 46)
-		gui.StudsOffset = Vector3.new(0, 1.7, 0) -- POD kostkami/nickiem, lekko nad glowa gracza
-		gui.MaxDistance = 90; gui.LightInfluence = 0; gui.Adornee = head
-		gui.ResetOnSpawn = false; gui.Enabled = false; gui.Parent = head
-		local row = Instance.new("Frame"); row.Size = UDim2.fromScale(1, 1); row.BackgroundTransparency = 1; row.Parent = gui
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "WR_ComboCoins"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
+		gui.DisplayOrder = 60; gui.Enabled = false; gui.Parent = LP:WaitForChild("PlayerGui")
+		local holder = Instance.new("Frame"); holder.Name = "Holder"
+		holder.AnchorPoint = Vector2.new(0.5, 0.5); holder.Position = UDim2.new(0.5, 0, COMBO_BASE_Y, 0)
+		holder.Size = UDim2.fromOffset(220, 58); holder.BackgroundTransparency = 1; holder.Parent = gui
+		local row = Instance.new("Frame"); row.Size = UDim2.fromScale(1, 1); row.BackgroundTransparency = 1; row.Parent = holder
 		local ll = Instance.new("UIListLayout"); ll.FillDirection = Enum.FillDirection.Horizontal
 		ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.VerticalAlignment = Enum.VerticalAlignment.Center
-		ll.Padding = UDim.new(0, 4); ll.Parent = row
+		ll.Padding = UDim.new(0, 6); ll.Parent = row
 		local sc = Instance.new("UIScale"); sc.Parent = row
-		local icon = Instance.new("ImageLabel"); icon.LayoutOrder = 1; icon.Size = UDim2.fromOffset(32, 32)
+		local icon = Instance.new("ImageLabel"); icon.LayoutOrder = 1; icon.Size = UDim2.fromOffset(44, 44)
 		icon.BackgroundTransparency = 1; icon.Image = COMBO_COIN_IMG; icon.Parent = row
 		local label = Instance.new("TextLabel"); label.LayoutOrder = 2; label.AutomaticSize = Enum.AutomaticSize.X
-		label.Size = UDim2.fromOffset(0, 36); label.BackgroundTransparency = 1; label.Font = Enum.Font.GothamBlack
-		label.TextSize = 28; label.TextColor3 = Color3.fromRGB(255, 225, 90); label.Text = "+0"
-		local ls = Instance.new("UIStroke"); ls.Color = Color3.new(0, 0, 0); ls.Thickness = 2.6; ls.Parent = label
+		label.Size = UDim2.fromOffset(0, 48); label.BackgroundTransparency = 1; label.Font = Enum.Font.GothamBlack
+		label.TextSize = 40; label.TextColor3 = Color3.fromRGB(255, 225, 90); label.Text = "+0"
+		local ls = Instance.new("UIStroke"); ls.Color = Color3.new(0, 0, 0); ls.Thickness = 3; ls.Parent = label
 		label.Parent = row
-		combo.gui, combo.label, combo.icon, combo.scale = gui, label, icon, sc
+		combo.gui, combo.label, combo.icon, combo.scale, combo.holder = gui, label, icon, sc, holder
 	end
 	local function comboShow()
 		if not combo.gui or not combo.gui.Parent then buildComboGui() end
 		if not combo.gui then return end
 		combo.gui.Enabled = true
+		if combo.holder then combo.holder.Position = UDim2.new(0.5, 0, COMBO_BASE_Y, 0) end -- reset po float-up
 		if combo.label then combo.label.TextTransparency = 0 end
 		if combo.icon then combo.icon.ImageTransparency = 0 end
 		if combo.scale then -- pop przy kazdym dolozeniu
@@ -415,6 +420,7 @@ function HudBindController.start()
 				if combo.gui and combo.gui.Enabled then
 					if combo.label then TweenService:Create(combo.label, TweenInfo.new(0.35), { TextTransparency = 1 }):Play() end
 					if combo.icon then TweenService:Create(combo.icon, TweenInfo.new(0.35), { ImageTransparency = 1 }):Play() end
+					if combo.holder then TweenService:Create(combo.holder, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, COMBO_BASE_Y, -48) }):Play() end -- float-up
 					local g = combo.gui
 					task.delay(0.4, function() if combo.total == 0 and g then g.Enabled = false end end)
 				end
@@ -453,7 +459,7 @@ function HudBindController.start()
 	Net.get("WaveProgress").OnClientEvent:Connect(function(p)
 		if type(p) == "table" then
 			showWave(p.waveNumber, p.killed, p.pool)
-			comboOnWave(p.waveNumber, p.killed, p.pool) -- combo monet nad graczem
+			comboOnWave(p.waveNumber, p.killed, p.pool) -- combo monet na HUD
 			setWaveActiveUI(true) -- fala trwa -> pokaz "Zakoncz fale"
 			if not _waveActive then
 				setBuildLocked(true) -- pierwsza fala runu -> przyciemnij Buduj + zamknij panel jesli otwarty
