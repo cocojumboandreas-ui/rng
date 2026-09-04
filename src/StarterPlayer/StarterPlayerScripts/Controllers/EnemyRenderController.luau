@@ -39,6 +39,7 @@ local DMG_POOL = 30 -- pula floating liczb obrazen "-N" nad wrogiem
 local COIN_CAP = 48 -- max jednoczesnych monet-FX (fontanna z killa)
 
 local RigAnimSetup = require(Framework:WaitForChild("RigAnimSetup"))
+-- WR BACKUP starych anim R6: idle=114633582166730 walk=123805470740320 shot=109739383922402
 local ENEMY_ANIM = { idle = "rbxassetid://114633582166730", walk = "rbxassetid://123805470740320", shot = "rbxassetid://109739383922402" }
 local ANIM_WALK_SPEED = 1.5 -- mnoznik tempa animacji chodu wroga (feet-slide fix)
 local ANIM_SHOT_SPEED = 1.3 -- mnoznik tempa animacji strzalu wroga

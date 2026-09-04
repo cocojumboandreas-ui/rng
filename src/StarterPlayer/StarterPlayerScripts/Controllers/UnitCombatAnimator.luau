@@ -25,6 +25,7 @@ local GameConfig = require(
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
 
 local RigAnimSetup = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("RigAnimSetup"))
+-- WR BACKUP starych anim R6 (przywroc w razie czego): idle=114633582166730  shot=109739383922402  walk=123805470740320
 local ANIM_IDLE = "rbxassetid://114633582166730"
 local ANIM_SHOT = "rbxassetid://109739383922402"
 

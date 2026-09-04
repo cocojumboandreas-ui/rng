@@ -80,23 +80,43 @@ function InviteController.start()
 		end)
 	end)
 
-	-- pokaz guzik gdy gracz ma JAKIKOLWIEK wezel Friends' Luck (poll co 4s; kupno w drzewku bez broadcastu)
+	-- Widocznosc: gracz musi miec Friends' Luck (_owns) ORAZ byc w TRYBIE WOLNYM.
+	-- Tryb wolny = NIE w budowaniu (BuildController.IsBuildMode) i NIE podczas fali. Wejscie w
+	-- jakikolwiek tryb chowa guzik; wraca w trybie wolnym.
+	local BuildController = require(script.Parent:WaitForChild("BuildController"))
+	local _owns = false
+	local _waveActive = false
+	pcall(function() Net.get("WaveProgress").OnClientEvent:Connect(function() _waveActive = true end) end)
+	pcall(function() Net.get("RunSummary").OnClientEvent:Connect(function() _waveActive = false end) end)
+
+	local function freeMode()
+		local inBuild = false
+		pcall(function() inBuild = BuildController.IsBuildMode and BuildController.IsBuildMode() end)
+		return (not inBuild) and (not _waveActive)
+	end
+
+	-- szybki updater (reaguje natychmiast na wejscie/wyjscie z trybu)
+	task.spawn(function()
+		while true do
+			btn.Visible = _owns and freeMode()
+			task.wait(0.2)
+		end
+	end)
+
+	-- poll posiadania Friends' Luck (kupno w drzewku bez broadcastu) — rzadziej, to serwerowy invoke
 	task.spawn(function()
 		while true do
 			local ok, st = pcall(function()
 				return Net.get("GetSkillState"):InvokeServer()
 			end)
-			local owns = false
 			if ok and st and st.ranks then
+				local owns = false
 				for _, node in ipairs(FRIEND_NODES) do
-					if (st.ranks[node] or 0) > 0 then
-						owns = true
-						break
-					end
+					if (st.ranks[node] or 0) > 0 then owns = true break end
 				end
+				_owns = owns
 			end
-			btn.Visible = owns
-			task.wait(owns and 15 or 4)
+			task.wait(_owns and 15 or 4)
 		end
 	end)
 end

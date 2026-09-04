@@ -292,7 +292,7 @@ local function makeGhost()
 		local size = g:GetExtentsSize()
 		local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
 		factor = math.min(factor, 1)
-		if factor < 0.999 and g.ScaleTo then g:ScaleTo(factor) end
+		if factor < 0.999 and g.ScaleTo then g:ScaleTo(g:GetScale() * factor) end -- ScaleTo absolutne * upieczona skala szablonu (== BuildService)
 		if g.GetScale and g.ScaleTo then -- gwarancja zmieszczenia (dlugie pojazdy)
 			local s2 = g:GetExtentsSize()
 			local over = math.max(s2.X / cellW, s2.Z / cellD)
@@ -663,17 +663,26 @@ local function deleteAt()
 	end
 end
 
+-- Napis przycisku ma WARSTWY (kit: ClearPlot.TextLabel + zagniezdzony .TextLabel dla obrysu). Zmiana
+-- tylko najglebszej zostawiala "Clear Plot!" na warstwie zewnetrznej za "Are you sure?". Ustaw WSZYSTKIE.
+local function setClearText(txt)
+	if not _clearBtn then return end
+	for _, d in ipairs(_clearBtn:GetDescendants()) do
+		if d:IsA("TextLabel") then d.Text = txt end
+	end
+end
+
 -- Wyczysc dzialke: 1. klik uzbraja ("Czy jestes pewny?"), 2. klik czysci naraz (ClearPlot).
 local function clearPlot()
 	if not _clearArmed then
 		_clearArmed = true
-		if _clearLbl then _clearLbl.Text = "Are you sure?" end
+		setClearText("Are you sure?")
 		_clearToken += 1
 		local tok = _clearToken
 		task.delay(3, function() -- auto-rozbrojenie po 3 s
 			if _clearArmed and _clearToken == tok then
 				_clearArmed = false
-				if _clearLbl then _clearLbl.Text = _clearOrigText end
+				setClearText(_clearOrigText)
 			end
 		end)
 		return

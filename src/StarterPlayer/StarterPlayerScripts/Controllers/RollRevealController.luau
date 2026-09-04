@@ -787,6 +787,10 @@ function RollRevealController.start()
 		RollClient.setIsCompact(false)
 		RollClient.playRolls(rollResults, function()
 			_rollBusy = false -- reveal (wszystkie reele) zakonczony -> mozna rollowac ponownie
+			-- WR fix: po manualnym rollu ZWIN makiete do compact -> guziki Hide/Auto znikaja z ekranu
+			-- (bez tego _isCompact zostawal false i przyciski wisialy w zwyklej grze po skonczonym rollu).
+			-- Auto-roll (requestRoll) leci osobnym pipe i tak w compact, wiec zwiniecie mu nie przeszkadza.
+			RollClient.setIsCompact(true)
 		end)
 	end)
 end

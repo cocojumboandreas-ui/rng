@@ -157,6 +157,44 @@ end
 local FIT_MARGIN = 0.8 -- odstep od krawedzi kratki (mniejszy = jednostka ciasniej wpasowana w obrys)
 local LAYER_H = GameConfig.Grid.cellSize -- wysokosc jednej warstwy stosu (bloki = kostki tej wysokosci)
 
+-- Skalowanie modelu przez BEZPOSREDNI BasePart.Size (nie Model:ScaleTo): ScaleTo z serwera NIE replikuje
+-- sie do klienta dla pojazdow-meshy (jednostka olbrzymia u gracza), a bezposrednia zmiana Size TAK.
+-- Efekt geometryczny identyczny jak ScaleTo (zweryfikowane: ext diff 0.0000).
+local function scaleModelDirect(model, f)
+	if f == 1 then return end
+	local pivot = model:GetPivot().Position
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Size = d.Size * f
+			d.Position = pivot + (d.Position - pivot) * f
+		elseif d:IsA("DataModelMesh") then
+			d.Scale = d.Scale * f
+		elseif d:IsA("Attachment") then
+			d.Position = d.Position * f
+		end
+	end
+end
+
+-- Model.Scale != 1 (upieczone ScaleTo w szablonie, np. czolg 0.633, bron ciezka 2.213) NIE replikuje sie
+-- serwer->klient -> na kliencie jednostka renderuje sie w NATYWNYM rozmiarze (za duza, wtapia sie gasienica).
+-- Upieka biezacy WYGLAD w Size/CFrame przy Scale=1, zeby dalsze skalowanie szlo z bazy Scale=1 (replikuje sie).
+local function normalizeModelScale(model)
+	if not model.GetScale or math.abs(model:GetScale() - 1) < 1e-3 then return end
+	local pivot = model:GetPivot()
+	local snap = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then snap[#snap + 1] = { d, "p", d.Size, pivot:ToObjectSpace(d.CFrame) }
+		elseif d:IsA("DataModelMesh") then snap[#snap + 1] = { d, "m", d.Scale }
+		elseif d:IsA("Attachment") then snap[#snap + 1] = { d, "a", d.Position } end
+	end
+	model:ScaleTo(1)
+	for _, e in ipairs(snap) do
+		if e[2] == "p" then e[1].Size = e[3]; e[1].CFrame = pivot * e[4]
+		elseif e[2] == "m" then e[1].Scale = e[3]
+		elseif e[2] == "a" then e[1].Position = e[3] end
+	end
+end
+
 local function spawnModel(player, unitId: string, placementId: string, cellX: number, cellZ: number, rot: number?)
 	local plot = _plot.GetPlot(player)
 	if not plot then
@@ -192,6 +230,11 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 		end
 	end
 
+	-- POJAZD/mesh: upiecz Model.Scale do 1 (Scale != 1 nie replikuje sie na klienta). R6 rigi pomijamy (Motor6D).
+	if not model:FindFirstChildOfClass("Humanoid") then
+		normalizeModelScale(model)
+	end
+
 	-- ORIENTACJA NAJPIERW (front = faceDirection), potem pomiar/skala — GetExtentsSize jest
 	-- osiowany w swiecie, wiec mierzenie przed obrotem dawalo zle osie (np. dlugi czolg nie miescil Z).
 	local center = GridMath.cellToWorld(plot.gridOrigin, GameConfig.Grid.cellSize, cellX, cellZ, fp).Position
@@ -218,21 +261,29 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 		local size = model:GetExtentsSize() -- juz w orientacji docelowej
 		local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
 		factor = math.min(factor, 1)
-		if factor < 0.999 and model.ScaleTo then
-			model:ScaleTo(factor)
-		end
-		-- GWARANCJA zmieszczenia (dlugie pojazdy typu czolg): domiar po skalowaniu, dociagnij jesli wystaje
-		if model.GetScale and model.ScaleTo then
+		if model:FindFirstChildOfClass("Humanoid") then
+			-- R6 rig: Model:ScaleTo (skaluje tez Motor6D dla animacji klienta), dziala lokalnie.
+			-- ScaleTo jest ABSOLUTNE, a factor to stosunek do OBECNEGO rozmiaru -> * GetScale() (upieczona skala).
+			if factor < 0.999 and model.ScaleTo then
+				model:ScaleTo(model:GetScale() * factor)
+			end
+			if model.GetScale and model.ScaleTo then
+				local s2 = model:GetExtentsSize()
+				local over = math.max(s2.X / cellW, s2.Z / cellD)
+				if over > 1 then model:ScaleTo(model:GetScale() / over * 0.98) end
+			end
+		else
+			-- POJAZD/mesh: skaluj przez BEZPOSREDNI Size (Model:ScaleTo z serwera NIE replikuje sie do
+			-- klienta dla tych modeli -> jednostka olbrzymia u gracza; bezposredni Size replikuje sie).
+			if factor < 0.999 then scaleModelDirect(model, factor) end
 			local s2 = model:GetExtentsSize()
 			local over = math.max(s2.X / cellW, s2.Z / cellD)
-			if over > 1 then
-				model:ScaleTo(model:GetScale() / over * 0.98)
-			end
+			if over > 1 then scaleModelDirect(model, 1 / over * 0.98) end
 		end
 	end
 
 	-- PODSTAWA na WIERZCHU stosu: ziemia + layer * wysokosc warstwy (layer 0 = na kaflach)
-	local surfaceY = groundY + layer * LAYER_H
+	local surfaceY = groundY + layer * LAYER_H + 0.3 -- +clearance: jednostka siada NAD powierzchnia (koniec z-fightingu/wtapiania gasienic)
 	local bbCf, bbSize = model:GetBoundingBox()
 	local lift = surfaceY - (bbCf.Position.Y - bbSize.Y * 0.5)
 	model:PivotTo(model:GetPivot() + Vector3.new(0, lift, 0))
@@ -255,10 +306,12 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 			end
 			local _, vSize = model:GetBoundingBox()
 			local dScale = (vSize.Y * 0.8) / math.max(driver:GetExtentsSize().Y, 0.01)
-			if driver.ScaleTo then driver:ScaleTo(dScale) end
+			scaleModelDirect(driver, dScale) -- bezposredni Size (ScaleTo z serwera nie replikuje sie do klienta)
 			local pivot = model:GetPivot()
 			local seat = pivot * CFrame.new(-vSize.X * 0.22, 0, -vSize.Z * 0.1)
 			driver:PivotTo(CFrame.lookAlong(seat.Position, pivot.LookVector))
+			local dh = driver:FindFirstChildOfClass("Humanoid")
+			if dh then dh.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end -- ukryj nametag "Dummy"
 			driver.Name = "WR_Driver"
 			driver.Parent = model
 		end
@@ -270,7 +323,9 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	--   Wrogowie chodza po pathT (CFrame, bez fizyki), wiec kolizja jednostek ich nie blokuje.
 	-- R6 humanoid: realne animacje (Animator) -> kotwicz TYLKO HRP + spaw dodatkow (RigAnimSetup).
 	-- Reszta (pojazdy, wieze, bloki): zakotwicz wszystko jak dotychczas.
-	local isR6 = require(ReplicatedStorage.Framework.RigAnimSetup).prepare(model) ~= nil
+	-- POJAZD z kierowca (ucfg.driver): NIE odpalaj prepare — inaczej wykryje Humanoida kierowcy,
+	-- przyspawa nadwozie do kierowcy i odkotwiczy je -> jeep rozlatuje sie w fizyce. Wtedy kotwiczymy wszystko.
+	local isR6 = (not ucfg.driver) and (require(ReplicatedStorage.Framework.RigAnimSetup).prepare(model) ~= nil)
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
 			if not isR6 then
