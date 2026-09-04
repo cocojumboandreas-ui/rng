@@ -214,6 +214,33 @@ local function specialRollBoost(player, data)
 	return bestMult, bestType
 end
 
+-- POSTEP do NASTEPNEJ zlotej rolki (skill Gold Rolls): ile rolek zostalo. Licznik _special.gold rosnie
+-- 0->minN i resetuje sie na zlotej; remaining = minN - licznik (=minN swiezo po zlotej). owned=false gdy
+-- gracz nie ma zadnego wezla Gold Rolls -> klient chowa wskaznik "GoldenRoll" na przycisku Roll (bug 11).
+local function goldRollState(player)
+	local data = _profile and _profile.GetProfile(player)
+	local cfg = GameConfig.SkillEffect and GameConfig.SkillEffect.specialRolls
+	local gold = cfg and cfg.gold
+	if not (data and gold and type(data.skills) == "table") then
+		return { owned = false }
+	end
+	local minN = nil
+	for nodeId, everyN in pairs(gold.everyByNode or {}) do
+		if (data.skills[nodeId] or 0) > 0 and (not minN or everyN < minN) then
+			minN = everyN
+		end
+	end
+	if not minN then
+		return { owned = false }
+	end
+	local counter = (_special[player] and _special[player].gold) or 0
+	return { owned = true, remaining = math.max(0, minN - counter), everyN = minN }
+end
+
+local function syncGold(player)
+	Net.get("GoldRollSync"):FireClient(player, goldRollState(player))
+end
+
 -- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item, a ILOCZYN zlapanych koniczyn
 -- (x2*x4*x8...) = ILE SZTUK tego itemu trafia do inventory. Koniczyny to kolumny Bonus w reelu.
 -- Friends' Luck (n74/99-103): mnoznik lucka = 1 + pct(najwyzszy posiadany tier) * (ilu ZNAJOMYCH Roblox jest na serwerze).
@@ -291,6 +318,7 @@ local function rollChain(player: Player, isAuto, cycleStart, collect)
 	if _economy then
 		_economy.SyncRolls(player) -- zywe saldo do klienta
 	end
+	syncGold(player) -- bug 11: po tej rolce licznik gold sie zmienil -> odswiez odliczanie do zlotej
 
 	RollService.Rolled:Fire(player, { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mutation = (depth > 0) and { mult = 2 ^ depth } or nil, quantity = totalMult })
 	local payload = {
@@ -340,6 +368,7 @@ function RollService.AutoRollColumns(player)
 	if _economy then
 		_economy.SyncRolls(player)
 	end
+	syncGold(player) -- bug 11: auto-rolka tez rusza licznik gold -> odswiez odliczanie
 	local columns = {}
 	for i = 1, depth do
 		columns[#columns + 1] = { rollItemType = "Bonus", mult = 2 ^ i } -- koniczyna-mnoznik
@@ -434,6 +463,10 @@ function RollService.Start()
 		_special[player] = nil
 		_autoAcc[player] = nil
 	end)
+	-- bug 11: poczatkowy stan odliczania do zlotej rolki (klient PULLuje przy starcie -> unika race z pushem)
+	Net.get("GetGoldRollState").OnServerInvoke = function(player)
+		return goldRollState(player)
+	end
 
 	-- AUTO ROLL (skill n2): gdy posiadany -> pasywna REGENERACJA spendableRolls + auto-rolka co rollSpeed,
 	-- ktora ZUZYWA rolke (regen >= zuzycie -> nigdy nie schodzi do 0). Reel na kliencie = tryb kompaktowy.

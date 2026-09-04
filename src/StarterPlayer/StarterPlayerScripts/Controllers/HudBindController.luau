@@ -126,6 +126,7 @@ function HudBindController.start()
 	local stopBtn = resolve(sb, "RightCanvas", "Buttons", "StopWave", "Button")
 	local rollBtn = resolve(sb, "BottomCanvas", "Buttons", "Roll")
 	local rollNum = resolve(sb, "BottomCanvas", "Buttons", "Roll", "GoldenRoll", "Number")
+	local goldFrame = resolve(sb, "BottomCanvas", "Buttons", "Roll", "GoldenRoll") -- bug 11: caly wskaznik (chowany gdy brak skilla Gold Rolls)
 	local coinsL = resolve(sb, "LeftCanvas", "Coins", "CoinsFrame", "Coins")
 	local setCoins = makeCoinAnimator(coinsL) -- count-up + pop
 	-- posiadane rolki (waluta do umiejetnosci) NAD monetami — wypalony blok RollsOwned (ikona=kostka z offline)
@@ -305,9 +306,14 @@ function HudBindController.start()
 		if ok and type(st) == "table" then
 			if st.coins ~= nil then setCoins(st.coins, true) end -- snap na starcie
 			if st.spendableRolls ~= nil then
-				setText(rollNum, fmt(st.spendableRolls))
-				setText(rollsOwnedL, fmt(st.spendableRolls)) -- licznik NAD monetami
+				setText(rollsOwnedL, fmt(st.spendableRolls)) -- licznik kostek NAD monetami (waluta skilli)
 			end
+		end
+		-- bug 11: poczatkowe odliczanie do zlotej rolki (PULL, zeby nie zgubic pushu przed listenerem)
+		local gok, g = pcall(function() return Net.get("GetGoldRollState"):InvokeServer() end)
+		if gok and type(g) == "table" then
+			if goldFrame then goldFrame.Visible = g.owned == true end
+			if g.owned and g.remaining ~= nil then setText(rollNum, fmt(g.remaining)) end
 		end
 	end)
 
@@ -317,9 +323,15 @@ function HudBindController.start()
 	end)
 	Net.get("RollsSync").OnClientEvent:Connect(function(p)
 		if type(p) == "table" and p.spendableRolls ~= nil then
-			setText(rollNum, fmt(p.spendableRolls))
-			setText(rollsOwnedL, fmt(p.spendableRolls)) -- licznik NAD monetami
+			setText(rollsOwnedL, fmt(p.spendableRolls)) -- licznik kostek NAD monetami (waluta skilli)
 		end
+	end)
+	-- bug 11: "GoldenRoll" na przycisku Roll = ODLICZANIE do nastepnej zlotej rolki (skill Gold Rolls),
+	-- NIE waluta skilli. Idzie w dol z kazda rolka; chowamy caly wskaznik gdy gracz nie ma skilla Gold Rolls.
+	Net.get("GoldRollSync").OnClientEvent:Connect(function(p)
+		if type(p) ~= "table" then return end
+		if goldFrame then goldFrame.Visible = p.owned == true end
+		if p.owned and p.remaining ~= nil then setText(rollNum, fmt(p.remaining)) end
 	end)
 	Net.get("StatsSync").OnClientEvent:Connect(function(s)
 		applyLuck(s) -- luck + offline earnings/h (coins & rolki)

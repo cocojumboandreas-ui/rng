@@ -34,6 +34,8 @@ local REMOTES: { [string]: string } = {
 	GetStats = "RemoteFunction", -- C->S () -> Stats (HUD luck/rollSpeed + rozbicie luckIndex/luckSkill)
 	CoinsSync = "RemoteEvent", -- S->C {balance}
 	RollsSync = "RemoteEvent", -- S->C {spendableRolls} (blizniak CoinsSync — druga waluta, zywe saldo)
+	GoldRollSync = "RemoteEvent", -- S->C {owned, remaining, everyN} — odliczanie do nastepnej zlotej rolki (skill Gold Rolls); klient chowa gdy owned=false
+	GetGoldRollState = "RemoteFunction", -- C->S () -> {owned, remaining, everyN} — poczatkowy stan odliczania (PULL, unika race z pushem)
 	SkillPurchase = "RemoteFunction", -- C->S (nodeId) -> {ok, reason?, rank?}
 	GetSkillState = "RemoteFunction", -- C->S () -> {ranks, coins, spendableRolls, autoRollEnabled} (stan poczatkowy UI)
 	SetAutoRollEnabled = "RemoteEvent", -- C->S (isEnabled:bool) — persystuj preferencje auto-roll ON/OFF w profilu
