@@ -540,7 +540,8 @@ local function setupFx(model, prof, st, sx, sy, sz)
 		end
 	end
 
-	-- minigun (piechota): lufa do obrotu przy strzale
+	-- minigun (piechota): lufa do obrotu przy strzale. UWAGA: lufa jest odspawana+zakotwiczona na SERWERZE
+	-- (BuildService.spawnModel) — inaczej wymuszanie jej CFrame walczy z RigAnimWeld i szarpie rigiem (#modele).
 	if prof.kind == "minigun" then
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("BasePart") and (d.Name:lower():find("barrel") or d.Name:lower():find("minigun")) then

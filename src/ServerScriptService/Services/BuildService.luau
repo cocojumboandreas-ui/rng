@@ -213,9 +213,13 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	local layer = (_grid and _grid.GetLayer(player, placementId)) or 0 -- warstwa stosu (0 = ziemia)
 	local model = template:Clone()
 
-	-- PrimaryPart: modele ze store czesto go nie maja -> ustaw (HumanoidRootPart albo najwieksza czesc)
+	-- PrimaryPart: modele ze store czesto go nie maja -> ustaw (HumanoidRootPart albo najwieksza czesc).
+	-- WAZNE (#modele): rigi R6 sa ZAGNIEZDZONE w sub-modelu "Dummy" -> HRP szukamy REKURSYWNIE. Inaczej
+	-- fallback na "najwieksza czesc" bral np. minigun tank_soldiera ("MainPart" authored +X) jako pivot i
+	-- CALA jednostka orientowala sie bokiem (soldier/swat dzialaly przypadkiem — ich najwieksza czesc=Vest
+	-- jest wyrownana z rigiem). PrimaryPart=HRP => orientacja liczona po rdzeniu riga, cialo patrzy w faceDir.
 	if not model.PrimaryPart then
-		local hrp = model:FindFirstChild("HumanoidRootPart")
+		local hrp = model:FindFirstChild("HumanoidRootPart", true)
 		if hrp and hrp:IsA("BasePart") then
 			model.PrimaryPart = hrp
 		else
@@ -333,6 +337,22 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 			end
 			d.CanCollide = true
 			d.CanQuery = true
+		end
+	end
+
+	-- #modele: minigun heavy (tank_soldier) — RigAnimSetup WELDUJE obracana lufe do riga (Torsa), a klient
+	-- (UnitCombatAnimator) wymusza jej CFrame co klatke (spin) -> konflikt weld<->CFrame SZARPIE calym rigiem
+	-- ("obracal sie caly" przy strzale). Odczep lufe (usun RigAnimWeld) + zakotwicz NA SERWERZE (klient-side
+	-- sie nie utrzymuje, czesc jest server-owned) -> spin izolowany, cialo stoi idle. Tylko czesci "barrel"/
+	-- "minigun" (ma je jedynie minigun) -> pozostale rigi (soldier/swat) nietkniete.
+	if isR6 then
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") and (d.Name:lower():find("barrel") or d.Name:lower():find("minigun")) then
+				for _, w in ipairs(d:GetChildren()) do
+					if w:IsA("WeldConstraint") or w:IsA("Weld") then w:Destroy() end
+				end
+				d.Anchored = true
+			end
 		end
 	end
 
