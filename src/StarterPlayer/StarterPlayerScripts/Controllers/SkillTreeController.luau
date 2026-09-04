@@ -4,11 +4,11 @@
 -- Sekcje: LUCK / COMBAT / DEFEND / DICE UPDATE (nazwy w SkillTreeLayout). Pack sam renderuje wezly.
 -- Ekonomia + efekty = serwer (SkillService): klik "<skillId>#<rank>" -> SkillPurchase(skillId) (RF).
 -- Nasze: HUD "Umiejetnosci" toggle, naglowek (pasek postepu X/Y + salda z ikonami na zywo), Zamknij,
---   nawigacja (scroll zoom = pack, RMB trzymany = pan), polprzezroczyste tlo. Sync odporny na desync.
+--   nawigacja PRZEJETA (skill #7): wlasny pan (LPM-drag mysz + dotyk) z clampem, wlasny zoom scroll
+--   start ~0.45 (cale drzewo widoczne) — pack pan/zoom obchodzimy. Polprzezroczyste tlo. Sync odporny.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
-local ContextActionService = game:GetService("ContextActionService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -307,12 +307,100 @@ function SkillTreeController.start()
 		NodeTreeClient.setIsTreeVisible(false)
 	end)
 
-	-- ── nawigacja: scroll = zoom (pack), RMB trzymany = pan; polprzezroczyste tlo ──
+	-- ── nawigacja PRZEJETA (skill #7): pan (LPM-drag mysz + dotyk) z clampem + zoom scroll ──
+	-- Pack NodeTree ma wlasny pan (UIDragDetector) i zoom (scroll), ALE: (a) start-zoom 1.25 za duzy
+	-- (drzewo ~2x wieksze od ekranu, wezly ucinane), (b) modal-blocker WR_ClickBlock na wierzchu polykal
+	-- pack-drag -> pan martwy (mysz i dotyk), (c) zero clampu -> drzewo szlo w kosmos. Przejmujemy nawigacje:
+	-- wlasny pan na WR_ClickBlock, wlasny zoom (nadpisuje pack — nasz listener rejestrowany pozniej wygrywa
+	-- klatke), clamp trzymajacy srodek ekranu nad wezlami, start-zoom pokazuje cale drzewo. Pack DD off.
+	local Workspace = game:GetService("Workspace")
+	local camera = Workspace.CurrentCamera
 	local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
 	local ntGui = playerGui:WaitForChild("NodeTreeGui")
 	local mainFrame = ntGui:WaitForChild("MainFrame")
+
+	local ZOOM_START, ZOOM_MIN, ZOOM_MAX = 0.45, 0.35, 2.2
+	local myZoom = ZOOM_START
+	local function setZoom(z)
+		myZoom = math.clamp(z, ZOOM_MIN, ZOOM_MAX)
+		mainFrame.Size = UDim2.fromScale(myZoom, myZoom)
+	end
+
+	-- bbox wszystkich wezlow w px viewportu (wezly = bezposrednie dzieci MainFrame)
+	local function nodeBBox()
+		local minx, miny, maxx, maxy = math.huge, math.huge, -math.huge, -math.huge
+		for _, c in ipairs(mainFrame:GetChildren()) do
+			if c:IsA("GuiObject") then
+				local p, s = c.AbsolutePosition, c.AbsoluteSize
+				if p.X < minx then minx = p.X end
+				if p.Y < miny then miny = p.Y end
+				if p.X + s.X > maxx then maxx = p.X + s.X end
+				if p.Y + s.Y > maxy then maxy = p.Y + s.Y end
+			end
+		end
+		return minx, miny, maxx, maxy
+	end
+
+	-- clamp: srodek viewportu MUSI zostac nad bbox wezlow (margines pad) -> drzewo nie ucieka z ekranu.
+	-- Gdy tresc mniejsza niz 2*pad w osi -> wysrodkuj te os.
+	local function clampMainFrame()
+		local minx, miny, maxx, maxy = nodeBBox()
+		if minx == math.huge then return end
+		local vp = camera.ViewportSize
+		local cx, cy = vp.X * 0.5, vp.Y * 0.5
+		local pad = 90
+		local dx, dy = 0, 0
+		if maxx - minx <= 2 * pad then dx = (minx + maxx) * 0.5 - cx
+		elseif cx > maxx - pad then dx = cx - (maxx - pad)
+		elseif cx < minx + pad then dx = cx - (minx + pad) end
+		if maxy - miny <= 2 * pad then dy = (miny + maxy) * 0.5 - cy
+		elseif cy > maxy - pad then dy = cy - (maxy - pad)
+		elseif cy < miny + pad then dy = cy - (miny + pad) end
+		if dx ~= 0 or dy ~= 0 then mainFrame.Position += UDim2.fromOffset(dx, dy) end
+	end
+
+	-- pelnoekranowy click-blocker (absorb klik w swiat) = powierzchnia panu (mysz+dotyk). Wezly siedza
+	-- w MainFrame (ZIndex 2) NAD blokerem (ZIndex 1) -> klik w wezel dalej kupuje, drag w puste tlo = pan.
+	local clickBlock = ntGui:FindFirstChild("WR_ClickBlock")
+	if not clickBlock then
+		clickBlock = Instance.new("TextButton")
+		clickBlock.Name = "WR_ClickBlock"
+		clickBlock.Size = UDim2.fromScale(1, 1)
+		clickBlock.BackgroundTransparency = 1
+		clickBlock.Text = ""
+		clickBlock.AutoButtonColor = false
+		clickBlock.ZIndex = 1
+		clickBlock.Active = true
+		clickBlock.Selectable = false
+		clickBlock.Parent = ntGui
+	end
+	clickBlock.Visible = false
+
 	local panning = false
-	local lastMouse = Vector2.zero
+	clickBlock.InputBegan:Connect(function(input)
+		if not NodeTreeClient.isTreeVisible() then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			panning = true
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if not NodeTreeClient.isTreeVisible() then return end
+		if input.UserInputType == Enum.UserInputType.MouseWheel then
+			setZoom(myZoom + input.Position.Z * 0.12)
+			clampMainFrame()
+		elseif panning and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			mainFrame.Position += UDim2.fromOffset(input.Delta.X, input.Delta.Y)
+			clampMainFrame()
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			panning = false
+		end
+	end)
 
 	-- modal: przy otwartym drzewku chowamy CALE inne UI (zostaje drzewko + naglowek + Zamknij)
 	local hiddenGuis = {}
@@ -349,24 +437,24 @@ function SkillTreeController.start()
 		setHudHidden(isVisible)
 		if isVisible then
 			if Controls then Controls:Disable() end -- STOP ruchu postaci w trybie umiejetnosci
-			local bf0 = ntGui:FindFirstChild("BackgroundFrame")
-			if bf0 then bf0.Active = true end -- pochlaniaj klik w tlo (nie leci na plansze/postac)
-			-- MODAL: pelnoekranowy TextButton pod wezlami. Frame+Active NIE daje gameProcessedEvent,
-			-- dopiero GuiButton pochlania klik (gp=true) i zeruje Mouse.Target -> plansza/swiat nie lapie.
-			local block = ntGui:FindFirstChild("WR_ClickBlock")
-			if not block then
-				block = Instance.new("TextButton")
-				block.Name = "WR_ClickBlock"
-				block.Size = UDim2.fromScale(1, 1)
-				block.BackgroundTransparency = 1
-				block.Text = ""
-				block.AutoButtonColor = false
-				block.ZIndex = 1 -- pod MainFrame (ZIndex 2) -> wezly dalej klikalne
-				block.Active = true
-				block.Selectable = false
-				block.Parent = ntGui
-			end
-			block.Visible = true
+			-- wylacz pack-pan (dublowalby nasz) + tlo pochlania klik
+			local dd = ntGui.BackgroundFrame:FindFirstChildOfClass("UIDragDetector")
+			if dd then dd.Enabled = false end
+			ntGui.BackgroundFrame.Active = true
+			-- start-zoom + wysrodkowanie tresci drzewa; clamp po klatce (AbsolutePosition juz policzony)
+			panning = false
+			setZoom(ZOOM_START)
+			mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+			clickBlock.Visible = true
+			task.defer(function()
+				if not NodeTreeClient.isTreeVisible() then return end
+				local minx, miny, maxx, maxy = nodeBBox()
+				if minx ~= math.huge then
+					local vp = camera.ViewportSize
+					mainFrame.Position += UDim2.fromOffset(vp.X * 0.5 - (minx + maxx) * 0.5, vp.Y * 0.5 - (miny + maxy) * 0.5)
+				end
+				clampMainFrame()
+			end)
 			local hum0 = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if hum0 then savedWS = hum0.WalkSpeed; hum0.WalkSpeed = 0 end -- 100% stop ruchu (fallback gdyby controls nie zlapaly)
 			task.delay(0.35, function()
@@ -375,41 +463,11 @@ function SkillTreeController.start()
 					bf.Transparency = 0.45
 				end
 			end)
-			ContextActionService:BindActionAtPriority(
-				"WR_TreePanSink",
-				function()
-					return Enum.ContextActionResult.Sink
-				end,
-				false,
-				Enum.ContextActionPriority.High.Value,
-				Enum.UserInputType.MouseButton2
-			)
 		else
 			if Controls then Controls:Enable() end -- przywroc sterowanie po zamknieciu drzewa
 			local hum1 = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if hum1 then hum1.WalkSpeed = savedWS end -- przywroc predkosc chodu
-			local block = ntGui:FindFirstChild("WR_ClickBlock")
-			if block then block.Visible = false end -- zdejmij modal-blocker
-			panning = false
-			ContextActionService:UnbindAction("WR_TreePanSink")
-		end
-	end)
-
-	UserInputService.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton2 and NodeTreeClient.isTreeVisible() then
-			panning = true
-			lastMouse = UserInputService:GetMouseLocation()
-		end
-	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if panning and input.UserInputType == Enum.UserInputType.MouseMovement then
-			local m = UserInputService:GetMouseLocation()
-			mainFrame.Position += UDim2.fromOffset((m - lastMouse).X, (m - lastMouse).Y)
-			lastMouse = m
-		end
-	end)
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			clickBlock.Visible = false -- zdejmij modal-blocker
 			panning = false
 		end
 	end)
