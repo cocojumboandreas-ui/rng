@@ -1,8 +1,8 @@
 --!nonstrict
 -- ServerScriptService/Services/RollTagService.luau
--- Nad glowa KAZDEGO gracza: laczna liczba rolek (lifetimeRolls) — „🎲 70,576". Serwerowy BillboardGui
--- (replikuje sie do wszystkich, wiec widzisz tez cudze). Aktualizacja na kazdej rolce (RollService.Rolled)
--- + przy spawnie postaci / zaladowaniu profilu.
+-- Pod nickiem KAZDEGO gracza: laczna liczba rolek (lifetimeRolls) — czysto: kostka (ikona z Offline Earnings)
+-- + biala liczba, BEZ tla. Serwerowy BillboardGui (replikuje sie do wszystkich). Update na rolce
+-- (RollService.Rolled) + przy spawnie postaci / zaladowaniu profilu.
 local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 
@@ -50,18 +50,50 @@ local function buildTag(player, char)
 	-- Czysty styl (jak u wzorca): kostka + biala liczba z czarnym obrysem, BEZ tla.
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "WR_RollTag"
-	gui.Size = UDim2.fromOffset(150, 30)
-	gui.StudsOffset = Vector3.new(0, 2.6, 0) -- pod domyslnym nametagiem-nickiem
+	gui.Size = UDim2.fromOffset(220, 56)
+	gui.StudsOffset = Vector3.new(0, 2.9, 0) -- nick gracza (gora) + liczba kostek (dol) nad glowa
 	gui.MaxDistance = 80
 	gui.LightInfluence = 0
 	gui.Adornee = head
 	gui.ResetOnSpawn = false
 	gui.Parent = head
 
+	-- kolumna: NICK gracza (gora) + wiersz kostka+licznik (dol)
+	local col = Instance.new("Frame")
+	col.Size = UDim2.fromScale(1, 1)
+	col.BackgroundTransparency = 1
+	col.Parent = gui
+	local colLayout = Instance.new("UIListLayout")
+	colLayout.FillDirection = Enum.FillDirection.Vertical
+	colLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	colLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	colLayout.Padding = UDim.new(0, 1)
+	colLayout.SortOrder = Enum.SortOrder.LayoutOrder -- nick (1) NAD wierszem kostek (2)
+	colLayout.Parent = col
+
+	-- NICK gracza nad liczba kostek
+	local nick = Instance.new("TextLabel")
+	nick.LayoutOrder = 1
+	nick.AutomaticSize = Enum.AutomaticSize.X
+	nick.Size = UDim2.fromOffset(0, 22)
+	nick.BackgroundTransparency = 1
+	nick.Font = Enum.Font.GothamBold
+	nick.TextSize = 18
+	nick.TextColor3 = Color3.fromRGB(255, 255, 255)
+	nick.Text = player.DisplayName
+	local ns = Instance.new("UIStroke")
+	ns.Color = Color3.new(0, 0, 0)
+	ns.Thickness = 2.2
+	ns.Transparency = 0.05
+	ns.Parent = nick
+	nick.Parent = col
+
 	local row = Instance.new("Frame")
-	row.Size = UDim2.fromScale(1, 1)
+	row.LayoutOrder = 2
+	row.AutomaticSize = Enum.AutomaticSize.X
+	row.Size = UDim2.fromOffset(0, 28)
 	row.BackgroundTransparency = 1
-	row.Parent = gui
+	row.Parent = col
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Horizontal
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -69,7 +101,7 @@ local function buildTag(player, char)
 	layout.Padding = UDim.new(0, 4)
 	layout.Parent = row
 
-	buildDie(row) -- biala kostka (UI) po lewej
+	buildDie(row) -- ikona kostki (z Offline Earnings) po lewej
 
 	local label = Instance.new("TextLabel")
 	label.LayoutOrder = 2

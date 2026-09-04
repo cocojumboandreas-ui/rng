@@ -12,6 +12,8 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
+
 local ArtilleryFxController = {}
 local LP = Players.LocalPlayer
 
@@ -99,7 +101,7 @@ local function nextEmitter()
 	return _emitters[_emitIdx]
 end
 
--- ── RAKIETA = klon prawdziwego MeshParta (dluga os X, nos -X) + Trail-ogon ──
+-- RAKIETA = klon prawdziwego MeshParta (dluga os X, nos -X) + Trail-ogon
 local function mkRocket(variant)
 	local tmpl = _templates[variant]
 	local part
@@ -156,13 +158,13 @@ local function rocketCf(pos, dir)
 	return CFrame.fromMatrix(pos, right, up)
 end
 
--- ── TRZESIENIE KAMERY ──
+-- TRZESIENIE KAMERY
 local _shakeUntil, _shakeMag, _shakeDur = 0, 0, 0.16
 local function cameraShake(mag)
 	_shakeMag = math.max(_shakeMag, mag); _shakeUntil = os.clock() + _shakeDur
 end
 
--- ── JEDEN WYBUCH (Flash -> Fireball -> Ring -> Smoke -> Sparks) ──
+-- JEDEN WYBUCH (Flash -> Fireball -> Ring -> Smoke -> Sparks)
 function ArtilleryFxController.explode(pos: Vector3, big: boolean?)
 	local s = big and 2.6 or 1.7 -- wieksze wybuchy salwy (flash/fireball/ring/shake skaluja sie z s)
 	do -- FLASH
@@ -218,7 +220,7 @@ function ArtilleryFxController.explode(pos: Vector3, big: boolean?)
 	end
 end
 
--- ── SPADAJACA RAKIETA: z LEWEGO BOKU pod katem do impact, wybuch DOPIERO na ladowaniu ──
+-- SPADAJACA RAKIETA: z LEWEGO BOKU pod katem do impact, wybuch DOPIERO na ladowaniu
 local function dropRocket(impact: Vector3, variant: string, big: boolean?)
 	local rk = acquireRocket(variant)
 	if not rk then ArtilleryFxController.explode(impact, big); return end
@@ -235,7 +237,7 @@ local function dropRocket(impact: Vector3, variant: string, big: boolean?)
 	tw:Play()
 end
 
--- ── BANNER "SALWA!" ──
+-- BANNER "SALWA!"
 local _bannerLbl, _bannerScale
 local function banner(text)
 	if not _bannerLbl then return end
@@ -250,7 +252,7 @@ local function banner(text)
 	end)
 end
 
--- ── SALWA: 8 rakiet w skupisko, jedna po drugiej, 8. = booster/big ──
+-- SALWA: 8 rakiet w skupisko, jedna po drugiej, 8. = booster/big
 function ArtilleryFxController.salvo(center: Vector3, radius: number?)
 	radius = radius or 16
 	banner("SALWA!")
@@ -264,46 +266,6 @@ function ArtilleryFxController.salvo(center: Vector3, radius: number?)
 			dropRocket(impact, variant, big)
 		end)
 	end
-end
-
--- ── DEV: skupisko wrogow (centroid) na wlasnym placu; tylko podczas fali ──
-local function enemyCentroid()
-	local folder = Workspace:FindFirstChild("WR_EnemyRender")
-	if not folder then return nil, 0 end
-	local ownPlot = LP:GetAttribute("PlotId")
-	local sum, n = Vector3.zero, 0
-	for _, m in ipairs(folder:GetChildren()) do
-		if m:IsA("Model") and m:GetAttribute("WR_EnemyId") ~= nil then
-			local ep = m:GetAttribute("PlotId")
-			if ownPlot == nil or ep == nil or ep == ownPlot then
-				sum += m:GetPivot().Position; n += 1
-			end
-		end
-	end
-	if n == 0 then return nil, 0 end
-	return sum / n, n
-end
-
-local function makeDevButton()
-	local pg = LP:WaitForChild("PlayerGui")
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "WR_ArtilleryDev"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 400; gui.Parent = pg
-	local btn = Instance.new("TextButton")
-	btn.AnchorPoint = Vector2.new(0, 0.5); btn.Position = UDim2.new(0, 16, 0.60, 0); btn.Size = UDim2.fromOffset(176, 46)
-	btn.BackgroundColor3 = Color3.fromRGB(200, 70, 55); btn.Text = "💥 SALWA (dev)"
-	btn.Font = Enum.Font.GothamBold; btn.TextSize = 16; btn.TextColor3 = Color3.new(1, 1, 1); btn.AutoButtonColor = true; btn.ZIndex = 60
-	local corner = Instance.new("UICorner"); corner.CornerRadius = UDim.new(0, 10); corner.Parent = btn
-	local stroke = Instance.new("UIStroke"); stroke.Color = Color3.fromRGB(30, 20, 20); stroke.Thickness = 2; stroke.Parent = btn
-	btn.Parent = gui
-	btn.Activated:Connect(function()
-		local center = enemyCentroid()
-		if not center then
-			local old = btn.Text; btn.Text = "tylko podczas fali"
-			task.delay(1.0, function() if btn.Parent then btn.Text = old end end)
-			return
-		end
-		ArtilleryFxController.salvo(center, 16)
-	end)
 end
 
 local function makeBanner()
@@ -345,7 +307,10 @@ function ArtilleryFxController.start()
 			* CFrame.Angles((math.random() - 0.5) * m * 0.02, (math.random() - 0.5) * m * 0.02, (math.random() - 0.5) * m * 0.02)
 	end)
 	makeBanner()
-	makeDevButton()
+	-- "×N" po salwie (nagroda za skutecznosc; serwer liczy kille i wysyla SalvoResult)
+	Net.get("SalvoResult").OnClientEvent:Connect(function(p)
+		if type(p) == "table" and tonumber(p.kills) then banner("×" .. tostring(p.kills)) end
+	end)
 end
 
 return ArtilleryFxController

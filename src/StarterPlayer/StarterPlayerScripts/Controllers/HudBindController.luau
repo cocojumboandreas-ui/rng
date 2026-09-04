@@ -344,7 +344,7 @@ function HudBindController.start()
 		if combo.gui then combo.gui:Destroy() end
 		local gui = Instance.new("BillboardGui")
 		gui.Name = "WR_ComboCoins"; gui.Size = UDim2.fromOffset(160, 46)
-		gui.StudsOffset = Vector3.new(0, 3.7, 0) -- nad nickiem + licznikiem rolek
+		gui.StudsOffset = Vector3.new(0, 1.7, 0) -- POD kostkami/nickiem, lekko nad glowa gracza
 		gui.MaxDistance = 90; gui.LightInfluence = 0; gui.Adornee = head
 		gui.ResetOnSpawn = false; gui.Enabled = false; gui.Parent = head
 		local row = Instance.new("Frame"); row.Size = UDim2.fromScale(1, 1); row.BackgroundTransparency = 1; row.Parent = gui
@@ -430,10 +430,9 @@ function HudBindController.start()
 		setText(waveNum, "Wave " .. tostring(waveNumber or 1))
 		local left = math.max(0, (pool or 0) - (killed or 0))
 		setText(waveProgText, left .. " Left")
-		if waveProgBar and pool and pool > 0 then
-			-- pasek = ILOSC LEFT (pozostali wrogowie): pelny na starcie, ZWEZA sie z kazdym zabitym
-			local frac = math.clamp((pool - killed) / pool, 0, 1)
-			waveProgBar.Size = UDim2.new(frac, 0, waveProgBar.Size.Y.Scale, waveProgBar.Size.Y.Offset)
+		-- pasek STALY (nie zweza sie z zabijaniem): tylko tekst "N Left" i numer fali sie zmieniaja
+		if waveProgBar then
+			waveProgBar.Size = UDim2.new(0.35, 0, waveProgBar.Size.Y.Scale, waveProgBar.Size.Y.Offset)
 		end
 	end
 	Net.get("WaveProgress").OnClientEvent:Connect(function(p)

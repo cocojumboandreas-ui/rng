@@ -292,7 +292,7 @@ local function makeGhost()
 		local size = g:GetExtentsSize()
 		local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
 		factor = math.min(factor, 1)
-		if factor < 0.999 and g.ScaleTo then g:ScaleTo(g:GetScale() * factor) end -- ScaleTo absolutne * upieczona skala szablonu (== BuildService)
+		if factor < 0.999 and g.ScaleTo then g:ScaleTo(g:GetScale() * factor) end
 		if g.GetScale and g.ScaleTo then -- gwarancja zmieszczenia (dlugie pojazdy)
 			local s2 = g:GetExtentsSize()
 			local over = math.max(s2.X / cellW, s2.Z / cellD)
@@ -689,7 +689,7 @@ local function clearPlot()
 	end
 	_clearArmed = false
 	_clearToken += 1
-	if _clearLbl then _clearLbl.Text = _clearOrigText end
+	setClearText(_clearOrigText)
 	Net.get("ClearPlot"):InvokeServer()
 	_sel = nil; _moving = nil; _movingModel = nil
 	clearGhost()

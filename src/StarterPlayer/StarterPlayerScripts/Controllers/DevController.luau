@@ -24,6 +24,8 @@ end
 
 -- {label, action, amount?, color}
 local BUTTONS = {
+	{ "💥 SALWA (dev)", "salvo", nil, Color3.fromRGB(200, 70, 55) },
+	{ "🚚 KONWÓJ (dev)", "convoy", nil, Color3.fromRGB(90, 140, 75) },
 	{ "🌳 RESET SKILL TREE", "resetSkills", nil, Color3.fromRGB(60, 130, 210) },
 	{ "💰 +10k coins", "coins", 10000, Color3.fromRGB(200, 165, 40) },
 	{ "💰 +100k coins", "coins", 100000, Color3.fromRGB(200, 165, 40) },
@@ -34,6 +36,7 @@ local BUTTONS = {
 	{ "📖 Reset collection", "resetIndex", nil, Color3.fromRGB(70, 120, 170) },
 	{ "✖️ Reset multipliers", "resetMultipliers", nil, Color3.fromRGB(70, 120, 170) },
 	{ "☢️ RESET ALL", "resetAll", nil, Color3.fromRGB(190, 55, 55) },
+	{ "☢️ ATOMÓWKA (dev)", "atomicStrike", nil, Color3.fromRGB(230, 90, 30) },
 }
 
 function DevController.start()
@@ -47,7 +50,7 @@ function DevController.start()
 	gui.Name = "WR_DevPanel"
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 300000 -- NA 1 PLANIE: nad wszystkim (Tooltip 250k, Build 200k, Settings 100k)
+	gui.DisplayOrder = 999999 -- ZAWSZE NA WIERZCHU: nad calym UI (Tooltip 250k, Build 200k, Settings 100k) — wyzwalacze (Salwa/Konwoj) musza byc klikalne
 	gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
 
 	-- przycisk toggle (gora-lewo, pod monetami)
@@ -86,6 +89,23 @@ function DevController.start()
 	status.TextXAlignment = Enum.TextXAlignment.Left; status.Parent = panel
 
 	local function doAction(action, amount)
+		if action == "atomicStrike" then
+			-- NIE przez DevAction (RF generyczny) — AtomicStrike to docelowo PRAWDZIWY remote gracza
+			-- (na razie darmowy test), wiec strzela bezposrednio jak WaveStrike/salwa/konwoj.
+			Net.get("AtomicStrike"):FireServer()
+			status.Text = "☢️ ATOMÓWKA odpalona"
+			status.TextColor3 = Color3.fromRGB(255, 150, 70)
+			return
+		end
+		if action == "convoy" then
+			-- Przycisk odpala NOWY konwoj 4 jeepow (ConvoyStrikeService, realne namierzanie serwera
+			-- per-wrog). Stary mechanizm (WaveStrikeService.RunConvoy / DevService.ACTIONS.convoy /
+			-- WaveStrikeController.convoyFx, ciezarowka+SpreadDamage) zostal USUNIETY w Fazie 2 kroku 2.
+			Net.get("ConvoyStrike"):FireServer()
+			status.Text = "🚚 KONWÓJ odpalony"
+			status.TextColor3 = Color3.fromRGB(140, 220, 150)
+			return
+		end
 		task.spawn(function()
 			local ok, resp = pcall(function()
 				return remote:InvokeServer({ action = action, amount = amount })
