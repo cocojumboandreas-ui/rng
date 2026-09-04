@@ -138,7 +138,10 @@ function HudBindController.start()
 	local waveNum = resolve(sb, "TopCanvas", "Notifications", "WaveInfo", "WaveNumber")
 	local waveInfo = resolve(sb, "TopCanvas", "Notifications", "WaveInfo")
 	local waveProgBar = resolve(sb, "TopCanvas", "Notifications", "WaveInfo", "ProgressBar")
-	local waveProgText = resolve(sb, "TopCanvas", "Notifications", "WaveInfo", "ProgressBar", "Info", "Text", "Text")
+	-- bug 5: celuj w ZEWNETRZNA "Info.Text" (ciemny shadow, sizer autoSz=X); setText kaskaduje w dol
+	-- na zagniezdzona biala "Text.Text" (gradient) -> OBIE warstwy dostaja te sama liczbe = jeden numer
+	-- z cieniem. Wczesniej celowal w wewnetrzna -> zewnetrzna zostawala statyczna ("6 Left") = dwie liczby.
+	local waveProgText = resolve(sb, "TopCanvas", "Notifications", "WaveInfo", "ProgressBar", "Info", "Text")
 
 	-- ── akcje (klik -> Net) + feedback wciśnięcia ──
 	if startBtn then bindPress(startBtn); startBtn.MouseButton1Click:Connect(function() Net.get("StartWave"):FireServer() end) end
