@@ -70,6 +70,7 @@ local _thumbCache = {}
 -- UI refs — designerowy BuildMode (place-owned)
 local _bm, _list, _template, _content = nil, nil, nil, nil
 local _counter, _tabBtns = nil, nil
+local _budgetToast = nil -- toast "board full" gdy plansza pelna (budzet wyczerpany) — #9
 local fitListRows -- forward-decl (uzywane w _refreshPanel, definiowane nizej)
 local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
 local _pcControls = nil -- BottomRightCanvas.PcControls (Place/Rotate/Cancel — pokaz tylko gdy stawiamy)
@@ -530,10 +531,45 @@ local function findModelAtCell(x, z, maxTries)
 	return nil
 end
 
+-- #9: plansza pelna? (ta sama kalkulacja co validAt: zajete + footprint wybranej > budzet).
+-- occupancy(_moving) pomija przenoszona jednostke -> przenoszenie po pelnej planszy NIE jest "pelne".
+local function budgetFull()
+	if not _sel then return false end
+	local _, used = occupancy(_moving)
+	return used + _sel.fp.w * _sel.fp.d > _budget
+end
+
+-- #9: toast "board full" — feedback zamiast cichego nic gdy GridService odrzuca (BudgetExceeded).
+-- Debounce tokenem: kolejne kliki odswiezaja timer zaniku, bez ponownego popu gdy juz widoczny.
+local _budgetToastTok = 0
+local function showBudgetToast()
+	if not _budgetToast then return end
+	_budgetToastTok += 1
+	local tok = _budgetToastTok
+	local alreadyUp = _budgetToast.Visible and _budgetToast.TextTransparency < 0.5
+	if not alreadyUp then
+		_budgetToast.Visible = true
+		_budgetToast.TextTransparency = 1
+		_budgetToast.BackgroundTransparency = 1
+		_budgetToast.Position = UDim2.new(0.5, 0, 0.30, 0)
+		TweenService:Create(_budgetToast, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			TextTransparency = 0, BackgroundTransparency = 0.12, Position = UDim2.new(0.5, 0, 0.31, 0),
+		}):Play()
+	end
+	task.delay(1.5, function()
+		if tok ~= _budgetToastTok then return end -- nowszy klik przejal
+		TweenService:Create(_budgetToast, TweenInfo.new(0.35), { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
+		task.delay(0.35, function() if tok == _budgetToastTok then _budgetToast.Visible = false end end)
+	end)
+end
+
 -- ── akcje ──
 local function place()
 	if not _sel or not _cell then return end
-	if not validAt(_cell.x, _cell.z) then return end
+	if not validAt(_cell.x, _cell.z) then
+		if budgetFull() then showBudgetToast() end -- #9: pelna plansza -> powiedz graczowi (inne blokady = cicho)
+		return
+	end
 	if _moving then
 		-- przenoszenie juz postawionej jednostki (bez zwrotu do inventory)
 		local destX, destZ = _cell.x, _cell.z
@@ -561,6 +597,8 @@ local function place()
 		if res.placementId then
 			task.spawn(function() popPlaced(findModelByPlacementId(res.placementId, 10)) end)
 		end
+	elseif res and res.reason == "BudgetExceeded" then
+		showBudgetToast() -- #9: serwer odrzucil za budzet (klient/serwer rozjazd) -> toast
 	end
 end
 
@@ -883,6 +921,27 @@ function BuildController.start()
 	gui.Name = "WR_Build"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 30
 	gui.Parent = LP:WaitForChild("PlayerGui")
 
+	-- #9: toast "board full" — feedback gdy plansza pelna (GridService BudgetExceeded). Licznik N/40
+	-- (BuildMode.BottomCanvas.Value) juz pokazuje zajetosc; ten toast mowi WPROST czemu nie da sie postawic.
+	_budgetToast = Instance.new("TextLabel")
+	_budgetToast.Name = "WR_BudgetToast"
+	_budgetToast.AnchorPoint = Vector2.new(0.5, 0)
+	_budgetToast.Position = UDim2.new(0.5, 0, 0.31, 0)
+	_budgetToast.Size = UDim2.fromOffset(360, 46)
+	_budgetToast.BackgroundColor3 = Color3.fromRGB(42, 30, 26)
+	_budgetToast.BackgroundTransparency = 1
+	_budgetToast.BorderSizePixel = 0
+	_budgetToast.Font = Enum.Font.GothamBold
+	_budgetToast.TextSize = 22
+	_budgetToast.TextColor3 = Color3.fromRGB(255, 170, 90)
+	_budgetToast.Text = "Board full — no free slots!"
+	_budgetToast.TextTransparency = 1
+	_budgetToast.Visible = false
+	_budgetToast.ZIndex = 20
+	_budgetToast.Parent = gui
+	local _btCorner = Instance.new("UICorner"); _btCorner.CornerRadius = UDim.new(0, 10); _btCorner.Parent = _budgetToast
+	local _btStroke = Instance.new("UIStroke"); _btStroke.Color = Color3.fromRGB(120, 70, 30); _btStroke.Thickness = 1.5; _btStroke.Transparency = 0.3; _btStroke.Parent = _budgetToast
+
 	-- DESIGNEROWY panel budowania (StarterGui.BuildMode, place-owned)
 	local buildMode = LP:WaitForChild("PlayerGui"):WaitForChild("BuildMode", 15)
 	_bm = buildMode
@@ -961,7 +1020,7 @@ function BuildController.start()
 					btn.MouseButton1Down:Connect(function() _suppressGhost = true end)
 				end
 			end
-			wireMobile("Accept", function() if _sel and _cell and validAt(_cell.x, _cell.z) then place() end end)
+			wireMobile("Accept", function() if _sel and _cell then place() end end) -- #9: place() waliduje + toast
 			wireMobile("Rotate", function() if _sel then _rot = (_rot + 90) % 360; makeGhost() end end)
 			wireMobile("Cancel", function() if _sel then cancelSelection() end end)
 			-- odmroz ghosta po puszczeniu palca (globalnie, na wypadek zjechania palcem poza przycisk)
@@ -995,7 +1054,7 @@ function BuildController.start()
 			if _mode == "delete" then
 				deleteAt()
 			elseif _sel then
-				if _cell and validAt(_cell.x, _cell.z) then place() end
+				if _cell then place() end -- #9: place() sam waliduje + toast gdy budzet pelny
 			else
 				local m = unitUnderCursor() -- nic nie wybrane -> podnies jednostke do przeniesienia
 				if m then pickup(m) end
