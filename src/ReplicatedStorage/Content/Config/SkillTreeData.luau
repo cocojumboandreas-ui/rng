@@ -94,7 +94,7 @@ return {
 	-- ── GALAZ BOJOWA (Player PRO) — koszty w SkillCosts.luau (dla Olo). Efekty: patrz SkillConfig. ──
 	{ id="n105", parent="n73", dir="DolPrawo", label="Weapon Upgrade", coin=0, roll=0, desc="Your units deal +10% more damage." },
 	{ id="n106", parent="n105", dir="Gora", label="Military Convoy", coin=0, roll=0, desc="During a wave a military convoy drives past your base, raking the advancing enemies with fire before it rolls off." },
-	{ id="n107", parent="n106", dir="GoraPrawo", label="Nuke", coin=0, roll=0, desc="Call in a nuclear strike — a bomb drops from the sky and devastates enemy units in a massive blast." },
+	{ id="n107", parent="n106", dir="GoraPrawo", label="Nuke", coin=0, roll=0, desc="Call in a nuclear strike. A bomb drops from the sky and devastates enemy units in a massive blast." },
 	{ id="n108", parent="n106", dir="DolPrawo", label="Air Raid", coin=0, roll=0, desc="During a wave a plane flies over and drops a bomb, dealing heavy splash damage to enemy units." },
 	{ id="n109", parent="n3", dir="GoraLewo", label="Faster Shooting I", coin=0, roll=0, desc="Your units shoot 5% faster." },
 	{ id="n110", parent="n109", dir="GoraLewo", label="Faster Shooting II", coin=0, roll=0, desc="Your units shoot 10% faster." },

@@ -332,8 +332,8 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 
 	-- Statyczny render: zakotwicz WSZYSTKIE czesci (zero fizyki/ragdoll), animacja = kosmetyka klienta.
 	-- CanQuery = true: KLUCZOWE dla trybu budowania — klient raycastuje jednostki (hover/pickup/delete).
-	-- CanCollide = true: jednostki sa NIEPRZECHODNE — gracz nie przechodzi przez nie, moze na nie wskoczyc.
-	--   Wrogowie chodza po pathT (CFrame, bez fizyki), wiec kolizja jednostek ich nie blokuje.
+	-- CanCollide = false (user): jednostki PRZECHODNE — inaczej SPYCHALY gracza (fizyka postaci na nie wpadala).
+	--   Wrogowie chodza po pathT (CFrame, bez fizyki), a jednostki sa zakotwiczone -> brak kolizji niczego nie psuje.
 	-- R6 humanoid: realne animacje (Animator) -> kotwicz TYLKO HRP + spaw dodatkow (RigAnimSetup).
 	-- Reszta (pojazdy, wieze, bloki): zakotwicz wszystko jak dotychczas.
 	-- POJAZD z kierowca (ucfg.driver): NIE odpalaj prepare — inaczej wykryje Humanoida kierowcy,
@@ -346,13 +346,13 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	if isR6 then
 		RigAnimSetup.prepare(model) -- kotwicz tylko HRP, odkotwicz reszte (welded do HRP -> stoi), Animator
 		for _, d in ipairs(model:GetDescendants()) do
-			if d:IsA("BasePart") then d.CanCollide = true; d.CanQuery = true end -- jednostka nieprzechodna + trafialna
+			if d:IsA("BasePart") then d.CanCollide = false; d.CanQuery = true end -- przechodna (nie spycha) + trafialna
 		end
 	else
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("BasePart") then
 				d.Anchored = true
-				d.CanCollide = true
+				d.CanCollide = false
 				d.CanQuery = true
 			end
 		end

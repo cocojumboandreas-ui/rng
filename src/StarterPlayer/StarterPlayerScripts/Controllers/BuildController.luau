@@ -26,6 +26,7 @@ local GridMath = require(Framework:WaitForChild("GridMath"))
 local GameConfig = require(ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig"))
 local UnitModelFactory = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UnitModelFactory"))
 local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
+local Notify = require(script.Parent:WaitForChild("Notify")) -- wspolny toast przez designerowy Notifications.Template
 
 local BuildController = {}
 
@@ -70,7 +71,6 @@ local _thumbCache = {}
 -- UI refs — designerowy BuildMode (place-owned)
 local _bm, _list, _template, _content = nil, nil, nil, nil
 local _counter, _tabBtns = nil, nil
-local _budgetToast = nil -- toast "board full" gdy plansza pelna (budzet wyczerpany) — #9
 local fitListRows -- forward-decl (uzywane w _refreshPanel, definiowane nizej)
 local _slotsLbl = nil -- biala liczba slotow ziomka (BuildMode.BottomCanvas.Value)
 local _pcControls = nil -- BottomRightCanvas.PcControls (Place/Rotate/Cancel — pokaz tylko gdy stawiamy)
@@ -540,28 +540,10 @@ local function budgetFull()
 	return used + _sel.fp.w * _sel.fp.d > _budget
 end
 
--- #9: toast "board full" — feedback zamiast cichego nic gdy GridService odrzuca (BudgetExceeded).
--- Debounce tokenem: kolejne kliki odswiezaja timer zaniku, bez ponownego popu gdy juz widoczny.
-local _budgetToastTok = 0
+-- #9: "board full" — feedback zamiast cichego nic gdy GridService odrzuca (BudgetExceeded).
+-- Idzie teraz przez DESIGNEROWY Notify (Notifications.Template); dedup klik-spamu w samym Notify.
 local function showBudgetToast()
-	if not _budgetToast then return end
-	_budgetToastTok += 1
-	local tok = _budgetToastTok
-	local alreadyUp = _budgetToast.Visible and _budgetToast.TextTransparency < 0.5
-	if not alreadyUp then
-		_budgetToast.Visible = true
-		_budgetToast.TextTransparency = 1
-		_budgetToast.BackgroundTransparency = 1
-		_budgetToast.Position = UDim2.new(0.5, 0, 0.30, 0)
-		TweenService:Create(_budgetToast, TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-			TextTransparency = 0, BackgroundTransparency = 0.12, Position = UDim2.new(0.5, 0, 0.31, 0),
-		}):Play()
-	end
-	task.delay(1.5, function()
-		if tok ~= _budgetToastTok then return end -- nowszy klik przejal
-		TweenService:Create(_budgetToast, TweenInfo.new(0.35), { TextTransparency = 1, BackgroundTransparency = 1 }):Play()
-		task.delay(0.35, function() if tok == _budgetToastTok then _budgetToast.Visible = false end end)
-	end)
+	Notify.show("Board full, no free slots!")
 end
 
 -- ── akcje ──
@@ -947,26 +929,7 @@ function BuildController.start()
 	gui.Name = "WR_Build"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true; gui.DisplayOrder = 30
 	gui.Parent = LP:WaitForChild("PlayerGui")
 
-	-- #9: toast "board full" — feedback gdy plansza pelna (GridService BudgetExceeded). Licznik N/40
-	-- (BuildMode.BottomCanvas.Value) juz pokazuje zajetosc; ten toast mowi WPROST czemu nie da sie postawic.
-	_budgetToast = Instance.new("TextLabel")
-	_budgetToast.Name = "WR_BudgetToast"
-	_budgetToast.AnchorPoint = Vector2.new(0.5, 0)
-	_budgetToast.Position = UDim2.new(0.5, 0, 0.31, 0)
-	_budgetToast.Size = UDim2.fromOffset(360, 46)
-	_budgetToast.BackgroundColor3 = Color3.fromRGB(42, 30, 26)
-	_budgetToast.BackgroundTransparency = 1
-	_budgetToast.BorderSizePixel = 0
-	_budgetToast.Font = Enum.Font.GothamBold
-	_budgetToast.TextSize = 22
-	_budgetToast.TextColor3 = Color3.fromRGB(255, 170, 90)
-	_budgetToast.Text = "Board full — no free slots!"
-	_budgetToast.TextTransparency = 1
-	_budgetToast.Visible = false
-	_budgetToast.ZIndex = 20
-	_budgetToast.Parent = gui
-	local _btCorner = Instance.new("UICorner"); _btCorner.CornerRadius = UDim.new(0, 10); _btCorner.Parent = _budgetToast
-	local _btStroke = Instance.new("UIStroke"); _btStroke.Color = Color3.fromRGB(120, 70, 30); _btStroke.Thickness = 1.5; _btStroke.Transparency = 0.3; _btStroke.Parent = _budgetToast
+	-- "board full" idzie teraz przez designerowy Notify (Notifications.Template) — patrz showBudgetToast().
 
 	-- DESIGNEROWY panel budowania (StarterGui.BuildMode, place-owned)
 	local buildMode = LP:WaitForChild("PlayerGui"):WaitForChild("BuildMode", 15)
