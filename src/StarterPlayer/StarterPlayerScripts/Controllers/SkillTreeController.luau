@@ -9,6 +9,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -384,20 +385,13 @@ function SkillTreeController.start()
 			panning = true
 		end
 	end)
-	-- PPM (MouseButton2) pan: pelnoekranowy clickBlock (aktywny GuiButton) POCHLANIA prawy przycisk zanim
-	-- dojdzie do InputBegan/ContextActionService -> zdarzeniowe wykrycie PPM nie dziala (zdiagnozowane w
-	-- playtescie: casBegin=0, moveAll=145). Ale ruch myszy leci normalnie, wiec zamiast lapac "poczatek PPM"
-	-- po prostu w handlerze ruchu sprawdzamy czy PPM jest FIZYCZNIE wcisniety (IsMouseButtonPressed) -> omija
-	-- pochlanianie przez GUI. Kamera i tak zamrozona (Scriptable) na czas drzewa, wiec mysz nie jest blokowana.
-	local function rmbHeld()
-		return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
-	end
+	-- LPM + dotyk: pan zdarzeniowy (input.Delta dziala poprawnie dla lewego i dotyku)
 	UserInputService.InputChanged:Connect(function(input)
 		if not NodeTreeClient.isTreeVisible() then return end
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
 			setZoom(myZoom + input.Position.Z * 0.12)
 			clampMainFrame()
-		elseif (panning or rmbHeld()) and (input.UserInputType == Enum.UserInputType.MouseMovement
+		elseif panning and (input.UserInputType == Enum.UserInputType.MouseMovement
 			or input.UserInputType == Enum.UserInputType.Touch) then
 			mainFrame.Position += UDim2.fromOffset(input.Delta.X, input.Delta.Y)
 			clampMainFrame()
@@ -405,10 +399,28 @@ function SkillTreeController.start()
 	end)
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.MouseButton2 -- user: pan tez PPM
 			or input.UserInputType == Enum.UserInputType.Touch then
 			panning = false
 		end
+	end)
+	-- PPM (MouseButton2) pan: zdiagnozowane w playtescie -> przy trzymanym PPM input.Delta jest ZEROWE
+	-- (moveAll>0, rmbMove>0, ale deltaSum=0; prawy przycisk zjada delte do obrotu kamery), a pelnoekranowy
+	-- clickBlock pochlania event poczatku PPM. Dlatego PPM liczymy SAMI: co klatke, gdy PPM fizycznie wcisniety,
+	-- delta = biezaca - poprzednia pozycja kursora (GetMouseLocation dziala, kursor widoczny bo kamera Scriptable).
+	-- To omija i zerowa delte, i pochlanianie eventu przez GUI.
+	local lastMouse = nil
+	RunService.RenderStepped:Connect(function()
+		if not NodeTreeClient.isTreeVisible() then lastMouse = nil; return end
+		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then lastMouse = nil; return end
+		local mp = UserInputService:GetMouseLocation()
+		if lastMouse then
+			local dx, dy = mp.X - lastMouse.X, mp.Y - lastMouse.Y
+			if dx ~= 0 or dy ~= 0 then
+				mainFrame.Position += UDim2.fromOffset(dx, dy)
+				clampMainFrame()
+			end
+		end
+		lastMouse = mp
 	end)
 
 	-- modal: przy otwartym drzewku chowamy CALE inne UI (zostaje drzewko + naglowek + Zamknij)
