@@ -128,11 +128,13 @@ local ANIM = {
 	["FlameThrower"] = { kind = "walk" },
 	["Rocket Soldier"] = { kind = "walk" },
 	["Tank Soldier"] = { kind = "walk" },
-	["Jeep"] = { kind = "wheels", bob = 0.12, rock = 0.05, spin = { { contains = { "tire", "wheel" }, exclude = "streeting", axis = "X", speed = 16 } } },
+	-- axleThin: kreci TYLKO czesci gdzie os obrotu (X) jest najciensza = prawdziwa os kola. Pomija plaska
+	-- zapasowa opone z tylu (cienka na Z, nie na X) -> zapaska stoi, kola jezdne sie tocza. + kierownica po nazwie.
+	["Jeep"] = { kind = "wheels", bob = 0.12, rock = 0.035, spin = { { contains = { "tire", "wheel" }, exclude = "streeting", axis = "X", axleThin = true, speed = 16 } } },
 	-- Tank: "Wheels" to JEDEN wielki slab (~15x5x23), obrot 360 = koziolek jak klapa (nie toczenie kol) -> zero spinu.
 	-- User: nie trzeba tekstury/super animacji, ma "lekko wygladac jakby jechal". Dajemy KOLYSANIE JAZDY: bujak (bob)
 	-- + delikatne kiwanie nosem (pitch) i przechyl (roll) przez rock -> czyta sie jako jazda, bez latajacych czesci.
-	["Tank"] = { kind = "wheels", bob = 0.06, rock = 0.035 },
+	["Tank"] = { kind = "wheels", bob = 0.06, rock = 0.028 },
 	["Helicopter"] = { kind = "fly", hoverH = 6, bob = 0.6, spin = { { name = "Propeller", axis = "Y", speed = 40 }, { name = "BackPropeller", axis = "X", speed = 32 } } },
 	["Jet"] = { kind = "fly", hoverH = 8, bob = 0.5, bank = 0.16 },
 }
@@ -168,7 +170,14 @@ local function resolveRig(model, modelName)
 						local ln = d.Name:lower()
 						local hit = false
 						for _, c in ipairs(list) do if ln:find(c:lower()) then hit = true; break end end
-						if hit and (not excl or not ln:find(excl)) then
+						-- axleThin: tylko gdy os obrotu jest najciensza sciana (prawdziwa os kola) -> pomija plaska zapaske
+						local axleOk = true
+						if hit and spec.axleThin then
+							local s = d.Size
+							local axisDim = (spec.axis == "Y" and s.Y) or (spec.axis == "Z" and s.Z) or s.X
+							if axisDim > math.min(s.X, s.Y, s.Z) + 0.01 then axleOk = false end
+						end
+						if hit and axleOk and (not excl or not ln:find(excl)) then
 							rig.spin[#rig.spin + 1] = { part = d, cf = pivot:ToObjectSpace(d.CFrame), rot = rot, speed = spec.speed }
 						end
 					end
