@@ -30,8 +30,8 @@ local BOSS_FOOT = 10 -- docelowy footprint bossa (study) — POJAZDY/nie-R6
 local GRUNT_FOOT = 4 -- docelowy footprint zwyklego wroga — POJAZDY/nie-R6
 -- ZOLNIERZE (R6): skala wg WYSOKOSCI CIALA rigu, NIE sladu (dluga bron rozdmuchiwala slad -> niespojny rozmiar,
 -- Soldier/Sniper/Tank Soldier za male, Flamethrower za duzy). Cel = wysokosc ciala Noob Soldiera (spojne, "realne").
-local GRUNT_BODY_H = 3.5 -- docelowa wysokosc ciala zwyklego zolnierza (Noob raw ~5.0 x 0.70)
-local BOSS_BODY_H = 8.75 -- j.w. dla bossa (proporcja BOSS_FOOT/GRUNT_FOOT = 2.5)
+local GRUNT_BODY_H = 5.0 -- docelowa wysokosc ciala zwyklego zolnierza (~raw = rzeczywisty rozmiar jak Units Comission)
+local BOSS_BODY_H = 12.5 -- j.w. dla bossa (proporcja BOSS_FOOT/GRUNT_FOOT = 2.5)
 -- FORMACJA (render-only): wrogowie wychodza z bramy GESIEGO/prosto, dopiero po chwili rozchodza sie na plac.
 -- Cel (wg gry-wzorca): luzna MASZERUJACA LINIA przez cala szerokosc+glebokosc placu, nie zbity klab.
 local LANE_SCALE = 0.9 -- rozstaw boczny (bylo 0.5 = kłąb; 0.9 = szeroki wachlarz na cala szerokosc lane)
@@ -1349,6 +1349,15 @@ function EnemyRenderController.start()
 	Net.get("EnemyEvents").OnClientEvent:Connect(onEvents)
 	Net.get("EnemySync").OnClientEvent:Connect(onSync)
 	Net.get("PlayerShotHit").OnClientEvent:Connect(onPlayerShotHit)
+	-- KONIEC RUNU (przegrana / StopWave): serwer robi ClearPlot bez wysylania "smierci" per wrog -> klient
+	-- zostawal z ostatnimi wrogami (zamrozeni, WR_EnemyId set -> jednostki gracza strzelaja do nich BEZ KONCA).
+	-- Na RunSummary czyscimy WSZYSTKICH aktywnych (release -> WR_EnemyId=nil -> jednostki przestaja celowac).
+	Net.get("RunSummary").OnClientEvent:Connect(function()
+		for key, e in pairs(_active) do
+			release(e.model, e.poolKey)
+			_active[key] = nil
+		end
+	end)
 	RunService.RenderStepped:Connect(renderStep)
 end
 

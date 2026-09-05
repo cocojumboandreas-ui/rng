@@ -273,7 +273,7 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 			-- ZOLNIERZ R6: skala wg WYSOKOSCI CIALA rigu (NIE sladu z bronia — dluga bron kurczyla jednostki
 			-- niespojnie). Cialo ~72% kratki -> wszyscy zolnierze RÓWNI, niezaleznie od broni. Bron moze wystawac.
 			local bodyY = humB.Parent:GetExtentsSize().Y
-			local targetH = math.min(cellW, cellD) * 0.72
+			local targetH = math.min(cellW, cellD) * 0.9 -- cialo ~90% kratki (rzeczywisty rozmiar; bron moze wystawac)
 			model:ScaleTo(model:GetScale() * (targetH / math.max(bodyY, 0.01)))
 		elseif model:FindFirstChildWhichIsA("Humanoid", true) then
 			-- R15/inne humanoidy: stara sciezka footprint
