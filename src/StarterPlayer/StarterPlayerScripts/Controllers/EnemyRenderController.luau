@@ -1135,7 +1135,7 @@ local function renderStep(dt)
 	-- THROTTLING PO DYSTANSIE KAMERY: dalecy wrogowie bez animacji konczyn/bobu i bez paskow HP
 	-- (z daleka i tak nieczytelne, a kosztuja CFrame/layout co klatke). Prog skaluje sie tierem governora.
 	local camPos = (Workspace.CurrentCamera and Workspace.CurrentCamera.CFrame.Position) or Vector3.zero
-	local animDist = 150 * PerfSettings.budget("animDist", 1)
+	local animDist = 220 * PerfSettings.budget("animDist", 1) -- zasieg animacji wrogow od kamery (wyzej = zolnierze chodza z dalej, pokrywa caly plac)
 	local animDist2 = animDist * animDist
 	for _, e in pairs(_active) do
 		local own = (e.plotId == ownPlot)
