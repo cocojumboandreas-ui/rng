@@ -329,30 +329,15 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	-- Reszta (pojazdy, wieze, bloki): zakotwicz wszystko jak dotychczas.
 	-- POJAZD z kierowca (ucfg.driver): NIE odpalaj prepare — inaczej wykryje Humanoida kierowcy,
 	-- przyspawa nadwozie do kierowcy i odkotwiczy je -> jeep rozlatuje sie w fizyce. Wtedy kotwiczymy wszystko.
-	local isR6 = (not ucfg.driver) and (require(ReplicatedStorage.Framework.RigAnimSetup).prepare(model) ~= nil)
+	-- user: POWROT DO USTAWIEN FABRYCZNYCH sprzed animacji — zolnierze maja stac w SUROWEJ pozie szablonu
+	-- (T-poza, bron obok), ZERO animacji. NIE uruchamiamy RigAnimSetup (przyspawialby bron do reki + odkotwiczal
+	-- rig, przez co fizyka sciagala ramiona z T-pozy w holding). Wszystkie czesci ZAKOTWICZONE -> rig zamrozony
+	-- w pozie szablonu, bron w miejscu z szablonu. Nowe animacje dojda pozniej z nowymi ID.
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
-			if not isR6 then
-				d.Anchored = true
-			end
+			d.Anchored = true
 			d.CanCollide = true
 			d.CanQuery = true
-		end
-	end
-
-	-- #modele: minigun heavy (tank_soldier) — RigAnimSetup WELDUJE obracana lufe do riga (Torsa), a klient
-	-- (UnitCombatAnimator) wymusza jej CFrame co klatke (spin) -> konflikt weld<->CFrame SZARPIE calym rigiem
-	-- ("obracal sie caly" przy strzale). Odczep lufe (usun RigAnimWeld) + zakotwicz NA SERWERZE (klient-side
-	-- sie nie utrzymuje, czesc jest server-owned) -> spin izolowany, cialo stoi idle. Tylko czesci "barrel"/
-	-- "minigun" (ma je jedynie minigun) -> pozostale rigi (soldier/swat) nietkniete.
-	if isR6 then
-		for _, d in ipairs(model:GetDescendants()) do
-			if d:IsA("BasePart") and (d.Name:lower():find("barrel") or d.Name:lower():find("minigun")) then
-				for _, w in ipairs(d:GetChildren()) do
-					if w:IsA("WeldConstraint") or w:IsA("Weld") then w:Destroy() end
-				end
-				d.Anchored = true
-			end
 		end
 	end
 

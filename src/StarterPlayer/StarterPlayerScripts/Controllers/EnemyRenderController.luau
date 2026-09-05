@@ -149,13 +149,7 @@ local function resolveRig(model, modelName)
 	local pivot = model:GetPivot()
 	local rig = { kind = prof.kind, prof = prof }
 	if prof.kind == "walk" then
-		rig.legs = {}
-		for i, nm in ipairs({ "Left Leg", "Right Leg" }) do
-			local p = findExact(model, nm)
-			if p then
-				rig.legs[#rig.legs + 1] = { part = p, cf = pivot:ToObjectSpace(p.CFrame), half = p.Size.Y * 0.5, phase = (i == 1) and 0 or math.pi }
-			end
-		end
+		rig.legs = {} -- user: zero animacji zolnierzy -> NIE zbieramy nog (proceduralny chod wylaczony; pusta lista = no-op)
 	else
 		rig.spin = {}
 		for _, spec in ipairs(prof.spin or {}) do
@@ -246,17 +240,12 @@ local function buildEnemyModel(modelName, isBoss): Model?
 	_weaponByModel[m] = resolveWeapon(m, modelName) -- rozpoznaj bron raz (part przesuwa sie z modelem przez PivotTo)
 	local rig = resolveRig(m, modelName) -- rozpoznaj rig anim raz (nogi/kola/wirniki)
 	_rigByModel[m] = rig
-	-- R6 zolnierze (kind=="walk"): PRAWDZIWE animacje (Animator) zamiast proceduralnego chodu.
-	-- prepare() odkotwicza konczyny (tylko HRP zakotwiczony), spawia dodatki, dodaje Animator.
+	-- user: POWROT DO USTAWIEN FABRYCZNYCH — wrogowie-zolnierze stoja w SUROWEJ pozie szablonu (T-poza, bron
+	-- obok), ZERO animacji. NIE uruchamiamy RigAnimSetup (przyspawialby bron do reki + odkotwiczal rig, przez
+	-- co fizyka sciagala ramiona z T-pozy w holding). Czesci zostaja ZAKOTWICZONE (ustawione wyzej) -> rig.real
+	-- pozostaje false -> ruch calego modelu przez PivotTo, proceduralny chod wylaczony (rig.legs pusta + brak bobu).
 	if rig and rig.kind == "walk" then
-		local animator = RigAnimSetup.prepare(m)
-		if animator then
-			rig.animator = animator
-			rig.real = true -- tracki wczytywane LENIWIE przy 1. renderze (prewarm-load 360 naraz dawal len=0)
-		end
-		-- Po odkotwiczeniu rigu Humanoid RAZ wlacza Torso.CanCollide=true (silnikowo, NIE lapie Changed).
-		-- Wrog tylko wizualny -> Torso niekolizyjny (pilnowane w renderStep). Torso rigu = BasePart bezposrednio
-		-- pod Dummy (Humanoid.Parent); NIE FindFirstChild rekurencyjnie, bo Uniform ma pod-MODEL "Torso".
+		-- Torso niekolizyjne, zeby gracz przechodzil przez wroga.
 		local humB = m:FindFirstChildWhichIsA("Humanoid", true)
 		local torsoPart = humB and humB.Parent and humB.Parent:FindFirstChild("Torso")
 		if torsoPart and torsoPart:IsA("BasePart") then
@@ -1140,7 +1129,7 @@ local function renderStep(dt)
 					if rp.hoverH then -- lot: utrzymaj WYSOKOSC lotu zawsze; bujanie/przechyl tylko gdy anim ON i blisko
 						baseY += rp.hoverH + (animOn and math.sin(e.animPhase * HOVER_FREQ) * (rp.bob or 0) or 0)
 						if animOn and rp.bank then roll = math.sin(e.animPhase * HOVER_FREQ * 0.6) * rp.bank end
-					elseif animOn and rig.kind == "walk" and not rig.real then -- marsz: podskok tulowia (procedura)
+					elseif animOn and rig.kind == "walk" and not rig.real and #rig.legs > 0 then -- marsz: podskok (wylaczony gdy brak nog = tryb statyczny)
 						baseY += math.abs(math.sin(e.animPhase * WALK_FREQ)) * BODY_BOB
 					elseif animOn and rp.bob then -- jazda: lekki bujak (jeep/tank)
 						baseY += math.abs(math.sin(e.animPhase * 11)) * rp.bob
