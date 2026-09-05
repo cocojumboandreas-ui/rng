@@ -138,6 +138,9 @@ function OfflineController.start()
 	setText(content and resolve(content, "Values", "Money", "Text"), "Coins:")
 	setText(content and resolve(content, "Values", "Rolls", "Text"), "Rolls:")
 
+	-- odstepy listy mniejsze, zeby 5 kart + monety zmiescily sie w panelu (nie wystawaly)
+	local bdLayout = bestDrops and bestDrops:FindFirstChildWhichIsA("UIListLayout")
+	if bdLayout then bdLayout.Padding = UDim.new(0, 6) end
 	-- schowaj szablon + ewentualne puste sloty designera (klonujemy per drop)
 	if template then template.Visible = false end
 	if bestDrops then
@@ -256,6 +259,27 @@ function OfflineController.start()
 		clearCards()
 		if bestDrops then bestDrops.Visible = #drops > 0 end
 		for i, d in ipairs(drops) do makeCard(d, i) end
+
+		-- FIT: przeskaluj CALA liste (karty + "+N") jednym UIScale, zeby zmiescila sie w panelu (nie wystawala
+		-- z lewej/prawej). Mierzymy naturalna szerokosc po klatce, potem ustawiamy scale <= 1.
+		if bestDrops then
+			local scaleObj = bestDrops:FindFirstChild("WR_FitScale") or Instance.new("UIScale")
+			scaleObj.Name = "WR_FitScale"; scaleObj.Scale = 1; scaleObj.Parent = bestDrops
+			task.defer(function()
+				if not (bestDrops and bestDrops.Parent) then return end
+				local lay2 = bestDrops:FindFirstChildWhichIsA("UIListLayout")
+				local pad2 = (lay2 and lay2.Padding.Offset) or 0
+				local sumW, cnt = 0, 0
+				for _, c in ipairs(bestDrops:GetChildren()) do
+					if c.Name == "WR_DropCard" or (c.Name == "Value" and c:IsA("GuiObject") and c.Visible) then
+						sumW += c.AbsoluteSize.X; cnt += 1
+					end
+				end
+				local content = sumW + math.max(0, cnt - 1) * pad2
+				local panel = bestDrops.AbsoluteSize.X
+				scaleObj.Scale = (content > panel and panel > 0) and math.clamp((panel - 6) / content, 0.4, 1) or 1
+			end)
+		end
 
 		-- CLAIM X2 zawsze widoczny obok Collect (fiolet ustawiony w start); klik dziala gdy doubleId > 0
 
