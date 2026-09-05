@@ -441,6 +441,7 @@ function SkillTreeController.start()
 	-- WR: tryb umiejetnosci = tylko drzewo. Wylacz sterowanie postacia (ruch); tlo drzewa pochlania klik.
 	local Controls
 	local savedWS = 16
+	local savedCamType = Enum.CameraType.Custom -- kamera zamrazana na czas drzewa (uwalnia PPM od kamery)
 	pcall(function()
 		Controls = require(Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")):GetControls()
 	end)
@@ -452,6 +453,10 @@ function SkillTreeController.start()
 		setHudHidden(isVisible)
 		if isVisible then
 			if Controls then Controls:Disable() end -- STOP ruchu postaci w trybie umiejetnosci
+			-- KLUCZOWE dla panu PPM: domyslna kamera przy trzymaniu PPM blokuje mysz na srodku (LockCurrent)
+			-- -> zaden listener ruchu nic nie dostaje. Zamrazamy kamere (Scriptable) na czas drzewa -> PPM wolny.
+			savedCamType = camera.CameraType
+			camera.CameraType = Enum.CameraType.Scriptable
 			-- wylacz pack-pan (dublowalby nasz) + tlo pochlania klik
 			local dd = ntGui.BackgroundFrame:FindFirstChildOfClass("UIDragDetector")
 			if dd then dd.Enabled = false end
@@ -484,6 +489,7 @@ function SkillTreeController.start()
 			end)
 		else
 			if Controls then Controls:Enable() end -- przywroc sterowanie po zamknieciu drzewa
+			camera.CameraType = savedCamType -- odmroz kamere (przywroc domyslne sterowanie kamera)
 			local hum1 = Players.LocalPlayer.Character and Players.LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 			if hum1 then hum1.WalkSpeed = savedWS end -- przywroc predkosc chodu
 			clickBlock.Visible = false -- zdejmij modal-blocker
