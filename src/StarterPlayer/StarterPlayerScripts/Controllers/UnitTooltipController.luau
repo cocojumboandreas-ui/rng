@@ -50,10 +50,14 @@ end
 local function icon(unitId)
 	if _iconCache[unitId] then return _iconCache[unitId]:Clone() end
 	local vpf = Instance.new("ViewportFrame")
-	vpf.BackgroundTransparency = 1
-	vpf.Ambient = Color3.fromRGB(210, 210, 214)
+	-- JASNE tlo + max ambient: ciemne jednostki (np. Heavy Trooper) zlewaly sie z ciemna karta -> nieczytelne.
+	-- Jasne tlo daje kontrast (jak ikona), pelny ambient rozswietla model. Zaokraglenie pod styl karty.
+	vpf.BackgroundColor3 = Color3.fromRGB(205, 210, 220)
+	vpf.BackgroundTransparency = 0
+	vpf.Ambient = Color3.fromRGB(255, 255, 255)
 	vpf.LightColor = Color3.fromRGB(255, 255, 255)
-	vpf.LightDirection = Vector3.new(-0.4, -1, -0.5)
+	vpf.LightDirection = Vector3.new(-0.3, -1, -0.4)
+	local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 8); vc.Parent = vpf
 	local tmpl = UnitModelFactory.get(unitId)
 	if tmpl then
 		local cam = Instance.new("Camera"); cam.FieldOfView = 38; vpf.CurrentCamera = cam; cam.Parent = vpf
