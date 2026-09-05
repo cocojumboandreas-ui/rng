@@ -380,6 +380,7 @@ function SkillTreeController.start()
 	clickBlock.InputBegan:Connect(function(input)
 		if not NodeTreeClient.isTreeVisible() then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.MouseButton2 -- user: pan tez PPM
 			or input.UserInputType == Enum.UserInputType.Touch then
 			panning = true
 		end
@@ -397,6 +398,7 @@ function SkillTreeController.start()
 	end)
 	UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.MouseButton2 -- user: pan tez PPM
 			or input.UserInputType == Enum.UserInputType.Touch then
 			panning = false
 		end
