@@ -128,11 +128,11 @@ local ANIM = {
 	["FlameThrower"] = { kind = "walk" },
 	["Rocket Soldier"] = { kind = "walk" },
 	["Tank Soldier"] = { kind = "walk" },
-	["Jeep"] = { kind = "wheels", bob = 0.12, spin = { { contains = { "tire", "wheel" }, exclude = "streeting", axis = "X", speed = 16 } } },
-	-- Tank: "Wheels" to JEDEN wielki slab (~15x5x23), obrot 360 = koziolek jak klapa (nie toczenie kol).
-	-- Zero spinu -> gasienice statyczne + bujak (bob) sugeruje ruch. Belt/Wheels to MeshParty bez tekstury
-	-- (brak scrolla pasa). Jak user chce ruchomej gasienicy -> trzeba dodac teksture tread na Belt i scrollowac.
-	["Tank"] = { kind = "wheels", bob = 0.08 },
+	["Jeep"] = { kind = "wheels", bob = 0.12, rock = 0.05, spin = { { contains = { "tire", "wheel" }, exclude = "streeting", axis = "X", speed = 16 } } },
+	-- Tank: "Wheels" to JEDEN wielki slab (~15x5x23), obrot 360 = koziolek jak klapa (nie toczenie kol) -> zero spinu.
+	-- User: nie trzeba tekstury/super animacji, ma "lekko wygladac jakby jechal". Dajemy KOLYSANIE JAZDY: bujak (bob)
+	-- + delikatne kiwanie nosem (pitch) i przechyl (roll) przez rock -> czyta sie jako jazda, bez latajacych czesci.
+	["Tank"] = { kind = "wheels", bob = 0.06, rock = 0.035 },
 	["Helicopter"] = { kind = "fly", hoverH = 6, bob = 0.6, spin = { { name = "Propeller", axis = "Y", speed = 40 }, { name = "BackPropeller", axis = "X", speed = 32 } } },
 	["Jet"] = { kind = "fly", hoverH = 8, bob = 0.5, bank = 0.16 },
 }
@@ -1133,6 +1133,7 @@ local function renderStep(dt)
 				local rig = e.rig
 				local baseY = pos.Y + e.halfH
 				local roll = 0
+				local pitch = 0
 				if rig then
 					local rp = rig.prof
 					if rp.hoverH then -- lot: utrzymaj WYSOKOSC lotu zawsze; bujanie/przechyl tylko gdy anim ON i blisko
@@ -1140,8 +1141,12 @@ local function renderStep(dt)
 						if animOn and rp.bank then roll = math.sin(e.animPhase * HOVER_FREQ * 0.6) * rp.bank end
 					elseif animOn and rig.kind == "walk" and not rig.real and #rig.legs > 0 then -- marsz: podskok (wylaczony gdy brak nog = tryb statyczny)
 						baseY += math.abs(math.sin(e.animPhase * WALK_FREQ)) * BODY_BOB
-					elseif animOn and rp.bob then -- jazda: lekki bujak (jeep/tank)
+					elseif animOn and rp.bob then -- jazda: lekki bujak + kolysanie (sugestia jazdy, bez latajacych czesci)
 						baseY += math.abs(math.sin(e.animPhase * 11)) * rp.bob
+						if rp.rock then
+							pitch = math.sin(e.animPhase * 9) * rp.rock -- kiwanie nosem
+							roll = math.sin(e.animPhase * 6.5) * rp.rock * 0.6 -- lekki przechyl
+						end
 					end
 				end
 				-- rozstaw NARASTA od bramy: do SPREAD_START ida PROSTO/gesiego, potem rozchodza sie na plac
@@ -1149,6 +1154,7 @@ local function renderStep(dt)
 				local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ
 				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * (e.lane * spread) + dir * (e.fwd * spread)
 				local pivot = CFrame.lookAlong(wpos, dir)
+				if pitch ~= 0 then pivot = pivot * CFrame.Angles(pitch, 0, 0) end -- kiwanie nosem (jazda)
 				if roll ~= 0 then pivot = pivot * CFrame.Angles(0, 0, roll) end
 				if rig and rig.real and e.model.PrimaryPart then
 					-- rusz TYLKO HRP (PivotTo nadpisalby poze Animatora); reszta welded idzie za HRP, Animator pozuje konczyny.
