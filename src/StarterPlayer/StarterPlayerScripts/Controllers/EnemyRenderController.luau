@@ -447,15 +447,15 @@ local function buildDmgLabel()
 end
 
 -- popnij "-N" nad pozycja (rise + fade). big=trafienie krytyczne/duze -> wieksze i pomaranczowe.
-local function popDamage(pos, amount, big, hs)
+local function popDamage(pos, amount, big)
 	local rec = table.remove(_dmgFree)
 	if not rec then return end -- pula wyczerpana -> pomin (cap kosztu)
 	rec.anchor.Position = pos
 	rec.lbl.Text = "-" .. shortNum(amount)
-	-- headshot = ZOLTY i NAJWIEKSZY; big (kryt) = pomaranczowy; zwykly = jasnozolty
-	rec.lbl.TextColor3 = hs and Color3.fromRGB(255, 225, 40) or (big and Color3.fromRGB(255, 170, 60) or Color3.fromRGB(255, 240, 140))
+	-- big (kryt) = pomaranczowy; zwykly = jasnozolty (headshot usuniety)
+	rec.lbl.TextColor3 = big and Color3.fromRGB(255, 170, 60) or Color3.fromRGB(255, 240, 140)
 	rec.lbl.TextTransparency = 0; rec.lbl.TextStrokeTransparency = 0.25
-	rec.gui.Size = UDim2.fromOffset(hs and 150 or (big and 120 or 84), hs and 52 or (big and 42 or 30))
+	rec.gui.Size = UDim2.fromOffset(big and 120 or 84, big and 42 or 30)
 	local jitterX = (math.random() - 0.5) * 2.4
 	rec.gui.StudsOffsetWorldSpace = Vector3.new(jitterX, 0, 0)
 	rec.gui.Enabled = true
@@ -475,59 +475,7 @@ local function popDamage(pos, amount, big, hs)
 end
 
 -- fontanna monet z killa (kilka zlotych kulek podskakuje i znika) — bounded COIN_CAP.
--- ── HEAD SHOT: komiksowy popup przy trafieniu w glowe (czerwony burst-gwiazda + bialy napis, pop + fade) ──
-local _hsActive = 0
-local HS_CAP = 6 -- max jednoczesnych popupow (anty-spam przy szybkim ostrzale)
-local function headshotPopup(pos)
-	if _hsActive >= HS_CAP then return end
-	_hsActive += 1
-	local anchor = Instance.new("Part")
-	anchor.Size = Vector3.new(0.2, 0.2, 0.2); anchor.Transparency = 1
-	anchor.Anchored = true; anchor.CanCollide = false; anchor.CanQuery = false; anchor.CanTouch = false; anchor.CastShadow = false
-	anchor.Position = pos; anchor.Parent = _fxFolder
-	local gui = Instance.new("BillboardGui")
-	gui.Size = UDim2.fromOffset(210, 92); gui.AlwaysOnTop = true; gui.Adornee = anchor; gui.Parent = anchor
-	-- czerwony burst: dwa kwadraty (0deg + 45deg) = 8-ramienna gwiazda komiksu, bialy kontur
-	local function star(rot)
-		local f = Instance.new("Frame")
-		f.AnchorPoint = Vector2.new(0.5, 0.5); f.Position = UDim2.fromScale(0.5, 0.5)
-		f.Size = UDim2.fromScale(0.62, 0.62); f.Rotation = rot
-		f.BackgroundColor3 = Color3.fromRGB(220, 30, 40); f.BorderSizePixel = 0; f.Parent = gui
-		local st = Instance.new("UIStroke"); st.Color = Color3.fromRGB(255, 255, 255); st.Thickness = 3; st.Parent = f
-		return f, st
-	end
-	local s1, s1s = star(0)
-	local s2, s2s = star(45)
-	local lbl = Instance.new("TextLabel")
-	lbl.AnchorPoint = Vector2.new(0.5, 0.5); lbl.Position = UDim2.fromScale(0.5, 0.5)
-	lbl.Size = UDim2.fromScale(0.96, 0.5); lbl.Rotation = -6; lbl.BackgroundTransparency = 1
-	lbl.Font = Enum.Font.GothamBlack; lbl.TextScaled = true; lbl.TextColor3 = Color3.fromRGB(255, 225, 40) -- zolty (klasyczny headshot)
-	lbl.Text = "HEAD SHOT"; lbl.TextStrokeTransparency = 0; lbl.TextStrokeColor3 = Color3.new(0, 0, 0); lbl.Parent = gui
-	task.spawn(function()
-		local t0 = os.clock()
-		local pop, hold, rise = 0.14, 0.22, 0.44
-		while anchor.Parent do
-			local dt = os.clock() - t0
-			local scale, fade = 1, 0
-			if dt < pop then
-				scale = 0.4 + (dt / pop) * 0.75 -- 0.4 -> 1.15 (overshoot)
-			elseif dt < pop + hold then
-				scale = 1.15 - ((dt - pop) / hold) * 0.15 -- 1.15 -> 1.0
-			elseif dt < pop + hold + rise then
-				local a = (dt - pop - hold) / rise
-				fade = a
-				gui.StudsOffsetWorldSpace = Vector3.new(0, a * 3, 0)
-			else break end
-			gui.Size = UDim2.fromOffset(210 * scale, 92 * scale)
-			s1.BackgroundTransparency = fade; s2.BackgroundTransparency = fade
-			s1s.Transparency = fade; s2s.Transparency = fade
-			lbl.TextTransparency = fade; lbl.TextStrokeTransparency = fade
-			RunService.Heartbeat:Wait()
-		end
-		anchor:Destroy()
-		_hsActive -= 1
-	end)
-end
+-- HEAD SHOT popup USUNIETY (user): headshot gracza bez wizualu (ani osobnego numeru, ani bonusu dmg).
 
 -- MONETY z killa: wypadaja, ladują na ziemi i KRECA sie (walec), potem MAGNES gracza sciaga je do postaci
 -- (leca do gracza + kurcza sie). Realne monety liczy serwer (nagroda per fala) — to warstwa VISUAL/juice.
@@ -1197,15 +1145,12 @@ end
 
 -- echo trafienia gracza (S->C PlayerShotHit): "-N" NAD wrogiem OD RAZU, exact dmg z serwera.
 -- Niezaleznie od kwantyzacji hpPct w EnemySync -> dziala tez na grubych wrogach (gdzie -N gubi sie w sync).
-local function onPlayerShotHit(_plotId, id, dmg, isHead)
+local function onPlayerShotHit(_plotId, id, dmg, _isHead)
 	if type(id) ~= "number" or type(dmg) ~= "number" or dmg < 1 then return end
 	local e = _active[id % U16]
 	if not e or not e.shown then return end
 	local pos = e.model:GetPivot().Position + Vector3.new(0, (e.halfH or 2) + 1.2, 0)
-	popDamage(pos, dmg, dmg >= (e.maxHp or 0) * 0.25, isHead) -- headshot -> zolty najwiekszy numer
-	if isHead then -- HEAD SHOT: komiksowy popup nad glowa (tylko wrogowie z glowa; wykryte w kicie)
-		headshotPopup(e.model:GetPivot().Position + Vector3.new(0, (e.halfH or 2) + 2.4, 0))
-	end
+	popDamage(pos, dmg, dmg >= (e.maxHp or 0) * 0.25) -- headshot usuniety: zawsze zwykly numer, bez popupu
 end
 
 -- ── LOD ──────────────────────────────────────────────────────────────────────────
