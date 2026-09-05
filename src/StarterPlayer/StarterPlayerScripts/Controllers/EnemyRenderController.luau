@@ -128,8 +128,11 @@ local ANIM = {
 	["FlameThrower"] = { kind = "walk" },
 	["Rocket Soldier"] = { kind = "walk" },
 	["Tank Soldier"] = { kind = "walk" },
-	["Jeep"] = { kind = "wheels", bob = 0.12, spin = { { contains = "wheel", axis = "X", speed = 16 } } },
-	["Tank"] = { kind = "wheels", bob = 0.05, spin = { { contains = "wheel", axis = "X", speed = 9 } } },
+	["Jeep"] = { kind = "wheels", bob = 0.12, spin = { { contains = { "tire", "wheel" }, exclude = "streeting", axis = "X", speed = 16 } } },
+	-- Tank: "Wheels" to JEDEN wielki slab (~15x5x23), obrot 360 = koziolek jak klapa (nie toczenie kol).
+	-- Zero spinu -> gasienice statyczne + bujak (bob) sugeruje ruch. Belt/Wheels to MeshParty bez tekstury
+	-- (brak scrolla pasa). Jak user chce ruchomej gasienicy -> trzeba dodac teksture tread na Belt i scrollowac.
+	["Tank"] = { kind = "wheels", bob = 0.08 },
 	["Helicopter"] = { kind = "fly", hoverH = 6, bob = 0.6, spin = { { name = "Propeller", axis = "Y", speed = 40 }, { name = "BackPropeller", axis = "X", speed = 32 } } },
 	["Jet"] = { kind = "fly", hoverH = 8, bob = 0.5, bank = 0.16 },
 }
@@ -158,10 +161,16 @@ local function resolveRig(model, modelName)
 				local p = findExact(model, spec.name)
 				if p then rig.spin[#rig.spin + 1] = { part = p, cf = pivot:ToObjectSpace(p.CFrame), rot = rot, speed = spec.speed } end
 			elseif spec.contains then
-				local c = spec.contains:lower()
+				local list = type(spec.contains) == "table" and spec.contains or { spec.contains }
+				local excl = spec.exclude and spec.exclude:lower()
 				for _, d in ipairs(model:GetDescendants()) do
-					if d:IsA("BasePart") and d.Name:lower():find(c) then
-						rig.spin[#rig.spin + 1] = { part = d, cf = pivot:ToObjectSpace(d.CFrame), rot = rot, speed = spec.speed }
+					if d:IsA("BasePart") then
+						local ln = d.Name:lower()
+						local hit = false
+						for _, c in ipairs(list) do if ln:find(c:lower()) then hit = true; break end end
+						if hit and (not excl or not ln:find(excl)) then
+							rig.spin[#rig.spin + 1] = { part = d, cf = pivot:ToObjectSpace(d.CFrame), rot = rot, speed = spec.speed }
+						end
 					end
 				end
 			end
