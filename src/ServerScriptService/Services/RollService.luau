@@ -377,21 +377,20 @@ function RollService.AutoRollColumns(player)
 	return { columns = columns }
 end
 
--- Double Roll (n54-68): ile RECZNYCH rolek naraz. 1 normalnie; 2 gdy procnie szansa NAJWYZSZEGO posiadanego tieru.
+-- Double Roll (n54-68): ile RECZNYCH rolek naraz. user: jesli gracz MA odblokowany Double Roll -> reczny roll
+-- ZAWSZE daje 2 kolumny (jak auto-roll perCycle=2), nie proc. Wczesniej byla SZANSA (5-65%) -> manual rzadko
+-- dublowal mimo odblokowanego skilla; auto zawsze pokazywalo 2 -> rozjazd. Teraz: dowolny wezel Double Roll
+-- posiadany => 2 reele gwarantowane (chanceByNode sluzy juz tylko jako lista wezlow do wykrycia posiadania).
 local function doubleRollCount(player: Player): number
 	local dr = GameConfig.SkillEffect and GameConfig.SkillEffect.doubleRoll
 	local data = _profile and _profile.GetProfile(player)
 	if not (dr and dr.chanceByNode and data and data.skills) then
 		return 1
 	end
-	local chance = 0
-	for node, c in pairs(dr.chanceByNode) do
-		if (data.skills[node] or 0) > 0 and c > chance then
-			chance = c
+	for node in pairs(dr.chanceByNode) do
+		if (data.skills[node] or 0) > 0 then
+			return 2 -- Double Roll odblokowany -> zawsze 2 kolumny na recznym rollu
 		end
-	end
-	if chance > 0 and Random.new():NextNumber() < chance then
-		return 2
 	end
 	return 1
 end

@@ -49,8 +49,9 @@ return {
 		pctByNode = { n74 = 0.05, n99 = 0.10, n100 = 0.20, n101 = 0.25, n102 = 0.30, n103 = 0.35 },
 	},
 
-	-- Double Roll (n54-56, n65-68): przy RECZNYM rollu SZANSA na 2. rolke naraz (2 reele obok + 2 itemy).
-	-- Bierzemy NAJWYZSZY posiadany tier. Gdy procnie -> reveal pokazuje 2 rownolegle reele w normalnym widoku.
+	-- Double Roll (n54-56, n65-68): przy RECZNYM rollu -> 2. rolka naraz (2 reele obok + 2 itemy).
+	-- user: GWARANTOWANE gdy gracz ma odblokowany DOWOLNY wezel Double Roll (jak auto-roll perCycle=2), nie proc.
+	-- chanceByNode = juz TYLKO lista wezlow do wykrycia posiadania (wartosci ignorowane; zostaja pod ew. powrot do szansy).
 	doubleRoll = {
 		chanceByNode = { n54 = 0.05, n55 = 0.10, n56 = 0.15, n65 = 0.20, n66 = 0.35, n67 = 0.50, n68 = 0.65 },
 	},
