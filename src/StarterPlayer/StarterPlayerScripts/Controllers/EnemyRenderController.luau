@@ -258,13 +258,18 @@ local function buildEnemyModel(modelName, isBoss): Model?
 	_weaponByModel[m] = resolveWeapon(m, modelName) -- rozpoznaj bron raz (part przesuwa sie z modelem przez PivotTo)
 	local rig = resolveRig(m, modelName) -- rozpoznaj rig anim raz (nogi/kola/wirniki)
 	_rigByModel[m] = rig
-	-- user: POWROT DO USTAWIEN FABRYCZNYCH — wrogowie-zolnierze stoja w SUROWEJ pozie szablonu (T-poza, bron
-	-- obok), ZERO animacji. NIE uruchamiamy RigAnimSetup (przyspawialby bron do reki + odkotwiczal rig, przez
-	-- co fizyka sciagala ramiona z T-pozy w holding). Czesci zostaja ZAKOTWICZONE (ustawione wyzej) -> rig.real
-	-- pozostaje false -> ruch calego modelu przez PivotTo, proceduralny chod wylaczony (rig.legs pusta + brak bobu).
+	-- PRAWDZIWE animacje R6 (Idle/Walk/Shot): przygotuj rig (spaw dodatkow/broni do rdzenia, kotwicz TYLKO HRP,
+	-- Animator) -> rig.real=true; ruch wroga = przesuwanie HRP, Animator pozuje konczyny. Rigi z "Units Comission"
+	-- sa poprawne, wiec anim nie rozwala pozy. Wrogowie sa CLIENT-side -> odkotwiczenie sie trzyma (brak replikacji).
 	if rig and rig.kind == "walk" then
-		-- Torso niekolizyjne, zeby gracz przechodzil przez wroga.
 		local humB = m:FindFirstChildWhichIsA("Humanoid", true)
+		local animator = RigAnimSetup.prepare(m)
+		if animator then
+			rig.real = true
+			rig.animator = animator
+			local rigHrp = humB and humB.Parent and humB.Parent:FindFirstChild("HumanoidRootPart")
+			if rigHrp then m.PrimaryPart = rigHrp end -- ruch przez HRP zagniezdzonego Dummy (Animator pozuje reszte)
+		end
 		local torsoPart = humB and humB.Parent and humB.Parent:FindFirstChild("Torso")
 		if torsoPart and torsoPart:IsA("BasePart") then
 			rig.torso = torsoPart
@@ -1091,14 +1096,29 @@ local function updateFocus(now)
 	_focused = best
 end
 
--- user: ZADNYCH animacji wrogow (chod/idle/strzal) — nowe animacje dojda z nowymi ID. NIE wczytujemy zadnego
--- tracka -> rig.tIdle/tWalk/tShot zostaja nil -> wszystkie sie :Play sa guardowane (if rig.tWalk...) i nic sie
--- nie animuje. rig.real zostaje true (z RigAnimSetup.prepare) -> proceduralny chod/bob TEZ pominiety (bloki
--- sprawdzaja `not rig.real`). Ruch wroga po sciezce (PivotTo w renderStep) dziala dalej. FX strzalu (muzzle/
--- tracer, fireWeapon) to osobny efekt (nie animacja) — zostaje, jak przy jednostkach gracza.
+-- PRAWDZIWE animacje R6 wroga: Idle (baza) / Walk (marsz) / Shot (strzal). TYLKO te 3, z PRIORYTETAMI
+-- (Idle < Movement < Action) -> nie nakladaja sie na siebie. Ladowane leniwie (pierwszy render bliski kamery),
+-- per rig.animator (z RigAnimSetup.prepare). Render loop gra tWalk gdy idzie + tShot na strzale.
+local ENEMY_ANIM_IDS = {
+	idle = "rbxassetid://114633582166730",
+	walk = "rbxassetid://123805470740320",
+	shot = "rbxassetid://109739383922402",
+}
+local function loadTrack(animator, id, looped, prio)
+	local a = Instance.new("Animation"); a.AnimationId = id
+	local ok, tr = pcall(function() return animator:LoadAnimation(a) end)
+	if not ok or not tr then return nil end
+	tr.Looped = looped; tr.Priority = prio
+	return tr
+end
 local function ensureEnemyTracks(rig)
 	if not rig or rig.tracksLoaded then return end
-	rig.tracksLoaded = true -- oznacz jako "zaladowane" (nic nie wczytujemy) — koniec animacji wrogow
+	rig.tracksLoaded = true
+	local animator = rig.animator
+	if not animator then return end
+	rig.tIdle = loadTrack(animator, ENEMY_ANIM_IDS.idle, true, Enum.AnimationPriority.Idle)
+	rig.tWalk = loadTrack(animator, ENEMY_ANIM_IDS.walk, true, Enum.AnimationPriority.Movement)
+	rig.tShot = loadTrack(animator, ENEMY_ANIM_IDS.shot, false, Enum.AnimationPriority.Action)
 end
 
 local function renderStep(dt)
