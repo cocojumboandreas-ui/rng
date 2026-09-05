@@ -151,6 +151,19 @@ function OfflineController.start()
 			end
 		end)
 	end
+	-- CLAIM X2 ZAWSZE widoczny OBOK Collect (poziomy UIListLayout designera) i FIOLETOWY (jak referencja).
+	-- Malujemy tlo + gradienty buttona na fiolet, tekst na bialo. Dziala gdy doubleId > 0 (DevProduct 49R wpisany).
+	if doubleBtn then
+		doubleBtn.Visible = true
+		doubleBtn.BackgroundColor3 = Color3.fromRGB(150, 45, 220)
+		local purple = ColorSequence.new(Color3.fromRGB(212, 80, 255), Color3.fromRGB(120, 30, 205))
+		local white = ColorSequence.new(Color3.new(1, 1, 1))
+		for _, g in ipairs(doubleBtn:GetDescendants()) do
+			if g:IsA("UIGradient") then
+				g.Color = (g.Parent and g.Parent:IsA("TextLabel")) and white or purple
+			end
+		end
+	end
 
 	-- wyczysc stare karty-klony
 	local function clearCards()
@@ -223,8 +236,7 @@ function OfflineController.start()
 		if bestDrops then bestDrops.Visible = #drops > 0 end
 		for i, d in ipairs(drops) do makeCard(d, i) end
 
-		-- przycisk CLAIM X2 tylko gdy DevProduct ustawiony (placeholder 0 = ukryty)
-		if doubleBtn then doubleBtn.Visible = doubleId > 0 end
+		-- CLAIM X2 zawsze widoczny obok Collect (fiolet ustawiony w start); klik dziala gdy doubleId > 0
 
 		canvas.Visible = true
 	end)
