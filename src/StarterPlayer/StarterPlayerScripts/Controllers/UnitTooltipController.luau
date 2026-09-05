@@ -57,9 +57,9 @@ local function icon(unitId)
 		local m = tmpl:Clone(); m.Parent = vpf
 		local cf, size = m:GetBoundingBox()
 		local maxd = math.max(size.X, size.Y, size.Z, 1)
-		local dist = maxd * 1.9
+		local dist = maxd * 1.45 -- blizej = wieksza jednostka w boxie (user: powiekszyc)
 		-- kadr 3/4-przod: kamera lekko z boku i z gory, patrzy w srodek modelu
-		cam.CFrame = CFrame.lookAt(cf.Position + Vector3.new(dist * 0.5, size.Y * 0.28, dist), cf.Position)
+		cam.CFrame = CFrame.lookAt(cf.Position + Vector3.new(dist * 0.5, size.Y * 0.22, dist), cf.Position)
 	end
 	_iconCache[unitId] = vpf
 	return vpf:Clone()
