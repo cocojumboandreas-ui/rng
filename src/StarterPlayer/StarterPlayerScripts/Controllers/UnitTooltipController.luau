@@ -111,6 +111,10 @@ local function build()
 	bb.ResetOnSpawn = false
 	bb.Adornee = nil
 	bb.Enabled = false
+	-- user: karta ma miec ZAWSZE ten sam rozmiar (jak z bliska), nie kurczyc sie z dystansem. Oryginal ma Size
+	-- w studach ({4},{4.5}) -> skaluje sie ze swiatem. Zmieniamy KLON na PIKSELE (offset) -> BillboardGui trzyma
+	-- staly rozmiar ekranowy niezaleznie od odleglosci. Proporcja jak oryginal (4:4.5). Oryginal w edycji nietkniety.
+	bb.Size = UDim2.fromOffset(220, 248)
 	bb.Parent = LP:WaitForChild("PlayerGui")
 	local card = bb:FindFirstChild("PetWindow") or bb:FindFirstChildWhichIsA("Frame")
 	if card then wireCard(card) end
