@@ -864,14 +864,131 @@ local function vehicleWreck(e)
 	end)
 end
 
--- SMIERC wroga: wyprostuj poze + upusc bron, potem PLYNNIE (TweenService) padnij NA PLECY, lezy 2s, znika.
+-- ── RAGDOLL smierci (rigi R6): fizyczna szmacianka zamiast sztucznego tweena na plecy ──
+-- Zamieniamy KAZDY Motor6D rigu na BallSocketConstraint (staw puszcza), odkotwiczamy cala postac,
+-- wlaczamy kolizje glownych czesci ciala i dajemy impuls od kierunku strzalu -> cialo flopuje
+-- naturalnie pod grawitacja. Instancje nazwane WR_Rag* + atrybut WR_T0 (oryg. transparency) — wszystko
+-- usuwane/przywracane w deragdoll(), bo model WRACA do puli (musi byc znowu czysty rig RigAnimSetup).
+local RAGDOLL_LIE = 2.2 -- ile sekund szmacianka lezy zanim zaczyna wygasac
+local RAGDOLL_FADE = 0.5 -- czas zanikania trupa
+
+local function ragdollRig(model, dir)
+	local hum = model:FindFirstChildWhichIsA("Humanoid", true)
+	local skel = hum and hum.Parent
+	if not skel then return false end
+	local hrp = skel:FindFirstChild("HumanoidRootPart")
+
+	-- 1) rozlaczenie stawow: Motor6D -> BallSocketConstraint na attachmentach C0/C1 (Motor zostaje, wylaczony)
+	local had = false
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Motor6D") and d.Part0 and d.Part1 and not d:GetAttribute("WR_RagOff") then
+			local a0 = Instance.new("Attachment"); a0.Name = "WR_RagA0"; a0.CFrame = d.C0; a0.Parent = d.Part0
+			local a1 = Instance.new("Attachment"); a1.Name = "WR_RagA1"; a1.CFrame = d.C1; a1.Parent = d.Part1
+			local bs = Instance.new("BallSocketConstraint")
+			bs.Name = "WR_Rag"; bs.Attachment0 = a0; bs.Attachment1 = a1
+			bs.LimitsEnabled = true; bs.TwistLimitsEnabled = true
+			bs.UpperAngle = 42; bs.TwistLowerAngle = -30; bs.TwistUpperAngle = 30
+			bs.Parent = d.Part1
+			d.Enabled = false
+			d:SetAttribute("WR_RagOff", true)
+			had = true
+		end
+	end
+	if not had then return false end
+
+	-- 2) fizyka: odkotwicz wszystko; glowne czesci ciala kolidujace (HRP nie — pokrywa sie z torsem)
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then d.Anchored = false; d.CanCollide = false end
+	end
+	for _, nm in ipairs({ "Head", "Torso", "Left Arm", "Right Arm", "Left Leg", "Right Leg" }) do
+		local p = skel:FindFirstChild(nm)
+		if p then p.CanCollide = true end
+	end
+	if hum then pcall(function() hum.PlatformStand = true end) end -- humanoid nie probuje wstac
+
+	-- 3) impuls smierci: knockback od strzalu + lekki podrzut + losowy obrot (naturalny przewrot)
+	local torso = skel:FindFirstChild("Torso") or hrp
+	if torso then
+		local d2 = (typeof(dir) == "Vector3" and dir.Magnitude > 0.01) and dir.Unit or Vector3.new(0, 0, 1)
+		torso.AssemblyLinearVelocity = d2 * (12 + math.random() * 8) + Vector3.new(0, 7 + math.random() * 4, 0)
+		torso.AssemblyAngularVelocity = Vector3.new((math.random() - 0.5) * 8, (math.random() - 0.5) * 6, (math.random() - 0.5) * 8)
+	end
+	return true
+end
+
+-- zanik trupa (zapisuje oryg. transparency w WR_T0, zeby deragdoll przywrocil przed powrotem do puli)
+local function fadeRagdoll(model, dur)
+	local parts = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and d.Transparency < 1 then
+			if d:GetAttribute("WR_T0") == nil then d:SetAttribute("WR_T0", d.Transparency) end
+			parts[#parts + 1] = { p = d, t0 = d.Transparency }
+		end
+	end
+	local t0 = os.clock()
+	while model.Parent do
+		local a = math.min((os.clock() - t0) / dur, 1)
+		for _, it in ipairs(parts) do it.p.Transparency = it.t0 + (1 - it.t0) * a end
+		if a >= 1 then break end
+		RunService.Heartbeat:Wait()
+	end
+end
+
+-- przywroc rig ze szmacianki do stanu RigAnimSetup (tylko HRP zakotwiczony, reszta odkotwiczona,
+-- nie-kolidujaca, Motor6D znowu wlaczone, transparency oryginalne) — model wraca do puli czysty.
+local function deragdoll(model)
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BallSocketConstraint") and d.Name == "WR_Rag" then d:Destroy() end
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Attachment") and (d.Name == "WR_RagA0" or d.Name == "WR_RagA1") then
+			d:Destroy()
+		elseif d:IsA("Motor6D") and d:GetAttribute("WR_RagOff") then
+			d.Enabled = true; d:SetAttribute("WR_RagOff", nil)
+		end
+	end
+	local hum = model:FindFirstChildWhichIsA("Humanoid", true)
+	local skel = hum and hum.Parent
+	local hrp = skel and skel:FindFirstChild("HumanoidRootPart")
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = (d == hrp)
+			d.CanCollide = false
+			local t0 = d:GetAttribute("WR_T0")
+			if t0 ~= nil then d.Transparency = t0; d:SetAttribute("WR_T0", nil) end
+		end
+	end
+	if hrp then hrp.Anchored = true end
+	if hum then pcall(function() hum.PlatformStand = false end) end
+end
+
+-- SMIERC wroga: rig R6 dostaje RAGDOLLA (fizyka), reszta (nie-R6) — plynny upadek na plecy (fallback).
 local function deathFall(e)
 	local model = e.model
 	local poolKey = e.poolKey
-	local halfH = e.halfH or 2
 	model:SetAttribute("WR_EnemyId", nil)
 	local hb = _hpBarByModel[model]
 	if hb then hb.lastPct = nil; if hb.gui.Enabled then hb.gui.Enabled = false end end
+	local rig = _rigByModel[model]
+	if rig and rig.real then
+		if rig.tWalk then rig.tWalk:Stop(0) end
+		if rig.tIdle then rig.tIdle:Stop(0) end
+		if rig.tShot then rig.tShot:Stop(0) end
+	end
+
+	-- RAGDOLL (rigi R6): bron zostaje w rece (zweldowana) i leci ze szmacianka — nic nie upuszczamy osobno
+	if rig and rig.real and ragdollRig(model, e.dir) then
+		task.spawn(function()
+			task.wait(RAGDOLL_LIE)
+			if model.Parent then fadeRagdoll(model, RAGDOLL_FADE) end
+			deragdoll(model)
+			release(model, poolKey)
+		end)
+		return
+	end
+
+	-- FALLBACK (nie-real rig): stary plynny upadek na plecy przez TweenService
+	local halfH = e.halfH or 2
 	local start = model:GetPivot()
 	local groundY = start.Position.Y - halfH + 0.3
 	neutralPose(model)

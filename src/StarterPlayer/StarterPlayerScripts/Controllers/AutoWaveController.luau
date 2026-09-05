@@ -1,9 +1,10 @@
 --!nonstrict
 -- StarterPlayerScripts/Controllers/AutoWaveController.luau  (KLIENT)
--- Guzik "Auto Wave" POD "Start Wave" — KLON ramki StartWave (ten sam rozmiar/styl; UIListLayout kladzie go nizej).
--- Widoczny TYLKO gdy gracz ma skill Automatic Wave (n5). Toggle: gdy ON i jestesmy w fazie Building
--- (przed runem / po przegranej) -> auto-fire StartWave. Fale i tak leca ciagiem, wiec to auto-start runu.
--- Serwer i tak waliduje (StartWave dziala tylko z Building). deps: Net (GetSkillState, StartWave, WaveProgress, RunSummary).
+-- Wpina DESIGNEROWY przycisk "Auto Wave" (StarterGui.SideButtons.RightCanvas.Buttons.AutoWave, place-owned)
+-- w logike auto-startu runu. NIE klonuje juz StartWave (stary klon-guzik usuniety) — steruje gotowym przyciskiem.
+-- Widoczny TYLKO gdy gracz ma skill Automatic Wave (n5). Toggle: gdy ON i NIE trwa fala (Building / po przegranej)
+-- -> auto-fire StartWave. Fale leca ciagiem, wiec to auto-start runu. Serwer i tak waliduje (StartWave tylko z Building).
+-- deps: Net (GetSkillState, StartWave, WaveProgress, RunSummary).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -21,26 +22,21 @@ function AutoWaveController.start()
 	end
 	local rc = sb:WaitForChild("RightCanvas", 10)
 	local buttons = rc and rc:WaitForChild("Buttons", 10)
-	local startFrame = buttons and buttons:WaitForChild("StartWave", 10)
-	if not startFrame then
+	local auto = buttons and buttons:WaitForChild("AutoWave", 10) -- GOTOWY przycisk artysty (nie klonujemy)
+	if not auto then
 		return
 	end
-
-	-- KLON StartWave jako AutoWave (ten sam rozmiar/wyglad). UIListLayout ulozy go pod StartWave/StopWave.
-	local auto = startFrame:Clone()
-	auto.Name = "AutoWave"
-	auto.Visible = false
-	auto.LayoutOrder = (startFrame.LayoutOrder or 0) + 50
-	auto.Parent = buttons
-
-	local btn = auto:FindFirstChildWhichIsA("GuiButton", true)
+	local btn = auto:FindFirstChild("Button") or auto:FindFirstChildWhichIsA("GuiButton", true)
+	if not btn then
+		return
+	end
 
 	local _on = false
 	local _owned = false
 
-	-- Napis "Start Wave" siedzi w zagniezdzonych TextLabelach (Button.Text + cien) -> ustaw WSZYSTKIE.
+	-- Napis "Auto Wave" siedzi w zagniezdzonych TextLabelach (Button.Text + cien Text.Text) -> ustaw WSZYSTKIE.
 	local function refresh()
-		local t = _on and "AUTO ON" or "AUTO WAVE"
+		local t = _on and "Auto: ON" or "Auto Wave"
 		for _, d in ipairs(auto:GetDescendants()) do
 			if d:IsA("TextLabel") then
 				d.Text = t
@@ -48,7 +44,9 @@ function AutoWaveController.start()
 		end
 	end
 
-	-- WIDOCZNOSC: pokaz dopiero gdy gracz ma n5. Poll co 4s az odblokuje (kupno w drzewku bez broadcastu).
+	-- WIDOCZNOSC: pokaz dopiero gdy gracz ma n5 (artysta ustawil Visible=true -> chowamy do odblokowania).
+	-- Poll co 4s az odblokuje (kupno w drzewku bez broadcastu).
+	auto.Visible = false
 	task.spawn(function()
 		while not _owned do
 			local ok, st = pcall(function()
@@ -64,15 +62,13 @@ function AutoWaveController.start()
 		end
 	end)
 
-	if btn then
-		btn.MouseButton1Click:Connect(function()
-			if not _owned then
-				return
-			end
-			_on = not _on
-			refresh()
-		end)
-	end
+	btn.MouseButton1Click:Connect(function()
+		if not _owned then
+			return
+		end
+		_on = not _on
+		refresh()
+	end)
 
 	-- Stan fali: WaveProgress = fala trwa; RunSummary = koniec runu (wracamy do Building).
 	local _waveActive = false

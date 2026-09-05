@@ -29,11 +29,13 @@ local TIERS = {
 	[1] = { name = "Ultra", shadows = true, auto = {}, budgets = { confetti = 1, rain = 1, coins = 1, heavy = 1, animDist = 1 }, fillerRefresh = true },
 	[2] = { name = "High", shadows = true, auto = {}, budgets = { confetti = 0.7, rain = 0.66, coins = 0.66, heavy = 0.8, animDist = 0.8 }, fillerRefresh = true },
 	[3] = { name = "Medium", shadows = false, auto = { attackAnim = false }, budgets = { confetti = 0.5, rain = 0.45, coins = 0.5, heavy = 0.5, animDist = 0.7 }, fillerRefresh = true },
-	[4] = { name = "Low", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false }, budgets = { confetti = 0.3, rain = 0.25, coins = 0.25, heavy = 0.3, animDist = 0.6 }, fillerRefresh = false },
+	[4] = { name = "Low", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false }, budgets = { confetti = 0.3, rain = 0.25, coins = 0.25, heavy = 0.3, animDist = 0.8 }, fillerRefresh = false },
 	-- DOPAMINA CHRONIONA: liczby obrazen/HEADSHOT/special-roll/aura zwyciezcy/banner odkrycia/count-up monet
 	-- NIE sa ciete na ZADNYM tierze (jednorazowe momenty nagrody = sedno gry). Tniemy tylko AMBIENT/masowke.
 	-- rain=0.2 na Potato (nie 0): koniczyna = moment dopaminowy, pack trzyma min. 3 sztuki.
-	[5] = { name = "Potato", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false, soldierAnim = false }, budgets = { confetti = 0.15, rain = 0.2, coins = 0, heavy = 0.2, animDist = 0.5 }, fillerRefresh = false },
+	-- soldierAnim NIE gasimy na ZADNYM tierze: fabryczny Animator R6 (3 tracki) jest tani i CZYTELNOSC chodu = sedno gry
+	-- (gaszenie bylo pod stary proceduralny per-part CFrame). Reczny przelacznik w panelu ⚙ dalej dziala.
+	[5] = { name = "Potato", shadows = false, auto = { attackAnim = false, showOthers = false, coinAnim = false }, budgets = { confetti = 0.15, rain = 0.2, coins = 0, heavy = 0.2, animDist = 0.75 }, fillerRefresh = false },
 }
 
 -- ── histereza ────────────────────────────────────────────────────────────────
