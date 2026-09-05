@@ -221,7 +221,7 @@ local function setOutline(m)
 	hl.OutlineColor = WHITE
 	hl.OutlineTransparency = 0
 	hl.FillColor = Color3.new(0, 0, 0)
-	hl.FillTransparency = 0.6
+	hl.FillTransparency = 1 -- user: bez ciemnej nakladki na jednostce (0.6 przyciemnialo ja mocno); sam bialy obrys
 	hl.Parent = m
 	_hovered = m
 end
