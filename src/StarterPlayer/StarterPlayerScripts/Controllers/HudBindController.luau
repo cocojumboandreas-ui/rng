@@ -340,8 +340,7 @@ function HudBindController.start()
 		applyLuck(s) -- luck + offline earnings/h (coins & rolki)
 	end)
 
-	-- ── COMBO monet na HUD (juice): dolicza gold per kill (~realne monety fali), reset po 3s bez killa ──
-	local COMBO_COIN_IMG = "rbxassetid://79510076315488" -- ikona monety z UI
+	-- ── MONEY POP (juice): "+N" monet w losowych miejscach ekranu przy killu (designer MoneyPop.AddCoins) ──
 	local WCFG, ECFG = GameConfig.Wave, GameConfig.Economy
 	local function waveCoinReward(n)
 		local w = WCFG.waves[n]
@@ -351,97 +350,72 @@ function HudBindController.start()
 		end
 		return base
 	end
-	local combo = { total = 0, displayed = 0, lastKill = 0, wave = -1, killed = 0, token = 0 }
-	-- coiny #2: combo-kill "+N" laduje na HUD (styl Muscle Evolution) zamiast BillboardGui nad glowa.
-	-- ScreenGui w PlayerGui: wysrodkowany w gornej strefie (nad akcja, pod paskiem fali), pop przy killu,
-	-- float-up + zanik przy resecie. Logika combo (comboShow/comboCountTo/reset) niezmieniona (uzywa
-	-- combo.gui.Enabled — ScreenGui tez ma .Enabled — oraz combo.label/icon/scale).
-	local COMBO_BASE_Y = 0.20 -- gorna strefa: nad nametagiem gracza (~0.30), pod paskiem fali (~0.06)
-	local function buildComboGui()
-		if combo.gui and combo.gui.Parent then return end -- ScreenGui przezywa respawn (ResetOnSpawn=false)
-		if combo.gui then combo.gui:Destroy() end
-		local gui = Instance.new("ScreenGui")
-		gui.Name = "WR_ComboCoins"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
-		gui.DisplayOrder = 60; gui.Enabled = false; gui.Parent = LP:WaitForChild("PlayerGui")
-		local holder = Instance.new("Frame"); holder.Name = "Holder"
-		holder.AnchorPoint = Vector2.new(0.5, 0.5); holder.Position = UDim2.new(0.5, 0, COMBO_BASE_Y, 0)
-		holder.Size = UDim2.fromOffset(220, 58); holder.BackgroundTransparency = 1; holder.Parent = gui
-		local row = Instance.new("Frame"); row.Size = UDim2.fromScale(1, 1); row.BackgroundTransparency = 1; row.Parent = holder
-		local ll = Instance.new("UIListLayout"); ll.FillDirection = Enum.FillDirection.Horizontal
-		ll.HorizontalAlignment = Enum.HorizontalAlignment.Center; ll.VerticalAlignment = Enum.VerticalAlignment.Center
-		ll.Padding = UDim.new(0, 6); ll.Parent = row
-		local sc = Instance.new("UIScale"); sc.Parent = row
-		local icon = Instance.new("ImageLabel"); icon.LayoutOrder = 1; icon.Size = UDim2.fromOffset(44, 44)
-		icon.BackgroundTransparency = 1; icon.Image = COMBO_COIN_IMG; icon.Parent = row
-		local label = Instance.new("TextLabel"); label.LayoutOrder = 2; label.AutomaticSize = Enum.AutomaticSize.X
-		label.Size = UDim2.fromOffset(0, 48); label.BackgroundTransparency = 1; label.Font = Enum.Font.GothamBlack
-		label.TextSize = 40; label.TextColor3 = Color3.fromRGB(255, 225, 90); label.Text = "+0"
-		local ls = Instance.new("UIStroke"); ls.Color = Color3.new(0, 0, 0); ls.Thickness = 3; ls.Parent = label
-		label.Parent = row
-		combo.gui, combo.label, combo.icon, combo.scale, combo.holder = gui, label, icon, sc, holder
-	end
-	local function comboShow()
-		if not combo.gui or not combo.gui.Parent then buildComboGui() end
-		if not combo.gui then return end
-		combo.gui.Enabled = true
-		if combo.holder then combo.holder.Position = UDim2.new(0.5, 0, COMBO_BASE_Y, 0) end -- reset po float-up
-		if combo.label then combo.label.TextTransparency = 0 end
-		if combo.icon then combo.icon.ImageTransparency = 0 end
-		if combo.scale then -- pop przy kazdym dolozeniu
-			combo.scale.Scale = 1.18
-			TweenService:Create(combo.scale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	local combo = { wave = -1, killed = 0 } -- tylko delta killi per WaveProgress tick (bez GUI combo)
+	-- COINY podczas fali: przy zbieraniu monet z killa pokazujemy designerowy StarterGui.MoneyPop.AddCoins
+	-- w LOSOWYCH miejscach ekranu (strefa akcji nad graczem), zamiast dawnego "+N" combo u gory. Kazdy pop:
+	-- pop-in (UIScale) -> unos + zanik -> Destroy. Kille z jednego ticku rozbijamy na kilka popow (suma monet
+	-- zachowana). MoneyPop.AddCoins = ukryty szablon (Icon + Wins "+N" z cieniem + UIScale) — klonujemy per pop.
+	local POP_CAP = 8 -- max jednoczesnych popow (anti-spam na duzych falach)
+	local POP_PER_TICK = 4 -- na ile miejsc rozbic kille z jednego WaveProgress ticku
+	local _popActive = 0
+	local function moneyPopTemplate()
+		local pg = LP:FindFirstChild("PlayerGui")
+		local mp = pg and pg:FindFirstChild("MoneyPop")
+		if mp then
+			mp.ResetOnSpawn = false
+			if (mp.DisplayOrder or 0) < 60 then mp.DisplayOrder = 60 end
 		end
+		return mp, mp and mp:FindFirstChild("AddCoins")
 	end
-	local function comboCountTo(target)
-		combo.token += 1; local tok = combo.token
-		local from = combo.displayed or 0
-		local t0 = os.clock(); local dur = 0.3
+	local function moneyPop(amount)
+		if not amount or amount < 1 then return end
+		if _popActive >= POP_CAP then return end
+		local mp, tmpl = moneyPopTemplate()
+		if not tmpl then return end
+		_popActive += 1
+		local clone = tmpl:Clone()
+		clone.Name = "WR_Pop"
+		clone.Visible = true
+		clone.AnchorPoint = Vector2.new(0.5, 0.5)
+		local rx = 0.22 + math.random() * 0.56 -- 0.22..0.78 (z dala od krawedzi/HUD)
+		local ry = 0.34 + math.random() * 0.40 -- 0.34..0.74 (strefa nad graczem/akcja)
+		clone.Position = UDim2.fromScale(rx, ry)
+		for _, d in ipairs(clone:GetDescendants()) do
+			if d:IsA("TextLabel") then d.Text = "+" .. fmt(amount) end
+		end
+		clone.Parent = mp
+		local sc = clone:FindFirstChildWhichIsA("UIScale")
+		if not sc then sc = Instance.new("UIScale"); sc.Parent = clone end
+		sc.Scale = 0.45
+		TweenService:Create(sc, TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 		task.spawn(function()
-			while combo.token == tok do
-				local a = math.clamp((os.clock() - t0) / dur, 0, 1)
-				local v = math.floor(from + (target - from) * (1 - (1 - a) * (1 - a)))
-				combo.displayed = v
-				if combo.label then combo.label.Text = "+" .. fmt(v) end
-				if a >= 1 then
-					combo.displayed = target
-					if combo.label then combo.label.Text = "+" .. fmt(target) end
-					break
-				end
-				task.wait()
+			task.wait(0.55)
+			TweenService:Create(clone, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.fromScale(rx, ry - 0.06) }):Play()
+			for _, d in ipairs(clone:GetDescendants()) do
+				if d:IsA("TextLabel") then TweenService:Create(d, TweenInfo.new(0.45), { TextTransparency = 1 }):Play() end
+				if d:IsA("ImageLabel") then TweenService:Create(d, TweenInfo.new(0.45), { ImageTransparency = 1 }):Play() end
+				if d:IsA("UIStroke") then TweenService:Create(d, TweenInfo.new(0.45), { Transparency = 1 }):Play() end
 			end
+			task.wait(0.5)
+			clone:Destroy()
+			_popActive = math.max(0, _popActive - 1)
 		end)
 	end
-	-- reset po 3s bez killa: zanik -> wyzeruj -> schowaj
-	task.spawn(function()
-		while true do
-			task.wait(0.25)
-			if combo.total > 0 and (os.clock() - combo.lastKill) > 3 then
-				combo.total = 0; combo.displayed = 0
-				if combo.gui and combo.gui.Enabled then
-					if combo.label then TweenService:Create(combo.label, TweenInfo.new(0.35), { TextTransparency = 1 }):Play() end
-					if combo.icon then TweenService:Create(combo.icon, TweenInfo.new(0.35), { ImageTransparency = 1 }):Play() end
-					if combo.holder then TweenService:Create(combo.holder, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, COMBO_BASE_Y, -48) }):Play() end -- float-up
-					local g = combo.gui
-					task.delay(0.4, function() if combo.total == 0 and g then g.Enabled = false end end)
-				end
-			end
-		end
+	LP.CharacterAdded:Connect(function() -- respawn -> wyzeruj delty killi
+		combo.wave = -1; combo.killed = 0
 	end)
-	LP.CharacterAdded:Connect(function() -- respawn -> odbuduj + wyzeruj combo
-		combo.wave = -1; combo.killed = 0; combo.total = 0; combo.displayed = 0
-		task.defer(buildComboGui)
-	end)
-	if LP.Character then task.defer(buildComboGui) end
 	local function comboOnWave(wn, killed, pool)
 		wn = wn or 1; killed = killed or 0; pool = pool or 0
 		local kills = (wn ~= combo.wave) and killed or (killed - combo.killed)
 		combo.wave = wn; combo.killed = killed
 		if kills and kills > 0 then
 			local per = (waveCoinReward(wn) / math.max(pool, 1) + (ECFG.killReward or 0)) * _coinMult
-			combo.total += kills * per
-			combo.lastKill = os.clock()
-			comboShow()
-			comboCountTo(math.floor(combo.total + 0.5))
+			local totalCoins = kills * per
+			local nPops = math.clamp(kills, 1, POP_PER_TICK)
+			local each = totalCoins / nPops
+			for _ = 1, nPops do
+				moneyPop(math.floor(each + 0.5))
+			end
 		end
 	end
 
