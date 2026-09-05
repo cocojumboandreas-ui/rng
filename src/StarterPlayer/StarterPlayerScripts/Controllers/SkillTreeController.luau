@@ -380,8 +380,15 @@ function SkillTreeController.start()
 	clickBlock.InputBegan:Connect(function(input)
 		if not NodeTreeClient.isTreeVisible() then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.MouseButton2 -- user: pan tez PPM
 			or input.UserInputType == Enum.UserInputType.Touch then
+			panning = true
+		end
+	end)
+	-- PPM (MouseButton2): clickBlock.InputBegan czesto NIE odpala sie dla prawego przycisku na GuiObject,
+	-- wiec start panu PPM lapiemy GLOBALNIE (UIS.InputBegan lapie MB2 niezaleznie od tego co pod kursorem).
+	UserInputService.InputBegan:Connect(function(input)
+		if not NodeTreeClient.isTreeVisible() then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
 			panning = true
 		end
 	end)
