@@ -135,11 +135,29 @@ local function waveComposition(waveNumber: number)
 		local bet = GameConfig.Wave.enemyTypes[bossType]
 		-- HP bossa = mult * najsilniejszy zwykly wrog fali n-1 * per-boss hpMult (SZARZA=mniej, by byla ubijalna)
 		local bossHp = mult * referenceSoldierHp(waveNumber - 1) * ((bet and bet.hpMult) or 1)
-		local comp = { { bossType, 1, bossHp } }
+		-- ESKALACJA (user): grunty wychodza FALAMI rosnacych tierow (najslabsze -> mocniejsze), boss NA KONCU
+		-- listy -> spawn sekwencyjny w beginWave (opoznienie), zeby jednostki sie NIE MIESZALY. Rozklad grunts
+		-- na grupy tier lowTier..(maxTier-1): wagi ODWROCONE (nizszy tier = wiecej miesa), najsilniejsza grupa = reszta.
+		local comp = {}
 		if grunts > 0 then
-			local backTier = math.max(1, maxTierFor(waveNumber) - 1)
-			comp[#comp + 1] = { pickTierType(backTier, waveNumber), grunts }
+			local topGrunt = math.max(1, maxTierFor(waveNumber) - 1) -- boss = najwyzszy tier; grunty do maxTier-1
+			local window = GameConfig.Wave.tierWindow or 3
+			local lowTier = math.max(1, topGrunt - window + 1)
+			local totalW = 0
+			for tr = lowTier, topGrunt do totalW += (topGrunt - tr + 1) end
+			local used = 0
+			for tr = lowTier, topGrunt do -- SLABSZE tiery pierwsze (rosnaco) -> spawn w tej kolejnosci
+				local cnt
+				if tr == topGrunt then
+					cnt = grunts - used -- najsilniejsza grupa gruntow: reszta puli
+				else
+					cnt = math.floor(grunts * (topGrunt - tr + 1) / math.max(1, totalW))
+					used += cnt
+				end
+				if cnt > 0 then comp[#comp + 1] = { pickTierType(tr, waveNumber + tr), cnt } end
+			end
 		end
+		comp[#comp + 1] = { bossType, 1, bossHp } -- BOSS na samym koncu listy -> spawnowany OSTATNI
 		local sc, pool = applyProto(comp) -- proto: mniej wrogow (boss zawsze zostaje bo min 1)
 		return sc, pool, { cols = 6 }
 	end
@@ -237,8 +255,30 @@ local function beginWave(player)
 	_run[player] = { kills = 0, pool = pool }
 	-- BEZ resetu HP rdzenia co fale: HP przechodzi miedzy falami (fale leca ciagiem). Reset tylko na START RUNU (StartWave).
 	-- KOLUMNA CELU: CombatService losuje ja per-wrog z LaneConfig (STALE, boss=srodek) — patrz pickLaneColumn.
-	for _, entry in ipairs(comp) do
+	-- SPAWN: boss-fala -> grupy wychodza SEKWENCYJNIE (opoznienie miedzy grupami), zeby sie NIE MIESZALY, a boss
+	-- (ostatnia grupa) wchodzil NA KONCU (user). Zwykla fala -> wszystko naraz jak dotad. BEZPIECZNE: fala nie
+	-- zaliczy sie przed spawnem bossa, bo warunek konca to kills>=pool, a pool liczy WSZYSTKICH (z bossem).
+	local function spawnEntry(entry)
 		_combat.SpawnEnemies(player, waveNumber, { enemyTypeId = entry[1], count = entry[2], formation = { cols = 6 }, hpOverride = entry[3], forceBoss = entry[4] })
+	end
+	if isBossWave(waveNumber) then
+		local gap = GameConfig.Wave.bossGroupDelay or 2.2
+		local gen = _runGen[player] or 0
+		for i, entry in ipairs(comp) do
+			if i == 1 then
+				spawnEntry(entry) -- pierwsza (najslabsza) grupa od razu
+			else
+				task.delay((i - 1) * gap, function()
+					if (_runGen[player] or 0) ~= gen then return end -- run przerwany/skonczony -> nie spawnuj
+					if WaveService.GetPhase(player) ~= Enums.RunPhase.WaveActive then return end
+					local d = _profile and _profile.GetProfile(player)
+					if not d or d.waveNumber ~= waveNumber then return end -- juz inna fala
+					spawnEntry(entry)
+				end)
+			end
+		end
+	else
+		for _, entry in ipairs(comp) do spawnEntry(entry) end
 	end
 	WaveService.WaveStarted:Fire(player, waveNumber, pool) -- -> BuildService.SettleStacks (grawitacja); snapshot bazy PO niej
 	if _build and _build.SnapshotBase then _build.SnapshotBase(player) end -- stan bazy na START fali (do restore po fali)

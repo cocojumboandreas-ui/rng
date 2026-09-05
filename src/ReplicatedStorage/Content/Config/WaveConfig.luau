@@ -99,7 +99,8 @@ local WaveConfig = {
 		},
 	},
 	bossRewardMult = 3, -- boss-fala daje x nagrody normalnej fali n
-	bossGrunts = 10, -- kompozycja boss-fali = 1 boss + tylu wrogow podkladu (tier maxTier-1)
+	bossGrunts = 10, -- kompozycja boss-fali = 1 boss + tylu wrogow podkladu (rozbici na grupy rosnacych tierow)
+	bossGroupDelay = 2.2, -- boss-fala: sekundy miedzy kolejnymi grupami (najslabsze -> mocniejsze -> boss NA KONCU)
 	-- KOMPOZYCJA fali generowanej wzorem (WaveService.waveComposition): ODWROCONE wagi + FODDER FLOOR.
 	--   Waga tieru w oknie = (maxTier - tier + 1) -> NIZSZY tier CZESTSZY (roj taniego miesa, elity rzadkie).
 	--   Fodder floor: staly % puli ZAWSZE na fodderTiers, niezaleznie od okna top-N (roj nie znika na falach 60+).
