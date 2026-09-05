@@ -9,7 +9,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
-local ContextActionService = game:GetService("ContextActionService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -385,25 +384,20 @@ function SkillTreeController.start()
 			panning = true
 		end
 	end)
-	-- PPM (MouseButton2) pan: dwa problemy z prostym Connectem: (a) clickBlock.InputBegan nie odpala sie
-	-- dla prawego, (b) domyslna kamera przejmuje PPM i BLOKUJE mysz -> ruch nie dochodzi. Rozwiazanie:
-	-- ContextActionService ZJADA (Sink) MB2 zanim dostanie ja kamera -> kursor zostaje, mysz sie nie blokuje,
-	-- a ruch idzie normalnie przez InputChanged (jak przy LPM). Bind tylko gdy drzewo otwarte (nizej).
-	local PAN_ACTION = "WR_TreePanRMB"
-	local function rmbPanAction(_, state)
-		if state == Enum.UserInputState.Begin then
-			panning = true
-		elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
-			panning = false
-		end
-		return Enum.ContextActionResult.Sink -- nie oddawaj MB2 kamerze
+	-- PPM (MouseButton2) pan: pelnoekranowy clickBlock (aktywny GuiButton) POCHLANIA prawy przycisk zanim
+	-- dojdzie do InputBegan/ContextActionService -> zdarzeniowe wykrycie PPM nie dziala (zdiagnozowane w
+	-- playtescie: casBegin=0, moveAll=145). Ale ruch myszy leci normalnie, wiec zamiast lapac "poczatek PPM"
+	-- po prostu w handlerze ruchu sprawdzamy czy PPM jest FIZYCZNIE wcisniety (IsMouseButtonPressed) -> omija
+	-- pochlanianie przez GUI. Kamera i tak zamrozona (Scriptable) na czas drzewa, wiec mysz nie jest blokowana.
+	local function rmbHeld()
+		return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
 	end
 	UserInputService.InputChanged:Connect(function(input)
 		if not NodeTreeClient.isTreeVisible() then return end
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
 			setZoom(myZoom + input.Position.Z * 0.12)
 			clampMainFrame()
-		elseif panning and (input.UserInputType == Enum.UserInputType.MouseMovement
+		elseif (panning or rmbHeld()) and (input.UserInputType == Enum.UserInputType.MouseMovement
 			or input.UserInputType == Enum.UserInputType.Touch) then
 			mainFrame.Position += UDim2.fromOffset(input.Delta.X, input.Delta.Y)
 			clampMainFrame()
@@ -466,10 +460,6 @@ function SkillTreeController.start()
 			setZoom(ZOOM_START)
 			mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 			clickBlock.Visible = true
-			-- PPM pan: zjadamy MB2 (Sink) przed kamera na czas otwartego drzewa
-			ContextActionService:BindActionAtPriority(
-				PAN_ACTION, rmbPanAction, false,
-				Enum.ContextActionPriority.High.Value, Enum.UserInputType.MouseButton2)
 			task.defer(function()
 				if not NodeTreeClient.isTreeVisible() then return end
 				local minx, miny, maxx, maxy = nodeBBox()
@@ -494,7 +484,6 @@ function SkillTreeController.start()
 			if hum1 then hum1.WalkSpeed = savedWS end -- przywroc predkosc chodu
 			clickBlock.Visible = false -- zdejmij modal-blocker
 			panning = false
-			ContextActionService:UnbindAction(PAN_ACTION) -- oddaj MB2 z powrotem kamerze
 		end
 	end)
 end
