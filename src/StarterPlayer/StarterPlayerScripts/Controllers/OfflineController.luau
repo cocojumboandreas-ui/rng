@@ -51,7 +51,9 @@ end
 
 local function hide(inst) if inst then inst.Visible = false end end
 
--- ikona 3D jednostki w PetIcon (ViewportFrame; wlasne swiatlo, kadr 3/4). Jak w karcie hover.
+-- ikona 3D jednostki w PetIcon (ViewportFrame). SCALE-TO-FIT: cala jednostka miesci sie w kafelku (nie ucieta).
+-- Gotcha: rigi maja FX (WR_Tracer/WR_Muzzle) zaparkowane ~139 studow -> GetBoundingBox puchnie i kadr sie sypie.
+-- Wycinamy dalekie czesci z KLONA, liczymy CIASNY bbox z pozostalych i kadrujemy kamere pod FOV, zeby wszystko weszlo.
 local function fillIcon(petIcon, unitId)
 	for _, ch in ipairs(petIcon:GetChildren()) do
 		if ch:IsA("ViewportFrame") then ch:Destroy() end
@@ -59,15 +61,34 @@ local function fillIcon(petIcon, unitId)
 	if petIcon:IsA("ImageLabel") then petIcon.Image = ""; petIcon.ImageTransparency = 1 end
 	local tmpl = UnitModelFactory.get(unitId)
 	if not tmpl then return end
+	local m = tmpl:Clone()
+	local piv = m:GetPivot().Position
+	for _, d in ipairs(m:GetDescendants()) do -- wytnij FX zaparkowane daleko (inaczej tiny dots + zly bbox)
+		if d:IsA("BasePart") and (d.Position - piv).Magnitude > 40 then d:Destroy() end
+	end
+	-- CIASNY AABB z pozostalych czesci (srodek + rozmiar tylko realnej jednostki)
+	local minv, maxv
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local lo, hi = d.Position - d.Size * 0.5, d.Position + d.Size * 0.5
+			if not minv then minv, maxv = lo, hi else
+				minv = Vector3.new(math.min(minv.X, lo.X), math.min(minv.Y, lo.Y), math.min(minv.Z, lo.Z))
+				maxv = Vector3.new(math.max(maxv.X, hi.X), math.max(maxv.Y, hi.Y), math.max(maxv.Z, hi.Z))
+			end
+		end
+	end
+	local center, sz
+	if minv then center, sz = (minv + maxv) * 0.5, (maxv - minv) else local cf, s = m:GetBoundingBox(); center, sz = cf.Position, s end
 	local vpf = Instance.new("ViewportFrame")
 	vpf.Size = UDim2.fromScale(1, 1); vpf.BackgroundTransparency = 1
 	vpf.Ambient = Color3.fromRGB(255, 255, 255); vpf.LightColor = Color3.fromRGB(255, 255, 255)
 	vpf.LightDirection = Vector3.new(-0.3, -1, -0.4); vpf.ZIndex = 5
-	local cam = Instance.new("Camera"); cam.FieldOfView = 38; vpf.CurrentCamera = cam; cam.Parent = vpf
-	local m = tmpl:Clone(); m.Parent = vpf
-	local cf, size = m:GetBoundingBox()
-	local d = math.max(size.X, size.Y, size.Z, 1) * 1.5
-	cam.CFrame = CFrame.lookAt(cf.Position + Vector3.new(d * 0.5, size.Y * 0.2, d), cf.Position)
+	local fov = 40
+	local cam = Instance.new("Camera"); cam.FieldOfView = fov; vpf.CurrentCamera = cam; cam.Parent = vpf
+	m.Parent = vpf
+	local maxDim = math.max(sz.X, sz.Y, sz.Z, 1)
+	local dist = (maxDim * 0.5) / math.tan(math.rad(fov * 0.5)) * 1.35 -- odleglosc zeby wszystko weszlo + margines
+	cam.CFrame = CFrame.lookAt(center + Vector3.new(0.45, 0.22, 1).Unit * dist, center)
 	vpf.Parent = petIcon
 end
 
