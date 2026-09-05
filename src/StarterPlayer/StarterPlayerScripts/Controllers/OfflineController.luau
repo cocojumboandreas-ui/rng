@@ -77,6 +77,16 @@ local function prefixed(label, num)
 	return pre .. " " .. num
 end
 
+-- kolor rarity (ramka + napis szans) — dopaminowo jak w referencji: rzadsze = goretsze (rozowy/czerwony), czestsze = zloto/blekit
+local function rarityColor(oddsN)
+	oddsN = oddsN or 0
+	if oddsN >= 25000 then return Color3.fromRGB(255, 70, 130)   -- hot pink (ultra)
+	elseif oddsN >= 8000 then return Color3.fromRGB(190, 100, 255) -- fiolet
+	elseif oddsN >= 2500 then return Color3.fromRGB(255, 120, 60) -- pomaranczowy
+	elseif oddsN >= 800 then return Color3.fromRGB(255, 205, 60)  -- zloto
+	else return Color3.fromRGB(120, 215, 255) end                -- blekit (common)
+end
+
 function OfflineController.start()
 	local pg = LP:WaitForChild("PlayerGui")
 	local gui = pg:WaitForChild("OfflineEarn", 15)
@@ -171,13 +181,22 @@ function OfflineController.start()
 		-- ikona 3D
 		local petIcon = card:FindFirstChild("PetIcon")
 		if petIcon then fillIcon(petIcon, drop.unitId) end
-		-- szanse "1 in N" (brak slotu w szablonie -> dodajemy wlasny, po skosie jak w referencji)
+		-- RAMKA kolorowana rarity (jak w referencji: rzadsze = goretszy kolor)
+		local col = rarityColor(drop.oddsN)
+		local frameStroke = card:FindFirstChildWhichIsA("UIStroke")
+		if frameStroke then
+			frameStroke.Color = col
+			frameStroke.Thickness = math.max(frameStroke.Thickness, 3)
+			local grad = frameStroke:FindFirstChildWhichIsA("UIGradient")
+			if grad then grad.Color = ColorSequence.new(col, col:Lerp(Color3.new(1, 1, 1), 0.45)) end
+		end
+		-- szanse "1 in N" — gruby, kolorowany rarity, po skosie, czarny obrys (dopamina jak w referencji)
 		local odds = Instance.new("TextLabel")
 		odds.Name = "WR_Odds"; odds.BackgroundTransparency = 1; odds.AnchorPoint = Vector2.new(1, 0)
-		odds.Position = UDim2.new(1, -2, 0, 2); odds.Size = UDim2.fromScale(0.9, 0.16); odds.Rotation = 8
-		odds.Font = Enum.Font.GothamBold; odds.TextScaled = true; odds.TextXAlignment = Enum.TextXAlignment.Right
-		odds.TextColor3 = Color3.fromRGB(255, 220, 120); odds.Text = "1 in " .. fmtNum(drop.oddsN or 0); odds.ZIndex = 10
-		local os_ = Instance.new("UIStroke"); os_.Color = Color3.fromRGB(0, 0, 0); os_.Thickness = 1.5; os_.Parent = odds
+		odds.Position = UDim2.new(1, 6, 0, -4); odds.Size = UDim2.fromScale(1.05, 0.22); odds.Rotation = 10
+		odds.Font = Enum.Font.GothamBlack; odds.TextScaled = true; odds.TextXAlignment = Enum.TextXAlignment.Right
+		odds.TextColor3 = col; odds.Text = "1 in " .. fmtNum(drop.oddsN or 0); odds.ZIndex = 12
+		local os_ = Instance.new("UIStroke"); os_.Color = Color3.fromRGB(20, 15, 25); os_.Thickness = 2.6; os_.LineJoinMode = Enum.LineJoinMode.Round; os_.Parent = odds
 		odds.Parent = card
 	end
 
