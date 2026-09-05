@@ -1084,19 +1084,14 @@ local function updateFocus(now)
 	_focused = best
 end
 
--- leniwe wczytanie tracków (raz na model, przy 1. renderze — nie w prewarm, tam len=0)
+-- user: ZADNYCH animacji wrogow (chod/idle/strzal) — nowe animacje dojda z nowymi ID. NIE wczytujemy zadnego
+-- tracka -> rig.tIdle/tWalk/tShot zostaja nil -> wszystkie sie :Play sa guardowane (if rig.tWalk...) i nic sie
+-- nie animuje. rig.real zostaje true (z RigAnimSetup.prepare) -> proceduralny chod/bob TEZ pominiety (bloki
+-- sprawdzaja `not rig.real`). Ruch wroga po sciezce (PivotTo w renderStep) dziala dalej. FX strzalu (muzzle/
+-- tracer, fireWeapon) to osobny efekt (nie animacja) — zostaje, jak przy jednostkach gracza.
 local function ensureEnemyTracks(rig)
-	if not rig or not rig.animator or rig.tracksLoaded then return end
-	rig.tracksLoaded = true
-	local function loadTr(id, looped, prio)
-		local a = Instance.new("Animation"); a.AnimationId = id
-		local ok, tr = pcall(function() return rig.animator:LoadAnimation(a) end)
-		if ok and tr then tr.Looped = looped; tr.Priority = prio; return tr end
-		return nil
-	end
-	rig.tIdle = loadTr(ENEMY_ANIM.idle, true, Enum.AnimationPriority.Idle)
-	rig.tWalk = loadTr(ENEMY_ANIM.walk, true, Enum.AnimationPriority.Movement)
-	rig.tShot = loadTr(ENEMY_ANIM.shot, false, Enum.AnimationPriority.Action)
+	if not rig or rig.tracksLoaded then return end
+	rig.tracksLoaded = true -- oznacz jako "zaladowane" (nic nie wczytujemy) — koniec animacji wrogow
 end
 
 local function renderStep(dt)

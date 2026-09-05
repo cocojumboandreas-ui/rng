@@ -590,24 +590,15 @@ local function setupFx(model, prof, st, sx, sy, sz)
 end
 
 -- ── track/untrack ───────────────────────────────────────────────────────────────
--- R6: prawdziwe animacje (klient). Serwer (BuildService/RigAnimSetup) juz odkotwiczyl rig i dodal Animator.
--- Idle w petli + Shot przy strzale. Zwraca {idle,shot} lub nil (nie-R6 albo rig nieprzygotowany).
+-- R6: jednostki (zolnierze) maja STAC STATYCZNIE w pozie z bronia. User: zapetlona animacja R6 ("chodzenie"
+-- idle) + shot sie ROZJEBYWALY -> NIE gramy zadnej animacji R6 na jednostkach gracza. Zwracamy marker
+-- (isR6=true) TYLKO po to, by step() nie dokladal proceduralnego odrzutu (soldier ma recoil>0 -> jerk). Poza
+-- trzymania broni pochodzi z Motor6D/rigu (zweryfikowane: bez animacji rig stoi poprawnie w pozie z bronia).
+-- FX strzalu (muzzle/tracer) dziala dalej. Wrogowie animuja sie OSOBNO (EnemyRenderController) — nietkniete.
 local function setupR6(model)
 	local hum = model:FindFirstChildWhichIsA("Humanoid", true)
 	if not hum or hum.RigType ~= Enum.HumanoidRigType.R6 then return nil end
-	local animator = hum:FindFirstChildOfClass("Animator")
-	if not animator then return nil end
-	local function load(id, looped, prio)
-		local a = Instance.new("Animation"); a.AnimationId = id
-		local ok, tr = pcall(function() return animator:LoadAnimation(a) end)
-		if not ok or not tr then return nil end
-		tr.Looped = looped; tr.Priority = prio
-		return tr
-	end
-	local idle = load(ANIM_IDLE, true, Enum.AnimationPriority.Idle)
-	local shot = load(ANIM_SHOT, false, Enum.AnimationPriority.Action)
-	if idle then idle:Play(0.2) end
-	return { idle = idle, shot = shot }
+	return { idle = nil, shot = nil }
 end
 
 local function track(model)
