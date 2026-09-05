@@ -165,11 +165,17 @@ function OfflineController.start()
 		local u = GameConfig.Units[drop.unitId]
 		local card = template:Clone()
 		card.Name = "WR_DropCard"; card.Visible = true; card.LayoutOrder = order; card.Parent = bestDrops
-		-- rozroznij labele Text po pozycji Y: dol = NAZWA, gora = ILOSC "Nx"
+		-- rozroznij labele Text po pozycji Y: dol = NAZWA; gora = ILOSC -> przenosimy w LEWY gorny rog "xN" (jak ref)
 		for _, t in ipairs(card:GetChildren()) do
 			if t:IsA("TextLabel") and t.Name == "Text" then
-				if t.Position.Y.Scale > 0.5 then setText(t, u and u.displayName or drop.unitId)
-				else setText(t, drop.qty .. "x") end
+				if t.Position.Y.Scale > 0.5 then
+					setText(t, u and u.displayName or drop.unitId)
+				else
+					setText(t, "x" .. drop.qty)
+					t.AnchorPoint = Vector2.new(0, 0); t.Position = UDim2.fromScale(0.06, 0.04)
+					t.Size = UDim2.fromScale(0.5, 0.2); t.TextXAlignment = Enum.TextXAlignment.Left
+					t.Rotation = 0; t.ZIndex = 12
+				end
 			end
 		end
 		-- staty z configu (dps = dmg*fireRate, hp)
@@ -193,7 +199,7 @@ function OfflineController.start()
 		-- szanse "1 in N" — gruby, kolorowany rarity, po skosie, czarny obrys (dopamina jak w referencji)
 		local odds = Instance.new("TextLabel")
 		odds.Name = "WR_Odds"; odds.BackgroundTransparency = 1; odds.AnchorPoint = Vector2.new(1, 0)
-		odds.Position = UDim2.new(1, 6, 0, -4); odds.Size = UDim2.fromScale(1.05, 0.22); odds.Rotation = 10
+		odds.Position = UDim2.new(1, 2, 0, -3); odds.Size = UDim2.fromScale(0.7, 0.19); odds.Rotation = 12
 		odds.Font = Enum.Font.GothamBlack; odds.TextScaled = true; odds.TextXAlignment = Enum.TextXAlignment.Right
 		odds.TextColor3 = col; odds.Text = "1 in " .. fmtNum(drop.oddsN or 0); odds.ZIndex = 12
 		local os_ = Instance.new("UIStroke"); os_.Color = Color3.fromRGB(20, 15, 25); os_.Thickness = 2.6; os_.LineJoinMode = Enum.LineJoinMode.Round; os_.Parent = odds
@@ -209,7 +215,7 @@ function OfflineController.start()
 		setText(moneyVal, "+" .. fmtNum(p.coins or 0))
 		setText(rollsVal, "+" .. fmtNum(p.rolls or 0))
 		setText(offlineInfo, ("While you were away (%s), you earned:"):format(fmtDuration(p.seconds or 0)))
-		if dropsValue then setText(dropsValue, "+" .. fmtNum(p.coins or 0)) end
+		if dropsValue then setText(dropsValue, "+" .. fmtNum(p.coins or 0)); dropsValue.LayoutOrder = 999 end -- monety NA KONCU rzedu (jak ref)
 
 		-- drops
 		local drops = type(p.drops) == "table" and p.drops or {}
