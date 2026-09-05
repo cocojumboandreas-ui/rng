@@ -214,12 +214,13 @@ local function buildGunsUI(pg)
 		local g = Instance.new("ScreenGui"); g.Name = "WR_GunsGui"; g.ResetOnSpawn = false; g.IgnoreGuiInset = true; g.DisplayOrder = 95; g.Parent = pg
 		btn.Size = UDim2.fromOffset(70, 70); btn.AnchorPoint = Vector2.new(0.5, 1); btn.Position = UDim2.new(0.5, 92, 1, -20); btn.Parent = g
 	end
-	local emoji = Instance.new("TextLabel")
-	emoji.Name = "Emoji"; emoji.BackgroundTransparency = 1; emoji.Size = UDim2.fromScale(1, 0.66)
-	emoji.Position = UDim2.fromScale(0.5, 0.4); emoji.AnchorPoint = Vector2.new(0.5, 0.5)
-	emoji.Font = Enum.Font.GothamBold; emoji.TextScaled = true; emoji.Text = "\240\159\148\171"; emoji.ZIndex = 61 -- gun
-	emoji.Parent = btn
-	local es = Instance.new("UIStroke"); es.Color = Color3.fromRGB(0, 0, 0); es.Thickness = 4; es.LineJoinMode = Enum.LineJoinMode.Round; es.Parent = emoji -- gruby czarny obrys ikony jak Roll/Skills
+	-- IKONA broni jako OBRAZEK z wypalonym czarnym konturem (jak Roll/Skills). Emoji odpada: UIStroke nie
+	-- dziala na emoji (kolorowa bitmapa), wiec kontur sie nie renderowal. Tekstura z katalogu (decal->texture).
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "GunIcon"; icon.BackgroundTransparency = 1; icon.Size = UDim2.fromScale(0.92, 0.74)
+	icon.Position = UDim2.fromScale(0.5, 0.42); icon.AnchorPoint = Vector2.new(0.5, 0.5)
+	icon.Image = "rbxassetid://105002267813125"; icon.ScaleType = Enum.ScaleType.Fit; icon.ZIndex = 61
+	icon.Parent = btn
 	local lbl = Instance.new("TextLabel")
 	lbl.Name = "Label"; lbl.BackgroundTransparency = 1; lbl.Size = UDim2.fromScale(1, 0.3)
 	lbl.Position = UDim2.fromScale(0.5, 0.9); lbl.AnchorPoint = Vector2.new(0.5, 0.5)
