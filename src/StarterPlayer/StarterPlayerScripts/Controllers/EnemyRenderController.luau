@@ -26,8 +26,12 @@ local PARK = CFrame.new(0, -500, 0)
 local PREWARM = 60 -- ile modeli podstawowego wroga (tier1) prealokowac synchronicznie
 local PREWARM_TIER = 10 -- ile modeli KAZDEGO innego typu tieru prealokowac (w tle)
 local PREWARM_BOSS = 2 -- ile modeli KAZDEGO bossa prealokowac (w tle)
-local BOSS_FOOT = 10 -- docelowy footprint bossa (study)
-local GRUNT_FOOT = 4 -- docelowy footprint zwyklego wroga
+local BOSS_FOOT = 10 -- docelowy footprint bossa (study) — POJAZDY/nie-R6
+local GRUNT_FOOT = 4 -- docelowy footprint zwyklego wroga — POJAZDY/nie-R6
+-- ZOLNIERZE (R6): skala wg WYSOKOSCI CIALA rigu, NIE sladu (dluga bron rozdmuchiwala slad -> niespojny rozmiar,
+-- Soldier/Sniper/Tank Soldier za male, Flamethrower za duzy). Cel = wysokosc ciala Noob Soldiera (spojne, "realne").
+local GRUNT_BODY_H = 3.5 -- docelowa wysokosc ciala zwyklego zolnierza (Noob raw ~5.0 x 0.70)
+local BOSS_BODY_H = 8.75 -- j.w. dla bossa (proporcja BOSS_FOOT/GRUNT_FOOT = 2.5)
 -- FORMACJA (render-only): wrogowie wychodza z bramy GESIEGO/prosto, dopiero po chwili rozchodza sie na plac.
 -- Cel (wg gry-wzorca): luzna MASZERUJACA LINIA przez cala szerokosc+glebokosc placu, nie zbity klab.
 local LANE_SCALE = 0.9 -- rozstaw boczny (bylo 0.5 = kłąb; 0.9 = szeroki wachlarz na cala szerokosc lane)
@@ -219,9 +223,17 @@ local function buildEnemyModel(modelName, isBoss): Model?
 	end
 	m:PivotTo(CFrame.new(0, 0, 0))
 	local size = m:GetExtentsSize()
-	local target = isBoss and BOSS_FOOT or GRUNT_FOOT
-	local factor = math.min(target / math.max(size.X, 0.01), target / math.max(size.Z, 0.01))
-	if m.ScaleTo and factor < 0.999 then m:ScaleTo(factor) end
+	local humScale = m:FindFirstChildWhichIsA("Humanoid", true)
+	local factor
+	if humScale and humScale.RigType == Enum.HumanoidRigType.R6 and humScale.Parent then
+		-- ZOLNIERZ: skala wg WYSOKOSCI CIALA rigu (broni nie liczymy) -> wszyscy rowni jak Noob, niezaleznie od broni
+		local bodyY = humScale.Parent:GetExtentsSize().Y
+		factor = (isBoss and BOSS_BODY_H or GRUNT_BODY_H) / math.max(bodyY, 0.01)
+	else
+		local target = isBoss and BOSS_FOOT or GRUNT_FOOT
+		factor = math.min(target / math.max(size.X, 0.01), target / math.max(size.Z, 0.01))
+	end
+	if m.ScaleTo and math.abs(factor - 1) > 0.001 then m:ScaleTo(factor) end
 	for _, d in ipairs(m:GetDescendants()) do
 		if d:IsA("BasePart") then
 			-- CanQuery=true: raycast pocisku broni FPS gracza musi trafiac wroga (PlayerHitEnemy)

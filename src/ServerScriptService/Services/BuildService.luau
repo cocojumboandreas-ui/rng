@@ -236,7 +236,9 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	end
 
 	-- POJAZD/mesh: upiecz Model.Scale do 1 (Scale != 1 nie replikuje sie na klienta). R6 rigi pomijamy (Motor6D).
-	if not model:FindFirstChildOfClass("Humanoid") then
+	-- REKURSYWNIE: rig R6 jest zagniezdzony w "Dummy" -> nierekursywne FindFirstChildOfClass zwracalo nil i
+	-- normalizeModelScale ROZWALALA rig (+ ponizej zla skala footprint). Teraz poprawnie omijamy R6.
+	if not model:FindFirstChildWhichIsA("Humanoid", true) then
 		normalizeModelScale(model)
 	end
 
@@ -266,9 +268,15 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 		local size = model:GetExtentsSize() -- juz w orientacji docelowej
 		local factor = math.min(cellW / math.max(size.X, 0.01), cellD / math.max(size.Z, 0.01)) * FIT_MARGIN
 		factor = math.min(factor, 1)
-		if model:FindFirstChildOfClass("Humanoid") then
-			-- R6 rig: Model:ScaleTo (skaluje tez Motor6D dla animacji klienta), dziala lokalnie.
-			-- ScaleTo jest ABSOLUTNE, a factor to stosunek do OBECNEGO rozmiaru -> * GetScale() (upieczona skala).
+		local humB = model:FindFirstChildWhichIsA("Humanoid", true)
+		if humB and humB.RigType == Enum.HumanoidRigType.R6 and humB.Parent and model.ScaleTo then
+			-- ZOLNIERZ R6: skala wg WYSOKOSCI CIALA rigu (NIE sladu z bronia — dluga bron kurczyla jednostki
+			-- niespojnie). Cialo ~72% kratki -> wszyscy zolnierze RÓWNI, niezaleznie od broni. Bron moze wystawac.
+			local bodyY = humB.Parent:GetExtentsSize().Y
+			local targetH = math.min(cellW, cellD) * 0.72
+			model:ScaleTo(model:GetScale() * (targetH / math.max(bodyY, 0.01)))
+		elseif model:FindFirstChildWhichIsA("Humanoid", true) then
+			-- R15/inne humanoidy: stara sciezka footprint
 			if factor < 0.999 and model.ScaleTo then
 				model:ScaleTo(model:GetScale() * factor)
 			end
