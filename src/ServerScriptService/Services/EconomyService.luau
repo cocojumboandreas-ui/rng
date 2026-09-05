@@ -3,6 +3,7 @@
 -- Monety: JEDYNY writer profile.coins. Nagrody (x Stats.coinMult), wydatki, nagroda za fale.
 -- Offline earn = POST-BRAMKA (EconomyConfig.offline). deps: ProfileService, StatProfileService.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Signal = require(Framework:WaitForChild("Signal"))
@@ -18,7 +19,8 @@ local _profile, _stat = nil, nil
 local _coinsSync = nil -- cache remote'a (guard: nil w edit-mode tescie)
 local _rollsSync = nil -- cache remote'a RollsSync (druga waluta)
 local _offlineRemote = nil -- cache remote'a OfflineEarnings
-local _roll = nil -- RollService (przyznanie rolek offline)
+local _roll = nil -- RollService (offline batch roll + grant przy CLAIM)
+local _pending: { [any]: any } = {} -- player -> {coinsRaw, items, rolls} — NIEWYDANE nagrody offline (do CLAIM/CLAIM X2)
 
 function EconomyService.GetCoins(player): number
 	local data = _profile and _profile.GetProfile(player)
@@ -111,30 +113,52 @@ local function computeOfflineRaw(offlineTs: number, now: number, offlineRate: nu
 	return raw, capped, false
 end
 
--- Liczone na ProfileLoaded. Przyznaje monety (Award -> coinMult RAZ) i zwraca {coins, seconds}.
--- Resetuje offlineTs=now (anti double-grant przy crash-rejoin + init first-login).
+-- Liczone na ProfileLoaded. CLAIM-GATED: NIC nie przyznaje od razu — liczy monety + rolluje offline-spiny
+-- w jednostki (serwer, pure) i trzyma to jako PENDING; gracz odbiera przez CLAIM (x1) / CLAIM X2 (x2, 49R).
+-- Zwraca PODGLAD do popupu: {coins(display), rolls, seconds, drops={{unitId,qty,oddsN}}, doubleId}.
 function EconomyService.ComputeOfflineEarnings(player)
 	local data = _profile and _profile.GetProfile(player)
 	if not data then
-		return { coins = 0, rolls = 0, seconds = 0 }
+		return { coins = 0, rolls = 0, seconds = 0, drops = {} }
 	end
 	local now = os.time()
 	local st = _stat and _stat.Get(player)
 	local offlineRate = (st and st.offlineRate) or 0
 	local offlineMult = (st and st.offlineMult) or 0 -- Offline Rolls: mnoznik zarobkow offline (monety I rolki)
-	local capHours = GameConfig.Economy.offline.capHours
-	local raw, seconds, firstLogin = computeOfflineRaw(data.offlineTs or 0, now, offlineRate, capHours)
+	local ocfg = GameConfig.Economy.offline
+	local raw, seconds, firstLogin = computeOfflineRaw(data.offlineTs or 0, now, offlineRate, ocfg.capHours)
 	raw = raw * (1 + offlineMult)
 	data.offlineTs = now -- reset baseline (offlineTs znow ustawi ProfileReleasing przy leave)
 	if firstLogin then
-		return { coins = 0, rolls = 0, seconds = seconds }
+		_pending[player] = nil
+		return { coins = 0, rolls = 0, seconds = seconds, drops = {} }
 	end
-	local gained = (raw > 0) and EconomyService.Award(player, raw, "offline") or 0 -- coinMult raz + CoinsSync
-	-- rolki offline: TYLKO gdy odblokowane (n3 Offline Progression); tempo x (1+offlineMult). RollService = writer spendableRolls.
-	local rollsRate = (GameConfig.Economy.offline.rollsPerHour or 0) * (1 + offlineMult)
-	local rawRolls = (st and st.offlineRollsOn) and math.floor((seconds / 3600) * rollsRate) or 0
-	local rollsGained = (rawRolls > 0 and _roll) and _roll.GrantRolls(player, rawRolls) or 0
-	return { coins = gained, rolls = rollsGained, seconds = seconds }
+	-- rolki offline = LICZBA spinow (tylko gdy odblokowane n3); realnie rolowane w jednostki
+	local rollsRate = (ocfg.rollsPerHour or 0) * (1 + offlineMult)
+	local rollsCount = (st and st.offlineRollsOn) and math.floor((seconds / 3600) * rollsRate) or 0
+	local batch = (rollsCount > 0 and _roll and _roll.RollOfflineBatch) and _roll.RollOfflineBatch(player, rollsCount) or { rolls = 0, items = {} }
+	-- pending (NIEWYDANE do CLAIM). coinsRaw pre-coinMult (Award przy CLAIM naklada mult).
+	_pending[player] = { coinsRaw = raw, items = batch.items, rolls = batch.rolls }
+	-- podglad: monety po coinMult (do wyswietlenia) + top-N dropow
+	local coinMult = (st and st.coinMult) or 1
+	local displayCoins = math.floor(raw * coinMult + 0.5)
+	local drops = {}
+	for i = 1, math.min(#batch.items, ocfg.dropsShown or 5) do
+		local it = batch.items[i]
+		drops[#drops + 1] = { unitId = it.unitId, qty = it.qty, oddsN = it.rarityN }
+	end
+	return { coins = displayCoins, rolls = batch.rolls, seconds = seconds, drops = drops, doubleId = ocfg.doubleProductId or 0 }
+end
+
+-- CLAIM: przyznaj oczekujace nagrody offline x mult (1 = CLAIM, 2 = CLAIM X2). Idempotentne (pending czyszczone).
+function EconomyService.ClaimOffline(player, mult)
+	local p = _pending[player]
+	if not p then return { ok = false } end
+	_pending[player] = nil
+	mult = math.max(1, math.floor(mult or 1))
+	local coins = (p.coinsRaw > 0) and EconomyService.Award(player, p.coinsRaw * mult, "offline") or 0
+	local items = (_roll and _roll.GrantOfflineItems) and _roll.GrantOfflineItems(player, p.items, mult) or 0
+	return { ok = true, coins = coins, items = items, mult = mult }
 end
 
 function EconomyService.Init()
@@ -160,6 +184,24 @@ function EconomyService.Start()
 				_offlineRemote:FireClient(player, result)
 			end
 		end
+	end)
+
+	-- CLAIM x1 (przycisk Collect)
+	Net.get("ClaimOffline").OnServerInvoke = function(player)
+		return EconomyService.ClaimOffline(player, 1)
+	end
+	-- CLAIM X2 = DevProduct 49R -> receipt przyznaje x2. Rejestr tylko gdy ID ustawione (placeholder 0 = off).
+	local doubleId = GameConfig.Economy.offline.doubleProductId or 0
+	if doubleId > 0 then
+		local purchase = ServiceRegistry.get("PurchaseService")
+		if purchase and purchase.RegisterProduct then
+			purchase.RegisterProduct(doubleId, function(player)
+				EconomyService.ClaimOffline(player, 2)
+			end)
+		end
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		_pending[player] = nil
 	end)
 end
 

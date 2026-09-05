@@ -42,7 +42,8 @@ local REMOTES: { [string]: string } = {
 	GetIndexState = "RemoteFunction", -- C->S () -> {categories[], overall{count,total,percent}, luckBonus} (§3.13, ETAP2)
 	IndexUpdated = "RemoteEvent", -- S->C {unitId, variant, category, percent, luckBonus} (live wpis per-wariant)
 	ClaimIndexLuck = "RemoteFunction", -- C->S (pct) -> {ok, luckBonus?, reason?} — odbierz (claim) prog bonusu luck (ETAP 4)
-	OfflineEarnings = "RemoteEvent", -- S->C {coins, seconds}
+	OfflineEarnings = "RemoteEvent", -- S->C {coins, rolls, seconds, drops={{unitId,qty,oddsN}}, doubleId} — podglad (niewydane do CLAIM)
+	ClaimOffline = "RemoteFunction", -- C->S () -> {ok, coins?, items?, mult?} — odbierz oczekujace nagrody offline (CLAIM x1); X2 idzie przez DevProduct receipt
 	GetIntroState = "RemoteFunction", -- C->S () -> {hasSeenIntro:boolean} (Faza 1B: cutscenka intro)
 	MarkIntroSeen = "RemoteEvent", -- C->S () — gracz obejrzal/pominal intro -> ustaw hasSeenIntro=true w profilu
 	UnitHp = "RemoteEvent", -- S->C {placementId, hpPct, hp, maxHp} (pasek HP jednostki: pct + liczby cur/max)

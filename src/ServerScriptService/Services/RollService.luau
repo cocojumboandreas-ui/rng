@@ -447,6 +447,52 @@ function RollService.GrantRolls(player: Player, n: number): number
 	return n
 end
 
+-- OFFLINE: zroluj `count` spinow SERWEROWO (pure, ZERO efektow ubocznych - nic do inventory/pity/index).
+-- Kazdy spin = drabina koniczyn -> luck -> selectOne. Zwraca agregat {rolls, items={{unitId,qty,rarityN}} rarest first}.
+-- Pity liczony na lokalnej kopii (offline zachowuje sie jak seria zwyklych rolek). Special/Friends pominiete (uproszczenie).
+function RollService.RollOfflineBatch(player, count)
+	local data = _profile and _profile.GetProfile(player)
+	if not data then return { rolls = 0, items = {} } end
+	local stats = _stat.Get(player)
+	local rng = Random.new()
+	local cap = (GameConfig.Economy.offline and GameConfig.Economy.offline.maxRollsSim) or 4000
+	local n = math.clamp(math.floor(count or 0), 0, cap)
+	local agg, rar = {}, {}
+	local sinceRare = (data.pity and data.pity.sinceRare) or 0
+	local minRareN = GameConfig.Rarity.pity.guaranteeMinN
+	for _ = 1, n do
+		local depth = ladderDepth(stats, rng)
+		local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1
+		local sel = selectOne(stats, { sinceRare = sinceRare }, rng, totalMult) -- koniczyny podbijaja luck
+		agg[sel.unitId] = (agg[sel.unitId] or 0) + 1
+		rar[sel.unitId] = sel.rarityN
+		if sel.rarityN >= minRareN then sinceRare = 0 else sinceRare += 1 end
+	end
+	local items = {}
+	for id, qty in pairs(agg) do items[#items + 1] = { unitId = id, qty = qty, rarityN = rar[id] } end
+	table.sort(items, function(a, b) return a.rarityN > b.rarityN end) -- najrzadsze pierwsze (do UI top-N)
+	return { rolls = n, items = items }
+end
+
+-- OFFLINE CLAIM: dodaj wylosowane jednostki do inventory x mult (1 = CLAIM, 2 = CLAIM X2). Zwraca ilosc sztuk.
+function RollService.GrantOfflineItems(player, items, mult)
+	local data = _profile and _profile.GetProfile(player)
+	if not data or type(items) ~= "table" then return 0 end
+	mult = math.max(1, math.floor(mult or 1))
+	local total = 0
+	for _, it in ipairs(items) do
+		local qty = (it.qty or 0) * mult
+		if qty > 0 and it.unitId then
+			_inv.Add(player, it.unitId, nil, "regular", qty)
+			_index.Discover(player, it.unitId, "regular")
+			data.lifetimeRolls += qty
+			total += qty
+		end
+	end
+	if _economy then _economy.SyncRolls(player) end
+	return total
+end
+
 function RollService.Init()
 	RollService.Rolled = Signal.new() -- (player, RollResult)
 end
