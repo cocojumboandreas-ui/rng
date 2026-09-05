@@ -60,12 +60,31 @@ local function icon(unitId)
 	local vc = Instance.new("UICorner"); vc.CornerRadius = UDim.new(0, 8); vc.Parent = vpf
 	local tmpl = UnitModelFactory.get(unitId)
 	if tmpl then
-		local cam = Instance.new("Camera"); cam.FieldOfView = 38; vpf.CurrentCamera = cam; cam.Parent = vpf
-		local m = tmpl:Clone(); m.Parent = vpf
-		local cf, size = m:GetBoundingBox()
-		local maxd = math.max(size.X, size.Y, size.Z, 1)
-		local dist = maxd * 1.45
-		cam.CFrame = CFrame.lookAt(cf.Position + Vector3.new(dist * 0.5, size.Y * 0.22, dist), cf.Position)
+		-- SCALE-TO-FIT: rigi maja FX (WR_Tracer/WR_Muzzle) ~139 studow -> GetBoundingBox puchnie i kadr sie sypie.
+		-- Wytnij dalekie czesci z klona, policz CIASNY bbox jednostki, wykadruj pod FOV zeby wszystko weszlo.
+		local m = tmpl:Clone()
+		local piv = m:GetPivot().Position
+		for _, d in ipairs(m:GetDescendants()) do
+			if d:IsA("BasePart") and (d.Position - piv).Magnitude > 40 then d:Destroy() end
+		end
+		local minv, maxv
+		for _, d in ipairs(m:GetDescendants()) do
+			if d:IsA("BasePart") then
+				local lo, hi = d.Position - d.Size * 0.5, d.Position + d.Size * 0.5
+				if not minv then minv, maxv = lo, hi else
+					minv = Vector3.new(math.min(minv.X, lo.X), math.min(minv.Y, lo.Y), math.min(minv.Z, lo.Z))
+					maxv = Vector3.new(math.max(maxv.X, hi.X), math.max(maxv.Y, hi.Y), math.max(maxv.Z, hi.Z))
+				end
+			end
+		end
+		local center, sz
+		if minv then center, sz = (minv + maxv) * 0.5, (maxv - minv) else local cf, s = m:GetBoundingBox(); center, sz = cf.Position, s end
+		local fov = 40
+		local cam = Instance.new("Camera"); cam.FieldOfView = fov; vpf.CurrentCamera = cam; cam.Parent = vpf
+		m.Parent = vpf
+		local maxDim = math.max(sz.X, sz.Y, sz.Z, 1)
+		local dist = (maxDim * 0.5) / math.tan(math.rad(fov * 0.5)) * 1.35
+		cam.CFrame = CFrame.lookAt(center + Vector3.new(0.45, 0.22, 1).Unit * dist, center)
 	end
 	_iconCache[unitId] = vpf
 	return vpf:Clone()
