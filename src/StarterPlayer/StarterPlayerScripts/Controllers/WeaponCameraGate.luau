@@ -219,7 +219,7 @@ local function buildGunsUI(pg)
 	emoji.Position = UDim2.fromScale(0.5, 0.4); emoji.AnchorPoint = Vector2.new(0.5, 0.5)
 	emoji.Font = Enum.Font.GothamBold; emoji.TextScaled = true; emoji.Text = "\240\159\148\171"; emoji.ZIndex = 61 -- gun
 	emoji.Parent = btn
-	local es = Instance.new("UIStroke"); es.Color = Color3.fromRGB(0, 0, 0); es.Thickness = 2.5; es.Parent = emoji -- czarny kontur ikony
+	local es = Instance.new("UIStroke"); es.Color = Color3.fromRGB(0, 0, 0); es.Thickness = 4; es.LineJoinMode = Enum.LineJoinMode.Round; es.Parent = emoji -- gruby czarny obrys ikony jak Roll/Skills
 	local lbl = Instance.new("TextLabel")
 	lbl.Name = "Label"; lbl.BackgroundTransparency = 1; lbl.Size = UDim2.fromScale(1, 0.3)
 	lbl.Position = UDim2.fromScale(0.5, 0.9); lbl.AnchorPoint = Vector2.new(0.5, 0.5)
