@@ -1,11 +1,9 @@
 --!nonstrict
 -- StarterPlayerScripts/Controllers/UnitTooltipController.luau  (KLIENT)
 -- KARTA INFO (ikona 3D + DMG/s + HP) + biala OTOCZKA gdy najedziesz na WLASNA jednostke na planszy.
--- TYLKO w TRYBIE WOLNYM (nie w edycji budowania — tam BuildController ma wlasny hover + statystyki na karcie
--- panelu — ani podczas fali). Pozycja karty: statyczny BLOK -> na SRODKU jednostki; reszta (bron/soldier/
--- pulapka) -> NAD glowa (nie skacze, nie zaslania). Otoczka = Highlight (bialy kontur, jak Start Wave).
--- Wartosci na razie z configu (HP = hp, DMG/s = combat.dmg * combat.fireRate) — placeholder; docelowy system
--- wartosci ogarniemy przy indexie (UI ziomka).
+-- TYLKO w TRYBIE WOLNYM (nie w edycji budowania - tam BuildController ma wlasny hover). Pozycja karty:
+-- statyczny BLOK -> na SRODKU jednostki; reszta (bron/soldier/pulapka) -> NAD glowa. Otoczka = Highlight.
+-- Wartosci z configu (HP = hp, DMG/s = combat.dmg * combat.fireRate). Karta wyskalowana czytelnie (#tooltip-fix).
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -44,18 +42,24 @@ local function statsOf(unitId)
 	return { name = u.displayName or unitId, dps = dps, hp = u.hp or 0 }
 end
 
--- ikona 3D jednostki (ViewportFrame), cache per unitId
+-- ikona 3D jednostki (ViewportFrame), cache per unitId. OSWIETLENIE jawne (ViewportFrame nie bierze swiatla
+-- swiata) + kadr 3/4 z przodu, zeby postac byla widoczna i wypelniala pudelko.
 local function icon(unitId)
 	if _iconCache[unitId] then return _iconCache[unitId]:Clone() end
 	local vpf = Instance.new("ViewportFrame")
 	vpf.BackgroundTransparency = 1
+	vpf.Ambient = Color3.fromRGB(210, 210, 214)
+	vpf.LightColor = Color3.fromRGB(255, 255, 255)
+	vpf.LightDirection = Vector3.new(-0.4, -1, -0.5)
 	local tmpl = UnitModelFactory.get(unitId)
 	if tmpl then
-		local cam = Instance.new("Camera"); vpf.CurrentCamera = cam; cam.Parent = vpf
+		local cam = Instance.new("Camera"); cam.FieldOfView = 38; vpf.CurrentCamera = cam; cam.Parent = vpf
 		local m = tmpl:Clone(); m.Parent = vpf
 		local cf, size = m:GetBoundingBox()
-		local dist = math.max(size.X, size.Y, size.Z) * 1.7
-		cam.CFrame = CFrame.new(cf.Position + Vector3.new(dist * 0.6, size.Y * 0.35, dist), cf.Position)
+		local maxd = math.max(size.X, size.Y, size.Z, 1)
+		local dist = maxd * 1.9
+		-- kadr 3/4-przod: kamera lekko z boku i z gory, patrzy w srodek modelu
+		cam.CFrame = CFrame.lookAt(cf.Position + Vector3.new(dist * 0.5, size.Y * 0.28, dist), cf.Position)
 	end
 	_iconCache[unitId] = vpf
 	return vpf:Clone()
@@ -67,56 +71,56 @@ local function build()
 	gui.DisplayOrder = 250000; gui.Enabled = false; gui.Parent = LP:WaitForChild("PlayerGui")
 
 	local frame = Instance.new("Frame")
-	frame.Name = "Card"; frame.Size = UDim2.fromOffset(184, 216); frame.AnchorPoint = Vector2.new(0.5, 1)
-	frame.BackgroundColor3 = Color3.fromRGB(58, 62, 74); frame.BackgroundTransparency = 0.05
+	frame.Name = "Card"; frame.Size = UDim2.fromOffset(212, 252); frame.AnchorPoint = Vector2.new(0.5, 1)
+	frame.BackgroundColor3 = Color3.fromRGB(48, 52, 64); frame.BackgroundTransparency = 0.03
 	frame.BorderSizePixel = 0; frame.Parent = gui
-	-- mniejsza karta (nie zaslania calej jednostki) — UIScale skaluje ramke + calą zawartosc
-	local uscale = Instance.new("UIScale"); uscale.Scale = 0.55; uscale.Parent = frame
-	local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 10); fc.Parent = frame
-	local fs = Instance.new("UIStroke"); fs.Color = Color3.fromRGB(20, 22, 28); fs.Thickness = 2; fs.Parent = frame
+	-- UIScale = pelny rozmiar (dawne 0.55 robilo karte NIECZYTELNA); zostaje pod ew. tuning per-rozdzielczosc.
+	local uscale = Instance.new("UIScale"); uscale.Scale = 1.0; uscale.Parent = frame
+	local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0, 12); fc.Parent = frame
+	local fs = Instance.new("UIStroke"); fs.Color = Color3.fromRGB(16, 18, 24); fs.Thickness = 2.5; fs.Parent = frame
 	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0, 8); pad.PaddingBottom = UDim.new(0, 8)
-	pad.PaddingLeft = UDim.new(0, 8); pad.PaddingRight = UDim.new(0, 8); pad.Parent = frame
+	pad.PaddingTop = UDim.new(0, 10); pad.PaddingBottom = UDim.new(0, 10)
+	pad.PaddingLeft = UDim.new(0, 10); pad.PaddingRight = UDim.new(0, 10); pad.Parent = frame
 	local list = Instance.new("UIListLayout")
 	list.FillDirection = Enum.FillDirection.Vertical; list.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	list.Padding = UDim.new(0, 6); list.SortOrder = Enum.SortOrder.LayoutOrder; list.Parent = frame
+	list.Padding = UDim.new(0, 8); list.SortOrder = Enum.SortOrder.LayoutOrder; list.Parent = frame
 
 	local title = Instance.new("TextLabel")
-	title.Name = "Title"; title.LayoutOrder = 1; title.Size = UDim2.new(1, 0, 0, 20)
-	title.BackgroundTransparency = 1; title.Font = Enum.Font.GothamBold; title.TextSize = 15
+	title.Name = "Title"; title.LayoutOrder = 1; title.Size = UDim2.new(1, 0, 0, 26)
+	title.BackgroundTransparency = 1; title.Font = Enum.Font.GothamBold; title.TextSize = 21
 	title.TextColor3 = Color3.new(1, 1, 1); title.Text = ""; title.TextScaled = false
 	title.TextTruncate = Enum.TextTruncate.AtEnd; title.Parent = frame
-	local ts = Instance.new("UIStroke"); ts.Color = Color3.fromRGB(20, 22, 28); ts.Thickness = 2; ts.Parent = title
+	local ts = Instance.new("UIStroke"); ts.Color = Color3.fromRGB(16, 18, 24); ts.Thickness = 2.5; ts.Parent = title
 
-	-- pudelko z ikona
+	-- pudelko z ikona 3D
 	local box = Instance.new("Frame")
-	box.Name = "IconBox"; box.LayoutOrder = 2; box.Size = UDim2.fromOffset(120, 120)
-	box.BackgroundColor3 = Color3.fromRGB(44, 47, 56); box.BorderSizePixel = 0; box.Parent = frame
-	local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 8); bc.Parent = box
-	local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(200, 60, 60); bs.Thickness = 2; bs.Parent = box
+	box.Name = "IconBox"; box.LayoutOrder = 2; box.Size = UDim2.fromOffset(150, 150)
+	box.BackgroundColor3 = Color3.fromRGB(38, 41, 51); box.BorderSizePixel = 0; box.Parent = frame
+	local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0, 10); bc.Parent = box
+	local bs = Instance.new("UIStroke"); bs.Color = Color3.fromRGB(210, 66, 66); bs.Thickness = 2.5; bs.Parent = box
 
 	-- wiersz statystyk
 	local stats = Instance.new("Frame")
-	stats.Name = "Stats"; stats.LayoutOrder = 3; stats.Size = UDim2.new(1, 0, 0, 34)
+	stats.Name = "Stats"; stats.LayoutOrder = 3; stats.Size = UDim2.new(1, 0, 0, 40)
 	stats.BackgroundTransparency = 1; stats.Parent = frame
 	local sl = Instance.new("UIListLayout")
 	sl.FillDirection = Enum.FillDirection.Horizontal; sl.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	sl.VerticalAlignment = Enum.VerticalAlignment.Center; sl.Padding = UDim.new(0, 6); sl.Parent = stats
+	sl.VerticalAlignment = Enum.VerticalAlignment.Center; sl.Padding = UDim.new(0, 8); sl.Parent = stats
 
 	local function pill(order, prefixIcon, color)
 		local p = Instance.new("Frame")
-		p.LayoutOrder = order; p.Size = UDim2.fromOffset(82, 30); p.BackgroundColor3 = Color3.fromRGB(44, 47, 56)
+		p.LayoutOrder = order; p.Size = UDim2.fromOffset(94, 38); p.BackgroundColor3 = Color3.fromRGB(38, 41, 51)
 		p.BorderSizePixel = 0; p.Parent = stats
-		local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 7); pc.Parent = p
-		local ps = Instance.new("UIStroke"); ps.Color = Color3.fromRGB(20, 22, 28); ps.Thickness = 1.5; ps.Parent = p
+		local pc = Instance.new("UICorner"); pc.CornerRadius = UDim.new(0, 9); pc.Parent = p
+		local ps = Instance.new("UIStroke"); ps.Color = Color3.fromRGB(16, 18, 24); ps.Thickness = 1.5; ps.Parent = p
 		local lbl = Instance.new("TextLabel")
 		lbl.Size = UDim2.fromScale(1, 1); lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.GothamBold
-		lbl.TextSize = 13; lbl.TextColor3 = color; lbl.Text = prefixIcon .. " 0"; lbl.Parent = p
-		local ls = Instance.new("UIStroke"); ls.Color = Color3.fromRGB(20, 22, 28); ls.Thickness = 1.5; ls.Parent = lbl
+		lbl.TextSize = 18; lbl.TextColor3 = color; lbl.Text = prefixIcon .. " 0"; lbl.Parent = p
+		local ls = Instance.new("UIStroke"); ls.Color = Color3.fromRGB(16, 18, 24); ls.Thickness = 1.6; ls.Parent = lbl
 		return lbl
 	end
-	_dmgLbl = pill(1, "⚔️", Color3.fromRGB(255, 255, 255))
-	_hpLbl = pill(2, "❤️", Color3.fromRGB(255, 120, 120))
+	_dmgLbl = pill(1, "DMG", Color3.fromRGB(255, 235, 140))
+	_hpLbl = pill(2, "HP", Color3.fromRGB(150, 255, 150))
 
 	_gui, _frame, _title, _iconHolder = gui, frame, title, box
 end
@@ -133,14 +137,14 @@ local function showAt(unitId, sx, sy, anchor)
 		end
 		local ic = icon(unitId)
 		ic.Size = UDim2.fromScale(1, 1); ic.Position = UDim2.fromScale(0, 0); ic.Parent = _iconHolder
-		_dmgLbl.Text = "⚔️ " .. fmt(st.dps) .. "/s"
-		_hpLbl.Text = "❤️ " .. fmt(st.hp)
+		_dmgLbl.Text = "DMG " .. fmt(st.dps) .. "/s"
+		_hpLbl.Text = "HP " .. fmt(st.hp)
 	end
 	anchor = anchor or Vector2.new(0.5, 1)
 	_frame.AnchorPoint = anchor
 	-- realny rozmiar (juz po UIScale); fallback gdy pierwsza klatka nie przeliczyla
-	local w = _frame.AbsoluteSize.X; if w < 1 then w = 184 * 0.55 end
-	local h = _frame.AbsoluteSize.Y; if h < 1 then h = 216 * 0.55 end
+	local w = _frame.AbsoluteSize.X; if w < 1 then w = 212 end
+	local h = _frame.AbsoluteSize.Y; if h < 1 then h = 252 end
 	local vp = (Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize) or Vector2.new(1280, 720)
 	local left = math.clamp(sx - anchor.X * w, 4, math.max(4, vp.X - w - 4))
 	local top = math.clamp(sy - anchor.Y * h, 4, math.max(4, vp.Y - h - 4))
@@ -153,7 +157,7 @@ function UnitTooltip.hide()
 	_curUnit = nil
 end
 
--- biala otoczka (Highlight) na jednostce pod kursorem — jak podswietlenie Start Wave, lekkie przyciemnienie fill
+-- biala otoczka (Highlight) na jednostce pod kursorem - jak podswietlenie Start Wave, lekkie przyciemnienie fill
 local function clearOutline()
 	if _hovered and _hovered.Parent then
 		local h = _hovered:FindFirstChild("WR_TipHL")
@@ -234,7 +238,7 @@ function UnitTooltip.start()
 		end
 		return BuildController and BuildController.IsBuildMode and BuildController.IsBuildMode() or false
 	end
-	-- panel na SRODKU ekranu (Sklep/Indeks/Koniec rundy/Offline/Ustawienia) otwarty -> input "pochloniety" przez UI:
+	-- panel na SRODKU ekranu (Sklep/Indeks/Koniec rundy/Offline/Ustawienia) otwarty -> input pochloniety przez UI:
 	-- NIE pokazujemy karty/otoczki swiata (raycast omija GUI, wiec sprawdzamy jawnie). Dziala dla myszy i dotyku.
 	local PANELS = { "Store", "Index", "RoundOver", "OfflineEarn", "Settings" }
 	local function panelOpen()
@@ -250,7 +254,7 @@ function UnitTooltip.start()
 	end
 
 	RunService.RenderStepped:Connect(function()
-		if _waveActive or inBuildMode() or treeOpen() or panelOpen() then -- karta TYLKO w trybie wolnym (nie gdy panel UI otwarty)
+		if _waveActive or inBuildMode() or treeOpen() or panelOpen() then -- karta TYLKO w trybie wolnym
 			hideAll()
 			return
 		end
@@ -258,8 +262,8 @@ function UnitTooltip.start()
 		local cam = Workspace.CurrentCamera
 		if m and cam then
 			setOutline(m)
-			-- Tylko statyczny BLOK -> karta na SRODKU (aa1). Reszta (bron/soldier/pulapka) -> karta NAD glowa:
-			-- soldiery to animowane rigi — wysrodkowana karta skakalaby (bbox pelza z animacja), wiec dajemy NAD.
+			-- Tylko statyczny BLOK -> karta na SRODKU. Reszta (bron/soldier/pulapka) -> karta NAD glowa:
+			-- soldiery to rigi - wysrodkowana karta skakalaby (bbox pelza), wiec dajemy NAD.
 			local cf, size = m:GetBoundingBox()
 			local inset = GuiService:GetGuiInset()
 			local uid = m:GetAttribute("UnitId")
@@ -271,8 +275,7 @@ function UnitTooltip.start()
 				showAt(uid, spC.X + inset.X, spC.Y + inset.Y, Vector2.new(0.5, 0.5))
 			else
 				-- karta NAD jednostka. UWAGA: rigi maja efekty (WR_Tracer/WR_Muzzle) zaparkowane ~139 studow
-				-- dalej -> GetBoundingBox (srodek/wierzch) ODLATUJE w eter. Bierzemy PIVOT (X/Z = srodek kratki)
-				-- + wierzch tylko CZESCI CIALA (party blisko pivota), zeby karta stala nad glowa.
+				-- dalej -> GetBoundingBox ODLATUJE. Bierzemy PIVOT (X/Z = srodek kratki) + wierzch CZESCI CIALA.
 				local piv = m:GetPivot().Position
 				local topY = piv.Y
 				for _, d in ipairs(m:GetDescendants()) do
