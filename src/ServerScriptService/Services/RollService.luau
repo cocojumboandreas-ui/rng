@@ -241,8 +241,9 @@ local function syncGold(player)
 	Net.get("GoldRollSync"):FireClient(player, goldRollState(player))
 end
 
--- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item, a ILOCZYN zlapanych koniczyn
--- (x2*x4*x8...) = ILE SZTUK tego itemu trafia do inventory. Koniczyny to kolumny Bonus w reelu.
+-- ROLKA + DRABINA KONICZYN (§3.4): 1 klik -> 1 wylosowany item (ZAWSZE 1 sztuka). Zlapane koniczyny
+-- (x2/x4/x8...) podbijaja LUCK tej rolki -> im wyzsza koniczyna, tym lepszy tier jednostki. Koniczyny =
+-- kolumny Bonus w reelu (wizualny climb lucka).
 -- Friends' Luck (n74/99-103): mnoznik lucka = 1 + pct(najwyzszy posiadany tier) * (ilu ZNAJOMYCH Roblox jest na serwerze).
 -- IsFriendsWith yielduje (web) -> memo per para (relacja nie zmienia sie w sesji).
 local _friendPair: { [string]: boolean } = {}
@@ -290,21 +291,23 @@ local function rollChain(player: Player, isAuto, cycleStart, collect)
 	local stats = _stat.Get(player)
 	local rng = Random.new() -- serwerowy; NIGDY math.random
 
-	-- 1) DRABINA: ile koniczyn zlapano; ILOSC SZTUK = MAX koniczyna (najwyzsza), NIE iloczyn.
+	-- 1) DRABINA KONICZYN: ile koniczyn zlapano -> mnoznik x2/x4/x8... user: koniczyny podbijaja LUCK
+	--    (lepsze tiery jednostek), NIE ilosc sztuk. Sztuk ZAWSZE 1; im wyzsza koniczyna, tym lepszy tier.
 	local depth = ladderDepth(stats, rng)
 	local clovers = {}
 	for i = 1, depth do
 		clovers[i] = { mult = 2 ^ i } -- x2, x4, x8, x16, x32, x64...
 	end
-	local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1 -- np. drabina do x32 -> 32 sztuki
+	local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1 -- najwyzsza koniczyna = MNOZNIK LUCKA (tunowalne)
 
-	-- 2) JEDEN wylosowany item (+ Gold/Diamond/Rainbow: osobne liczniki -> chwilowy boost luck co N rolek)
+	-- 2) JEDEN wylosowany item. LUCK = base * koniczyna(totalMult) * special(gold/diamond/rainbow) * friends
+	--    -> wyzsza koniczyna = lepszy tier. (Gold/Diamond/Rainbow: osobne liczniki co N rolek.)
 	local luckMult, special = specialRollBoost(player, data)
-	luckMult = luckMult * friendsLuckMult(player) -- Friends' Luck: +pct za kazdego znajomego na serwerze
+	luckMult = luckMult * friendsLuckMult(player) * totalMult -- koniczyny podbijaja LUCK (nie ilosc)
 	local sel = selectOne(stats, data.pity, rng, luckMult)
 
-	-- 3) KSIEGOWANIE (§3.4): totalMult SZTUK itemu -> Inventory; liczniki/pity/index raz
-	_inv.Add(player, sel.unitId, nil, sel.variant, totalMult)
+	-- 3) KSIEGOWANIE: ZAWSZE 1 sztuka itemu -> Inventory; liczniki/pity/index raz
+	_inv.Add(player, sel.unitId, nil, sel.variant, 1)
 	data.lifetimeRolls += 1
 	if not isAuto then
 		data.spendableRolls += 1 -- reczna rolka NALICZA walute; auto-rolka ja ZUZYWA (odjete w petli auto)
@@ -320,12 +323,12 @@ local function rollChain(player: Player, isAuto, cycleStart, collect)
 	end
 	syncGold(player) -- bug 11: po tej rolce licznik gold sie zmienil -> odswiez odliczanie do zlotej
 
-	RollService.Rolled:Fire(player, { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mutation = (depth > 0) and { mult = 2 ^ depth } or nil, quantity = totalMult })
+	RollService.Rolled:Fire(player, { unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant, mutation = (depth > 0) and { mult = 2 ^ depth } or nil, quantity = 1, luckMult = totalMult })
 	local payload = {
 		unitId = sel.unitId, rarityN = sel.rarityN, variant = sel.variant,
-		chain = clovers, -- kolumny koniczyn (Bonus) w reelu
-		cloverTop = (depth > 0) and (2 ^ depth) or nil,
-		quantity = totalMult, -- ile sztuk trafilo do inventory
+		chain = clovers, -- kolumny koniczyn (Bonus) w reelu = climb LUCKA (wizual x2/x4/x8...)
+		cloverTop = (depth > 0) and (2 ^ depth) or nil, -- najwyzsza koniczyna = mnoznik lucka tej rolki
+		quantity = 1, -- ZAWSZE 1 sztuka (koniczyny podbijaja luck, nie ilosc)
 		special = special, -- "gold"/"diamond"/"rainbow" gdy trafiona specjalna rolka (klient moze podkreslic)
 		auto = isAuto or nil, -- true = auto-rolka (klient: KOMPAKTOWY reel na gorze, nie fullscreen)
 		cycleStart = cycleStart or nil, -- (legacy) nieuzywane w pack-native auto
@@ -355,9 +358,10 @@ function RollService.AutoRollColumns(player)
 	local rng = Random.new()
 	local depth = ladderDepth(stats, rng)
 	local totalMult = (depth > 0) and math.floor(2 ^ depth) or 1
-	local luckMult = specialRollBoost(player, data) * friendsLuckMult(player) -- Friends' Luck tez w auto-rollu
+	-- user: koniczyny podbijaja LUCK (lepszy tier), nie ilosc. Sztuk zawsze 1.
+	local luckMult = specialRollBoost(player, data) * friendsLuckMult(player) * totalMult
 	local sel = selectOne(stats, data.pity, rng, luckMult)
-	_inv.Add(player, sel.unitId, nil, sel.variant, totalMult)
+	_inv.Add(player, sel.unitId, nil, sel.variant, 1)
 	data.lifetimeRolls += 1
 	if sel.rarityN >= GameConfig.Rarity.pity.guaranteeMinN then
 		data.pity.sinceRare = 0
