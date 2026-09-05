@@ -112,6 +112,15 @@ local function build()
 		card.Visible = true
 		card.Parent = gui
 		wireTemplateCard(card)
+		-- user: tlo KARTY jasne jak w oryginale (klon mial ciemne 27,27,27 -> wygladalo ciemno nad jednostka).
+		-- Jasny kolor + lekka przezroczystosc (airy, pokazuje swiat jak billboard); bialy tekst czyta sie
+		-- dzieki ciemnym obrysom (tak jak w oryginale). NIE ruszamy ikony (viewport ma wlasne jasne tlo).
+		card.BackgroundColor3 = Color3.fromRGB(206, 214, 224)
+		card.BackgroundTransparency = 0.3
+		local infoF = card:FindFirstChild("Info", true)
+		if infoF and infoF:IsA("GuiObject") then
+			infoF.BackgroundColor3 = Color3.fromRGB(206, 214, 224); infoF.BackgroundTransparency = 0.3
+		end
 		_gui, _frame = gui, card
 		return
 	end
