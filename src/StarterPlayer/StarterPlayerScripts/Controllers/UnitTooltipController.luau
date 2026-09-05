@@ -51,8 +51,9 @@ end
 local function icon(unitId)
 	if _iconCache[unitId] then return _iconCache[unitId]:Clone() end
 	local vpf = Instance.new("ViewportFrame")
-	vpf.BackgroundColor3 = Color3.fromRGB(205, 210, 220)
-	vpf.BackgroundTransparency = 0
+	-- user: kafelek jednostki ma byc PRZEZROCZYSTY (przeswituje przyciemniane tlo oryginalu), nie opaque szary.
+	-- Model 3D renderuje sie niezaleznie od tla; sam viewport nie ma juz wlasnej plyty.
+	vpf.BackgroundTransparency = 1
 	vpf.Ambient = Color3.fromRGB(255, 255, 255)
 	vpf.LightColor = Color3.fromRGB(255, 255, 255)
 	vpf.LightDirection = Vector3.new(-0.3, -1, -0.4)
