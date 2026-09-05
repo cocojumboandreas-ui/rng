@@ -18,6 +18,7 @@ local Signal = require(Framework:WaitForChild("Signal"))
 local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
 local Net = require(Framework:WaitForChild("Net"))
 local GridMath = require(Framework:WaitForChild("GridMath"))
+local RigAnimSetup = require(Framework:WaitForChild("RigAnimSetup")) -- R6: kotwicz tylko HRP + spaw dodatkow (animacje)
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Enums = require(Shared:WaitForChild("Enums"))
 local UnitModelFactory = require(Shared:WaitForChild("UnitModelFactory"))
@@ -329,15 +330,23 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 	-- Reszta (pojazdy, wieze, bloki): zakotwicz wszystko jak dotychczas.
 	-- POJAZD z kierowca (ucfg.driver): NIE odpalaj prepare — inaczej wykryje Humanoida kierowcy,
 	-- przyspawa nadwozie do kierowcy i odkotwiczy je -> jeep rozlatuje sie w fizyce. Wtedy kotwiczymy wszystko.
-	-- user: POWROT DO USTAWIEN FABRYCZNYCH sprzed animacji — zolnierze maja stac w SUROWEJ pozie szablonu
-	-- (T-poza, bron obok), ZERO animacji. NIE uruchamiamy RigAnimSetup (przyspawialby bron do reki + odkotwiczal
-	-- rig, przez co fizyka sciagala ramiona z T-pozy w holding). Wszystkie czesci ZAKOTWICZONE -> rig zamrozony
-	-- w pozie szablonu, bron w miejscu z szablonu. Nowe animacje dojda pozniej z nowymi ID.
-	for _, d in ipairs(model:GetDescendants()) do
-		if d:IsA("BasePart") then
-			d.Anchored = true
-			d.CanCollide = true
-			d.CanQuery = true
+	-- R6 humanoid (zolnierz, NIE pojazd z kierowca) -> RigAnimSetup.prepare: kotwicz TYLKO HRP + spaw dodatkow/broni
+	-- do rdzenia (poprawne rigi z "Units Comission" -> anim nie rozwala pozy). Klient (UnitCombatAnimator) gra
+	-- Idle w petli + Shot na ogniu. Reszta (pojazdy/wieze/bloki + pojazd-z-kierowca) -> zakotwicz WSZYSTKO.
+	local humR = model:FindFirstChildWhichIsA("Humanoid", true)
+	local isR6 = humR ~= nil and humR.RigType == Enum.HumanoidRigType.R6 and not (ucfg and ucfg.driver)
+	if isR6 then
+		RigAnimSetup.prepare(model) -- kotwicz tylko HRP, odkotwicz reszte (welded do HRP -> stoi), Animator
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then d.CanCollide = true; d.CanQuery = true end -- jednostka nieprzechodna + trafialna
+		end
+	else
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+				d.CanCollide = true
+				d.CanQuery = true
+			end
 		end
 	end
 
