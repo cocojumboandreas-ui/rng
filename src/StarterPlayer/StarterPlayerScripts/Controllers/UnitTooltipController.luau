@@ -100,12 +100,17 @@ local function sourceBillboard()
 	if ui and ui:IsA("BillboardGui") then return ui end
 	local rep = ReplicatedStorage:FindFirstChild("WR_UnitInfoBB")
 	if rep and rep:IsA("BillboardGui") then return rep end
+	-- Capitan moze byc zagniezdzony/streamowany -> szukamy UnitInfo gdziekolwiek w Workspace (rzadka sciezka)
+	for _, d in ipairs(Workspace:GetDescendants()) do
+		if d.Name == "UnitInfo" and d:IsA("BillboardGui") then return d end
+	end
 	return nil
 end
 
 local function build()
+	if _bb then return true end -- juz zbudowane
 	local src = sourceBillboard()
-	if not src then return false end -- brak zrodla -> tooltip wylaczony (zamiast kodowej podrobki)
+	if not src then return false end -- brak zrodla TERAZ -> sprobujemy pozniej (leniwie w petli); hover i tak dziala
 	local bb = src:Clone()
 	bb.Name = "WR_UnitTip"
 	bb.ResetOnSpawn = false
@@ -216,7 +221,7 @@ local function unitUnderCursor()
 end
 
 function UnitTooltip.start()
-	if not build() then return end -- brak zrodlowej karty w placu -> nie odpalamy hovera
+	build() -- best-effort; jak zrodla karty jeszcze nie ma, obrys i tak dziala, karta dojdzie leniwie w petli
 
 	Net.get("WaveProgress").OnClientEvent:Connect(function() _waveActive = true end)
 	Net.get("WaveEnded").OnClientEvent:Connect(function() _waveActive = false end)
@@ -257,9 +262,9 @@ function UnitTooltip.start()
 		end
 		local m = unitUnderCursor()
 		if m then
-			setOutline(m)
-			local uid = m:GetAttribute("UnitId")
-			showOn(m, uid)
+			setOutline(m) -- obrys ZAWSZE (niezalezny od karty)
+			if not _bb then build() end -- leniwa proba zbudowania karty gdy zrodlo juz jest
+			showOn(m, m:GetAttribute("UnitId")) -- showOn samo sprawdza _bb/uid; brak karty != brak obrysu
 		else
 			hideAll()
 		end
