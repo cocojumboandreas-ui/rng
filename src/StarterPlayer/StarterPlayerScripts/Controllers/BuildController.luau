@@ -1082,10 +1082,9 @@ function BuildController.start()
 				deleteAt()
 			elseif _sel then
 				if _cell then place() end -- #9: place() sam waliduje + toast gdy budzet pelny
-			else
-				local m = unitUnderCursor() -- nic nie wybrane -> podnies jednostke do przeniesienia
-				if m then pickup(m) end
 			end
+			-- user: LMB na postawiona jednostke NIE podnosi/usuwa jej (dawny pickup-do-przeniesienia wygladal
+			-- jak usuniecie: oryginal znikal). USUWANIE jednostek TYLKO w trybie Delete (przycisk Delete).
 		elseif input.KeyCode == Enum.KeyCode.R then
 			if _sel then
 				_rot = (_rot + 90) % 360
