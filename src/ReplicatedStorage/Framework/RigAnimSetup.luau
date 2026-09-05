@@ -20,10 +20,12 @@ function RigAnimSetup.prepare(model)
 	local hrp = rig:FindFirstChild("HumanoidRootPart")
 	if not hrp then return nil end
 
-	-- czesci rdzenia rigu (cel spawow dla dodatkow)
+	-- czesci rdzenia rigu (cel spawow dla dodatkow). WAZNE: HRP jest KOTWICA (statyczna) -> NIE weldujemy do niej
+	-- dodatkow (mundur/bron), bo nie szlyby za animacja torsu (Vest welded do HRP wygladalby "usuniety" gdy Motor6D
+	-- animuje Torso -> goly tors wychodzi do przodu). Cel weldu = ANIMOWANE czesci ciala (Torso/Head/rece/nogi).
 	local coreParts = {}
 	for _, d in ipairs(rig:GetChildren()) do
-		if d:IsA("BasePart") and CORE[d.Name] then
+		if d:IsA("BasePart") and CORE[d.Name] and d.Name ~= "HumanoidRootPart" then
 			coreParts[#coreParts + 1] = d
 		end
 	end
