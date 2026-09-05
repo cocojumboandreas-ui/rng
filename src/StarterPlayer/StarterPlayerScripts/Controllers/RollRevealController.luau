@@ -71,8 +71,7 @@ local _playing = false
 -- przed startem reveala), a koniec reveala (callback playRoll) czysci flage. Generacja unieważnia stary bezpiecznik.
 local _rollBusy = false
 local _rollGen = 0
-local _pendingRolls = 0 -- bug 10: kliki Roll w trakcie reveala kolejkuja sie tu; odpalaja po zakonczeniu (do limitu)
-local ROLL_QUEUE_CAP = 5 -- ile rolek mozna zakolejkowac w trakcie animacji (anty-spam i tak serwerowy: cooldown rollSpeed)
+local _rollClient = nil -- ref do RollClient (pack reela) ustawiany w start(); potrzebny w requestRoll do pokazania reela
 
 local fireRoll -- forward
 function fireRoll()
@@ -80,19 +79,18 @@ function fireRoll()
 	_rollGen += 1
 	local myGen = _rollGen
 	Net.get("RollRequest"):FireServer()
-	task.delay(12, function() -- bezpiecznik gdy serwer nie odpowie: zwolnij bramke i odpal ewentualny zakolejkowany
+	task.delay(12, function() -- bezpiecznik gdy serwer nie odpowie: zwolnij bramke
 		if myGen == _rollGen then
 			_rollBusy = false
-			if _pendingRolls > 0 then _pendingRolls -= 1; fireRoll() end
 		end
 	end)
 end
--- bug 10: klik w trakcie reveala NIE jest ignorowany — kolejkuje kolejny roll (do limitu), ktory odpala sie
--- automatycznie po zakonczeniu biezacej animacji. Poprzednia poprawka dodala kolejke reveala, ale bramka
--- _rollBusy nadal blokowala dolozenie do niej — to byla prawdziwa przyczyna (klik gubiony w trakcie losowania).
+-- user: klik Roll w trakcie animacji NIE tworzy KOLEJKI (kolejka = gracz mysli ze cos nie dziala). Zamiast tego
+-- po prostu POKAZUJE trwajaca rolke — rozwija makiete reela (gdyby gracz ja schowal przyciskiem Hide), animacja
+-- leci dalej bez zmian. Nowy roll dopiero po zakonczeniu biezacego (bramka _rollBusy zwalniana w callbacku reveala).
 function RollRevealController.requestRoll()
 	if _rollBusy then
-		if _pendingRolls < ROLL_QUEUE_CAP then _pendingRolls += 1 end
+		if _rollClient and _rollClient.setIsCompact then _rollClient.setIsCompact(false) end -- wejdz w trwajacy reel
 		return
 	end
 	fireRoll()
@@ -766,6 +764,7 @@ function RollRevealController.start()
 	-- reveal packa "RNG Roll" sterowany NASZYM wynikiem (nasze modele w viewport + audio packa).
 	-- Stary RollReelReveal wylaczony (ich wyglad zamiast naszego).
 	local RollClient = require(game:GetService("ReplicatedStorage"):WaitForChild("Roll"):WaitForChild("RollClient"))
+	_rollClient = RollClient -- module-ref: requestRoll (klik w trakcie) pokazuje trwajacy reel bez kolejki
 	RollClient.setBaseRollTime(2.5) -- czas reveala (snappy)
 
 	-- buduje format packa (kolumny koniczyn Bonus -> finalny Item) z jednego wyniku serwera
@@ -804,17 +803,9 @@ function RollRevealController.start()
 		-- bo auto-roll (RollClient.requestRoll) nigdy nie dotyka _isCompact po tym momencie.
 		RollClient.setIsCompact(false)
 		RollClient.playRolls(rollResults, function()
-			_rollBusy = false -- reveal (wszystkie reele) zakonczony -> mozna rollowac ponownie
-			if _pendingRolls > 0 then
-				-- bug 10: byl klik w trakcie animacji -> odpal kolejny roll, makieta zostaje otwarta
-				-- (nastepny RollResult zrobi setIsCompact(false)); brak migotania zwin->rozwin.
-				_pendingRolls -= 1
-				fireRoll()
-			else
-				-- WR fix: po manualnym rollu ZWIN makiete do compact -> guziki Hide/Auto znikaja z ekranu
-				-- (bez tego _isCompact zostawal false i przyciski wisialy w zwyklej grze po skonczonym rollu).
-				RollClient.setIsCompact(true)
-			end
+			_rollBusy = false -- reveal (wszystkie reele) zakonczony -> mozna rollowac ponownie (BEZ kolejki)
+			-- po rollu ZWIN makiete do compact -> guziki Hide/Auto znikaja z ekranu (bez tego wisialy w grze).
+			RollClient.setIsCompact(true)
 		end)
 	end)
 end
