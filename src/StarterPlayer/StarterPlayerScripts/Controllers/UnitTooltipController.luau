@@ -21,6 +21,9 @@ local LP = Players.LocalPlayer
 local WHITE = Color3.fromRGB(255, 255, 255) -- kontur jak przy najechaniu na Start Wave
 
 local _gui, _frame, _title, _iconHolder, _dmgLbl, _hpLbl = nil, nil, nil, nil, nil, nil
+local _nameLabels = {} -- wszystkie labelki nazwy do ustawienia (template ma warstwowa PetName: outer+inner)
+local _dmgPrefix, _hpPrefix = "DMG", "HP" -- prefiks przed liczba; z template bierzemy emoji, z fallbacku ASCII
+local _rarityFrame = nil -- badge rzadkosci z template — chowany (placed units nie maja rarity)
 local _iconCache = {}
 local _curUnit = nil -- aktualnie pokazywany unitId (zeby nie przebudowywac co klatke)
 local _hovered = nil -- Model z aktywna otoczka WR_TipHL
@@ -65,10 +68,49 @@ local function icon(unitId)
 	return vpf:Clone()
 end
 
+-- podepnij referencje do labelek z KARTY ZIOMKA (ReplicatedStorage.WR_UnitCardTemplate = PetWindow):
+-- PetName (warstwowa outer+inner), Health/Attack TextLabel, PetIcon (tu wchodzi 3D viewport), Rarity (chowany).
+local function wireTemplateCard(card)
+	local content = card:FindFirstChild("Content", true)
+	local petName = content and content:FindFirstChild("PetName")
+	_nameLabels = {}
+	if petName then
+		if petName:IsA("TextLabel") then _nameLabels[#_nameLabels + 1] = petName end
+		local inner = petName:FindFirstChild("PetName")
+		if inner and inner:IsA("TextLabel") then _nameLabels[#_nameLabels + 1] = inner end
+	end
+	_title = _nameLabels[1]
+	local info = content and content:FindFirstChild("Info")
+	_iconHolder = info and info:FindFirstChild("PetIcon")
+	if _iconHolder and _iconHolder:IsA("ImageLabel") then _iconHolder.Image = ""; _iconHolder.ImageTransparency = 1 end -- placeholder off -> 3D viewport
+	_rarityFrame = info and info:FindFirstChild("Rarity")
+	if _rarityFrame then _rarityFrame.Visible = false end -- placed units nie maja rarity -> chowamy badge
+	local stats = content and content:FindFirstChild("Stats")
+	_hpLbl = stats and stats:FindFirstChild("Health") and stats.Health:FindFirstChild("TextLabel")
+	_dmgLbl = stats and stats:FindFirstChild("Attack") and stats.Attack:FindFirstChild("TextLabel")
+	-- prefiks (emoji z template) wyciagniety z tekstu -> zero emoji w kodzie; nadpisujemy tylko liczbe
+	_hpPrefix = (_hpLbl and _hpLbl.Text:match("^(%S+)")) or "HP"
+	_dmgPrefix = (_dmgLbl and _dmgLbl.Text:match("^(%S+)")) or "DMG"
+end
+
 local function build()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "WR_UnitTooltip"; gui.ResetOnSpawn = false; gui.IgnoreGuiInset = true
 	gui.DisplayOrder = 250000; gui.Enabled = false; gui.Parent = LP:WaitForChild("PlayerGui")
+
+	-- KARTA ZIOMKA (PetWindow) jesli jest w ReplicatedStorage -> klon; inaczej fallback (kodowa karta nizej).
+	local tmpl = ReplicatedStorage:FindFirstChild("WR_UnitCardTemplate")
+	if tmpl then
+		local card = tmpl:Clone()
+		card.Name = "Card"
+		card.Size = UDim2.fromOffset(212, 240)
+		card.AnchorPoint = Vector2.new(0.5, 1)
+		card.Visible = true
+		card.Parent = gui
+		wireTemplateCard(card)
+		_gui, _frame = gui, card
+		return
+	end
 
 	local frame = Instance.new("Frame")
 	frame.Name = "Card"; frame.Size = UDim2.fromOffset(212, 252); frame.AnchorPoint = Vector2.new(0.5, 1)
@@ -123,6 +165,7 @@ local function build()
 	_hpLbl = pill(2, "HP", Color3.fromRGB(150, 255, 150))
 
 	_gui, _frame, _title, _iconHolder = gui, frame, title, box
+	_nameLabels = { title } -- fallback: jedna labelka nazwy; prefiksy zostaja "DMG"/"HP"
 end
 
 -- pokaz karte dla unitId; (sx,sy) = punkt zaczepienia (juz z GuiInset), anchor = kotwica frame. Klamruje na ekran.
@@ -131,14 +174,16 @@ local function showAt(unitId, sx, sy, anchor)
 	if not st then UnitTooltip.hide(); return end
 	if _curUnit ~= unitId then
 		_curUnit = unitId
-		_title.Text = st.name
-		for _, ch in ipairs(_iconHolder:GetChildren()) do
-			if ch:IsA("ViewportFrame") then ch:Destroy() end
+		for _, lbl in ipairs(_nameLabels) do lbl.Text = st.name end -- template: outer+inner; fallback: title
+		if _iconHolder then
+			for _, ch in ipairs(_iconHolder:GetChildren()) do
+				if ch:IsA("ViewportFrame") then ch:Destroy() end
+			end
+			local ic = icon(unitId)
+			ic.Size = UDim2.fromScale(1, 1); ic.Position = UDim2.fromScale(0, 0); ic.Parent = _iconHolder
 		end
-		local ic = icon(unitId)
-		ic.Size = UDim2.fromScale(1, 1); ic.Position = UDim2.fromScale(0, 0); ic.Parent = _iconHolder
-		_dmgLbl.Text = "DMG " .. fmt(st.dps) .. "/s"
-		_hpLbl.Text = "HP " .. fmt(st.hp)
+		if _dmgLbl then _dmgLbl.Text = _dmgPrefix .. " " .. fmt(st.dps) .. "/s" end
+		if _hpLbl then _hpLbl.Text = _hpPrefix .. " " .. fmt(st.hp) end
 	end
 	anchor = anchor or Vector2.new(0.5, 1)
 	_frame.AnchorPoint = anchor
