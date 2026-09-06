@@ -19,6 +19,7 @@ local ServiceRegistry = require(Framework:WaitForChild("ServiceRegistry"))
 local Net = require(Framework:WaitForChild("Net"))
 local GridMath = require(Framework:WaitForChild("GridMath"))
 local RigAnimSetup = require(Framework:WaitForChild("RigAnimSetup")) -- R6: kotwicz tylko HRP + spaw dodatkow (animacje)
+local GunRig = require(Framework:WaitForChild("GunRig")) -- bron Olo (Tool) w prawej rece zolnierza (WR_GunGrip)
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Enums = require(Shared:WaitForChild("Enums"))
 local UnitModelFactory = require(Shared:WaitForChild("UnitModelFactory"))
@@ -348,6 +349,7 @@ local function spawnModel(player, unitId: string, placementId: string, cellX: nu
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("BasePart") then d.CanCollide = false; d.CanQuery = true end -- przechodna (nie spycha) + trafialna
 		end
+		GunRig.equip(model, ucfg and ucfg.model) -- bron Olo w prawej rece (standardowy grip)
 	else
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("BasePart") then

@@ -43,6 +43,7 @@ local DMG_POOL = 30 -- pula floating liczb obrazen "-N" nad wrogiem
 local COIN_CAP = 48 -- max jednoczesnych monet-FX (fontanna z killa)
 
 local RigAnimSetup = require(Framework:WaitForChild("RigAnimSetup"))
+local GunRig = require(Framework:WaitForChild("GunRig")) -- bron Olo (Tool) w prawej rece, standardowy grip (WR_GunGrip)
 -- WR BACKUP starych anim R6: idle=114633582166730 walk=123805470740320 shot=109739383922402
 local ENEMY_ANIM = { idle = "rbxassetid://114633582166730", walk = "rbxassetid://123805470740320", shot = "rbxassetid://109739383922402" }
 local ANIM_WALK_SPEED = 1.5 -- mnoznik tempa animacji chodu wroga (feet-slide fix)
@@ -286,6 +287,12 @@ local function buildEnemyModel(modelName, isBoss): Model?
 			rig.animator = animator
 			local rigHrp = humB and humB.Parent and humB.Parent:FindFirstChild("HumanoidRootPart")
 			if rigHrp then m.PrimaryPart = rigHrp end -- ruch przez HRP zagniezdzonego Dummy (Animator pozuje reszte)
+			-- BRON OLO (Tool) w prawej rece standardowym gripem; animacje per bron pozuja rece pod nia.
+			local gi = GunRig.equip(m, modelName)
+			if gi then
+				local wm = _weaponByModel[m]
+				if wm then wm.part = gi.muzzle end -- FX strzalu z lufy nowej broni
+			end
 		end
 		local torsoPart = humB and humB.Parent and humB.Parent:FindFirstChild("Torso")
 		if torsoPart and torsoPart:IsA("BasePart") then
