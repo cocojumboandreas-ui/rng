@@ -51,6 +51,7 @@ local MOVE_SMOOTH = 16 -- tlumienie ruchu HRP (lerp/klatke); wyzej = szybciej do
 -- prog predkosci (study/s) rozdzielajacy CHOD od STANIA: wrog blokowany przez jednostki stoi -> Idle, idzie -> Walk
 local MOVE_ANIM_THRESH = 0.5
 local MOVE_ANIM_HOLD = 0.25 -- histereza: trzymaj stan "idzie" tyle s po ostatnim ruchu (anti-migotanie na interpolacji)
+local AIM_HOLD = 2.5 -- ile s stojacy wrog PATRZY na cel po strzale (rece strzalu ida w przod = na cel), nim znow oceni
 
 local EnemyRenderController = {}
 
@@ -1270,7 +1271,13 @@ local function renderStep(dt)
 				local spread = EnemyFormation.spreadAt(t) -- WSPOLNY z serwerem (zgodnosc render<->blokowanie)
 				local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ
 				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * (e.lane * spread) + dir * (e.fwd * spread)
-				local pivot = CFrame.lookAlong(wpos, dir)
+				-- FACING: STOI i celuje -> patrz NA CEL (rece strzalu ida w przod = na cel); inaczej kierunek marszu.
+				local faceDir = dir
+				if not isMoving and e.aimPos and now < (e.aimUntil or 0) then
+					local ad = Vector3.new(e.aimPos.X - pos.X, 0, e.aimPos.Z - pos.Z)
+					if ad.Magnitude > 0.5 then faceDir = ad.Unit end
+				end
+				local pivot = CFrame.lookAlong(wpos, faceDir)
 				if pitch ~= 0 then pivot = pivot * CFrame.Angles(pitch, 0, 0) end -- kiwanie nosem (jazda)
 				if roll ~= 0 then pivot = pivot * CFrame.Angles(0, 0, roll) end
 				if rig and rig.real and e.model.PrimaryPart then
@@ -1350,6 +1357,8 @@ local function renderStep(dt)
 							end
 						end
 						if target then
+							e.aimPos = target -- zapamietaj cel -> stojacy wrog patrzy na niego (obrot do celu przy strzelaniu)
+							e.aimUntil = now + math.max(AIM_HOLD, e.atkInt * 2)
 							local wp = e.weapon and e.weapon.part
 							local muzzle
 							if wp and wp.Parent then
