@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
+local TweenService = game:GetService("TweenService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -50,6 +51,25 @@ local function setText(inst, txt)
 end
 
 local function hide(inst) if inst then inst.Visible = false end end
+
+-- OFFLINE COUNT-UP (jak w referencji Build a Base): licznik "+N" liczy W GORE 0 -> target przez dur sekund,
+-- a karty dropow wskakuja po kolei zsynchronizowane z tym odliczaniem (patrz handler + reveal).
+local OFFLINE_COUNT_DUR = 1.3
+local function countUp(label, target, dur)
+	if not label then return end
+	target = math.max(0, math.floor((target or 0) + 0.5))
+	dur = dur or OFFLINE_COUNT_DUR
+	if target <= 0 or dur <= 0 then setText(label, "+" .. fmtNum(target)); return end
+	task.spawn(function()
+		local t0 = os.clock()
+		while true do
+			local a = (os.clock() - t0) / dur
+			if a >= 1 then setText(label, "+" .. fmtNum(target)); break end
+			setText(label, "+" .. fmtNum(math.floor(target * a + 0.5)))
+			task.wait()
+		end
+	end)
+end
 
 -- ikona 3D jednostki w PetIcon (ViewportFrame). SCALE-TO-FIT: cala jednostka miesci sie w kafelku (nie ucieta).
 -- Gotcha: rigi maja FX (WR_Tracer/WR_Muzzle) zaparkowane ~139 studow -> GetBoundingBox puchnie i kadr sie sypie.
@@ -252,6 +272,8 @@ function OfflineController.start()
 		odds.TextColor3 = col; odds.Text = "1 in " .. fmtNum(drop.oddsN or 0); odds.ZIndex = 12
 		local os_ = Instance.new("UIStroke"); os_.Color = Color3.fromRGB(20, 15, 25); os_.Thickness = 2.6; os_.LineJoinMode = Enum.LineJoinMode.Round; os_.Parent = odds
 		odds.Parent = card
+		-- pop-in: UIScale=1 TERAZ (fit mierzy pelny rozmiar); staggered reveal (0->1) odpala handler po zmierzeniu
+		local pop = Instance.new("UIScale"); pop.Name = "WR_Pop"; pop.Scale = 1; pop.Parent = card
 	end
 
 	Net.get("OfflineEarnings").OnClientEvent:Connect(function(p)
@@ -260,8 +282,8 @@ function OfflineController.start()
 		end
 		claimed = false
 		doubleId = tonumber(p.doubleId) or 0
-		setText(moneyVal, "+" .. fmtNum(p.coins or 0))
-		setText(rollsVal, "+" .. fmtNum(p.rolls or 0))
+		countUp(moneyVal, p.coins or 0, OFFLINE_COUNT_DUR) -- licznik liczy W GORE (jak referencja)
+		countUp(rollsVal, p.rolls or 0, OFFLINE_COUNT_DUR)
 		setText(offlineInfo, ("While you were away (%s), you earned:"):format(fmtDuration(p.seconds or 0)))
 		if dropsValue then setText(dropsValue, "+" .. fmtNum(p.coins or 0)); dropsValue.LayoutOrder = 999 end -- monety NA KONCU rzedu (jak ref)
 
@@ -289,6 +311,28 @@ function OfflineController.start()
 				local content = sumW + math.max(0, cnt - 1) * pad2
 				local panel = bestDrops.AbsoluteSize.X
 				scaleObj.Scale = (content > panel and panel > 0) and math.clamp((panel - 6) / content, 0.4, 1) or 1
+				-- STAGGERED REVEAL: karty pojawiaja sie PO KOLEI (pop 0->1 z Back), nie naraz (jak Build a Base RNG)
+				local cards = {}
+				for _, c in ipairs(bestDrops:GetChildren()) do
+					if c.Name == "WR_DropCard" then cards[#cards + 1] = c end
+				end
+				table.sort(cards, function(a, b) return (a.LayoutOrder or 0) < (b.LayoutOrder or 0) end)
+				for _, c in ipairs(cards) do
+					local pp = c:FindFirstChild("WR_Pop")
+					if pp then pp.Scale = 0 end
+				end
+				-- karty rozlozone na czas COUNT-UP (ostatnia wpada tuz przed koncem odliczania) — sync jak referencja
+				local step = (#cards > 0) and math.clamp(OFFLINE_COUNT_DUR * 0.8 / #cards, 0.08, 0.26) or 0.1
+				for i, c in ipairs(cards) do
+					local pp = c:FindFirstChild("WR_Pop")
+					if pp then
+						task.delay((i - 1) * step, function()
+							if pp.Parent then
+								TweenService:Create(pp, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+							end
+						end)
+					end
+				end
 			end)
 		end
 
