@@ -180,11 +180,22 @@ function OfflineController.start()
 	if doubleBtn then
 		doubleBtn.Visible = true
 		doubleBtn.BackgroundColor3 = Color3.fromRGB(150, 45, 220)
-		local purple = ColorSequence.new(Color3.fromRGB(212, 80, 255), Color3.fromRGB(120, 30, 205))
+		-- FIOLETOWY gradient z WIDOCZNA glebia (pionowy gloss): jasny gora -> nasycony -> ciemny dol.
+		-- (Wczesniej plaski 2-stop poziomy -> user: "gradientu nie ma". Teraz 3-stop + Rotation=90 = wyrazny.)
+		local purple = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(220, 140, 255)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(165, 60, 235)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(100, 22, 180)),
+		})
 		local white = ColorSequence.new(Color3.new(1, 1, 1))
 		for _, g in ipairs(doubleBtn:GetDescendants()) do
 			if g:IsA("UIGradient") then
-				g.Color = (g.Parent and g.Parent:IsA("TextLabel")) and white or purple
+				if g.Parent and g.Parent:IsA("TextLabel") then
+					g.Color = white
+				else
+					g.Color = purple
+					g.Rotation = 90 -- pionowy gloss: gora jasno, dol ciemno (widoczny gradient)
+				end
 			end
 		end
 	end

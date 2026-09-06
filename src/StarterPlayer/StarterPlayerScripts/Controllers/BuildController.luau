@@ -858,7 +858,7 @@ local function setTab(t)
 	for id, b in pairs(_tabBtns) do
 		if b then
 			local st = b:FindFirstChildOfClass("UIStroke")
-			if st then st.Enabled = (id == t) end
+			if st then st.Enabled = true end -- obrys ZAWSZE widoczny (user); zaznaczenie = BackgroundTransparency nizej
 			b.BackgroundTransparency = (id == t) and 0 or 0.4
 		end
 	end

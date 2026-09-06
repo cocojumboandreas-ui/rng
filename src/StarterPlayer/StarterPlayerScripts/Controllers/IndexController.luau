@@ -640,7 +640,7 @@ local function setActiveVariant(variant)
 		if tab then
 			local on = (TAB_TO_CAT[i] == variant)
 			local st = tab:FindFirstChildWhichIsA("UIStroke")
-			if st then st.Enabled = on end
+			if st then st.Enabled = true end -- obrys ZAWSZE widoczny (user); zaznaczenie = BackgroundTransparency nizej
 			tab.BackgroundTransparency = on and 0 or 0.4
 		end
 	end
