@@ -13,6 +13,19 @@ local CORE = {
 	["Left Arm"] = true, ["Right Arm"] = true, ["Left Leg"] = true, ["Right Leg"] = true,
 }
 
+-- KANONICZNE R6 Motor6D C0/C1. Rigi z "Units Comission" maja WYPOZOWANE C0 (barki obrocone do trzymania
+-- broni) -> animacje R6 (zakladaja domyslne C0) nakladaja sie i wychodza "rece zle / zly chod". Reset do
+-- tych wartosci = CZYSTY R6 pod animacje. Robimy to PO zespawaniu munduru/broni (mundur trzyma sie ciala
+-- przez WeldConstraint niezaleznie od pozy; bronie poprawiane osobno).
+local R6_JOINTS = {
+	RootJoint = { CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0), CFrame.new(0, 0, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0) },
+	Neck = { CFrame.new(0, 1, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0), CFrame.new(0, -0.5, 0, -1, 0, 0, 0, 0, 1, 0, 1, 0) },
+	["Right Shoulder"] = { CFrame.new(1, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0), CFrame.new(-0.5, 0.5, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0) },
+	["Left Shoulder"] = { CFrame.new(-1, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0), CFrame.new(0.5, 0.5, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0) },
+	["Right Hip"] = { CFrame.new(1, -1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0), CFrame.new(0.5, 1, 0, 0, 0, 1, 0, 1, 0, -1, 0, 0) },
+	["Left Hip"] = { CFrame.new(-1, -1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0), CFrame.new(-0.5, 1, 0, 0, 0, -1, 0, 1, 0, 1, 0, 0) },
+}
+
 function RigAnimSetup.prepare(model)
 	local hum = model:FindFirstChildWhichIsA("Humanoid", true)
 	if not hum or hum.RigType ~= Enum.HumanoidRigType.R6 then return nil end
@@ -80,6 +93,19 @@ function RigAnimSetup.prepare(model)
 		end
 	end
 	hrp.Anchored = true
+
+	-- CZYSTY R6: zresetuj Motor6D C0/C1 do domyslnych R6 (rig ma wypozowane C0 -> psuje animacje).
+	-- PO zespawaniu munduru (mundur trzyma sie ciala niezaleznie). Bronie poprawiane osobno.
+	for _, d in ipairs(rig:GetChildren()) do
+		if d:IsA("BasePart") then
+			for _, mot in ipairs(d:GetChildren()) do
+				if mot:IsA("Motor6D") and R6_JOINTS[mot.Name] then
+					mot.C0 = R6_JOINTS[mot.Name][1]
+					mot.C1 = R6_JOINTS[mot.Name][2]
+				end
+			end
+		end
+	end
 
 	-- Humanoid statyczny: bez maszyny stanow (zero sil balansu), bez auto-obrotu
 	hum.AutoRotate = false
