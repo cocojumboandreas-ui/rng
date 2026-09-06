@@ -293,6 +293,29 @@ local function buildEnemyModel(modelName, isBoss): Model?
 				local wm = _weaponByModel[m]
 				if wm then wm.part = gi.muzzle end -- FX strzalu z lufy nowej broni
 			end
+			-- WROG: mundur Olo ma KROTKIE rekawy — w wysunietej pozie celowania (Sniper strzela PROSTO w przod,
+			-- ramie w pelni wyprostowane) spod rekawa wychodzi gole przedramie (skora) = "popsuty mundur". Pokoloruj
+			-- konczyne ramienia na kolor rekawa -> wyglada jak dlugi rekaw. Jednostki GRACZA zostawiamy (idle nie odslania).
+			local uni = m:FindFirstChild("Uniform")
+			if uni then
+				local function clothe(limbName, subName)
+					local limb = m:FindFirstChild(limbName, true)
+					local sub = uni:FindFirstChild(subName)
+					-- probka = najwieksza czesc rekawa (glowny material, nie maly cuff/glove)
+					local swatch, bestVol = nil, -1
+					if sub then
+						for _, d in ipairs(sub:GetDescendants()) do
+							if d:IsA("BasePart") then
+								local v = d.Size.X * d.Size.Y * d.Size.Z
+								if v > bestVol then bestVol = v; swatch = d end
+							end
+						end
+					end
+					if limb and swatch then limb.Color = swatch.Color; limb.Material = swatch.Material end
+				end
+				clothe("Right Arm", "R_Arm"); clothe("Left Arm", "L_Arm")
+				clothe("Right Leg", "R_Leg"); clothe("Left Leg", "L_Leg") -- boki spodni: mundur nie kryje bokow nogi
+			end
 		end
 		local torsoPart = humB and humB.Parent and humB.Parent:FindFirstChild("Torso")
 		if torsoPart and torsoPart:IsA("BasePart") then

@@ -398,9 +398,9 @@ local function step(dt)
 					sp.part.CFrame = pivot * sp.local_ * sp.rot(sp.angle)
 				end
 			end
-			if st.barrel and st.spinning and now < st.spinning then
+			if st.barrelWeld and st.spinning and now < st.spinning then
 				st.spinAngle = (st.spinAngle + st.prof.spin * dt) % (math.pi * 2)
-				st.barrel.CFrame = pivot * st.barrelLocal * CFrame.Angles(0, 0, st.spinAngle)
+				st.barrelWeld.C0 = st.barrelWeldC0 * CFrame.Angles(st.spinAngle, 0, 0) -- obrot wokol dlugiej osi lufy (X)
 			end
 			-- HEAVY minigun/dual: kreci wiazka luf wokol osi -Z przy strzale
 			if st.spinners and st.spinning and now < st.spinning then
@@ -542,10 +542,16 @@ local function setupFx(model, prof, st, sx, sy, sz)
 
 	-- minigun (piechota): lufa do obrotu przy strzale. UWAGA: lufa jest odspawana+zakotwiczona na SERWERZE
 	-- (BuildService.spawnModel) — inaczej wymuszanie jej CFrame walczy z RigAnimWeld i szarpie rigiem (#modele).
+	-- minigun (Heavy Trooper): lufa Olo (WR_Gun/GunBarrel) jest PRZYSPAWANA Weldem do reki (GunRig). NIE wymuszamy
+	-- jej world-CFrame (walczyloby z weldem i szarpalo/wyrzucalo CALY rig = "Heavy Trooper lata"). Zamiast tego
+	-- krecimy lufe obracajac C0 JEJ WELDU wokol dlugiej osi lufy (X: GunBarrel ~3.35 studa) — bez ruchu zolnierza.
 	if prof.kind == "minigun" then
 		for _, d in ipairs(model:GetDescendants()) do
 			if d:IsA("BasePart") and (d.Name:lower():find("barrel") or d.Name:lower():find("minigun")) then
-				st.barrel = d; st.barrelLocal = st.baseCF:ToObjectSpace(d.CFrame); st.spinAngle = 0; break
+				for _, w in ipairs(d:GetChildren()) do
+					if w:IsA("Weld") and w.Part1 == d then st.barrelWeld = w; st.barrelWeldC0 = w.C0; st.spinAngle = 0; break end
+				end
+				break
 			end
 		end
 	end

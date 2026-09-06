@@ -118,16 +118,26 @@ function RigAnimSetup.prepare(model)
 
 	-- CZYSTY R6: zresetuj Motor6D C0/C1 do domyslnych R6 (rig ma wypozowane C0 -> psuje animacje).
 	-- PO zespawaniu munduru (mundur trzyma sie ciala niezaleznie). Bronie poprawiane osobno.
-	for _, d in ipairs(rig:GetChildren()) do
-		if d:IsA("BasePart") then
-			for _, mot in ipairs(d:GetChildren()) do
-				if mot:IsA("Motor6D") and R6_JOINTS[mot.Name] then
-					mot.C0 = R6_JOINTS[mot.Name][1]
-					mot.C1 = R6_JOINTS[mot.Name][2]
+	local function resetJoints()
+		for _, d in ipairs(rig:GetChildren()) do
+			if d:IsA("BasePart") then
+				for _, mot in ipairs(d:GetChildren()) do
+					if mot:IsA("Motor6D") and R6_JOINTS[mot.Name] then
+						mot.C0 = R6_JOINTS[mot.Name][1]
+						mot.C1 = R6_JOINTS[mot.Name][2]
+					end
 				end
 			end
 		end
 	end
+	resetJoints()
+	-- GOTCHA (Heavy Trooper trzymal minigun w gore): parentowanie R6 do workspace ASYNCHRONICZNIE przywraca
+	-- WYPOZOWANE Motor6D C0 (Humanoid odbudowuje jointy z oryginalu klona) -> reset sprzed parentowania znika
+	-- (rewert osiada ~0.4s po parent). spawnModel/buildEnemyModel wolaja prepare PRZED parentowaniem, wiec
+	-- powtarzamy reset przez kilka klatek PO parentowaniu, zeby wygrac wyscig z rewertem (reset po osiadnieciu TRZYMA).
+	task.delay(0.1, function() if rig.Parent then resetJoints() end end)
+	task.delay(0.35, function() if rig.Parent then resetJoints() end end)
+	task.delay(0.7, function() if rig.Parent then resetJoints() end end)
 
 	-- Humanoid statyczny: bez maszyny stanow (zero sil balansu), bez auto-obrotu
 	hum.AutoRotate = false
