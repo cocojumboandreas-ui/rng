@@ -48,6 +48,9 @@ local ENEMY_ANIM = { idle = "rbxassetid://114633582166730", walk = "rbxassetid:/
 local ANIM_WALK_SPEED = 1.5 -- mnoznik tempa animacji chodu wroga (feet-slide fix)
 local ANIM_SHOT_SPEED = 1.3 -- mnoznik tempa animacji strzalu wroga
 local MOVE_SMOOTH = 16 -- tlumienie ruchu HRP (lerp/klatke); wyzej = szybciej dogania cel, mniej wygladzania
+-- prog predkosci (study/s) rozdzielajacy CHOD od STANIA: wrog blokowany przez jednostki stoi -> Idle, idzie -> Walk
+local MOVE_ANIM_THRESH = 0.5
+local MOVE_ANIM_HOLD = 0.25 -- histereza: trzymaj stan "idzie" tyle s po ostatnim ruchu (anti-migotanie na interpolacji)
 
 local EnemyRenderController = {}
 
@@ -1231,6 +1234,17 @@ local function renderStep(dt)
 				local far = (dxC * dxC + dzC * dzC) > animDist2
 				local animOn = sAnim and not far
 
+				-- CHOD vs STANIE: predkosc po sciezce (pos). Blokowany/w zasiegu -> pathT stoi -> pos stoi -> Idle.
+				-- Idzie -> Walk. Histereza MOVE_ANIM_HOLD zeby anim nie migotala na drganiach interpolacji.
+				local moveSpeed = e.animPrevPos and (pos - e.animPrevPos).Magnitude / math.max(dt, 1 / 240) or 999
+				e.animPrevPos = pos
+				if moveSpeed > MOVE_ANIM_THRESH then
+					e.moveHot = MOVE_ANIM_HOLD
+				else
+					e.moveHot = math.max(0, (e.moveHot or 0) - dt)
+				end
+				local isMoving = (e.moveHot or 0) > 0
+
 				-- ANIM ruchu + ROZSTAW: podskok/lot + offset prostopadly do sciezki (render-only)
 				e.animPhase += dt
 				local rig = e.rig
@@ -1311,9 +1325,17 @@ local function renderStep(dt)
 					if rig.torso and rig.torso.CanCollide then rig.torso.CanCollide = false end -- gracz przechodzi przez wroga
 					if animOn then
 						ensureEnemyTracks(rig)
-						if rig.tWalk and not rig.tWalk.IsPlaying then rig.tWalk:Play(0.25); rig.tWalk:AdjustSpeed(ANIM_WALK_SPEED) end
+						-- STAN: idzie -> Walk; stoi (zablokowany/w zasiegu) -> Idle. Shot nakłada sie osobno (Action).
+						if isMoving then
+							if rig.tIdle and rig.tIdle.IsPlaying then rig.tIdle:Stop(0.2) end
+							if rig.tWalk and not rig.tWalk.IsPlaying then rig.tWalk:Play(0.2); rig.tWalk:AdjustSpeed(ANIM_WALK_SPEED) end
+						else
+							if rig.tWalk and rig.tWalk.IsPlaying then rig.tWalk:Stop(0.2) end
+							if rig.tIdle and not rig.tIdle.IsPlaying then rig.tIdle:Play(0.2) end
+						end
 					else
 						if rig.tWalk and rig.tWalk.IsPlaying then rig.tWalk:Stop(0.15) end
+						if rig.tIdle and rig.tIdle.IsPlaying then rig.tIdle:Stop(0.15) end
 					end
 				end
 				if now >= e.nextFire then
