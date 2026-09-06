@@ -25,9 +25,9 @@ local GameConfig = require(
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
 
 local RigAnimSetup = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("RigAnimSetup"))
--- WR BACKUP starych anim R6 (przywroc w razie czego): idle=114633582166730  shot=109739383922402  walk=123805470740320
-local ANIM_IDLE = "rbxassetid://114633582166730"
-local ANIM_SHOT = "rbxassetid://109739383922402"
+local SoldierAnimConfig = require(
+	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("SoldierAnimConfig")
+) -- animacje PER BRON (Idle/Shot dla jednostek gracza; walk pomijamy — stoja)
 
 local UnitCombatAnimator = {}
 
@@ -606,8 +606,12 @@ local function setupR6(model)
 		tr.Looped = looped; tr.Priority = prio
 		return tr
 	end
-	local idle = load(ANIM_IDLE, true, Enum.AnimationPriority.Idle)
-	local shot = load(ANIM_SHOT, false, Enum.AnimationPriority.Action)
+	-- animacje wg BRONI jednostki (modelName z GameConfig.Units[UnitId].model)
+	local unitId = model:GetAttribute("UnitId")
+	local modelName = unitId and GameConfig.Units[unitId] and GameConfig.Units[unitId].model
+	local A = SoldierAnimConfig.For(modelName)
+	local idle = load(A.idle, true, Enum.AnimationPriority.Idle)
+	local shot = load(A.shot, false, Enum.AnimationPriority.Action)
 	if idle then idle:Play(0.25) end -- Idle w petli
 	return { idle = idle, shot = shot }
 end

@@ -74,10 +74,32 @@ function RigAnimSetup.prepare(model)
 			table.insert(bySub[sub], d)
 		end
 	end
+	-- MUNDUR: weld po NAZWIE podmodelu (R_Arm->Right Arm itd.), NIE po pozycji. W pozie autorskiej rece
+	-- byly przy klatce -> rekawy weldowaly sie do TORSU; po resecie stawow (czysty R6) rece odskakuja,
+	-- a rekawy zostawaly przy klatce = "gole rece". Mapa nazw = deterministycznie na wlasciwa koncowke.
+	local UNIFORM_MAP = {
+		R_Arm = "Right Arm", L_Arm = "Left Arm", R_Leg = "Right Leg", L_Leg = "Left Leg",
+		Torso = "Torso", Helmet = "Head", Head = "Head",
+	}
+	local function coreByName(nm)
+		for _, c in ipairs(coreParts) do
+			if c.Name == nm then return c end
+		end
+		return nil
+	end
 	for sub, parts in pairs(bySub) do
 		local conforming = (sub == nil) or (sub == rig) or (sub.Name == "Uniform")
 		if conforming then
-			for _, d in ipairs(parts) do weldTo(d, nearestCore(d.Position)) end
+			for _, d in ipairs(parts) do
+				local core = nil
+				if sub and sub.Name == "Uniform" then
+					local n = d
+					while n and n.Parent ~= sub do n = n.Parent end
+					local mapped = n and UNIFORM_MAP[n.Name]
+					if mapped then core = coreByName(mapped) end
+				end
+				weldTo(d, core or nearestCore(d.Position))
+			end
 		else
 			local sum = Vector3.zero
 			for _, d in ipairs(parts) do sum = sum + d.Position end

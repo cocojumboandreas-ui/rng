@@ -273,6 +273,7 @@ local function buildEnemyModel(modelName, isBoss): Model?
 	end
 	_weaponByModel[m] = resolveWeapon(m, modelName) -- rozpoznaj bron raz (part przesuwa sie z modelem przez PivotTo)
 	local rig = resolveRig(m, modelName) -- rozpoznaj rig anim raz (nogi/kola/wirniki)
+	rig.modelName = modelName -- do wyboru animacji per bron (SoldierAnimConfig.For)
 	_rigByModel[m] = rig
 	-- PRAWDZIWE animacje R6 (Idle/Walk/Shot): przygotuj rig (spaw dodatkow/broni do rdzenia, kotwicz TYLKO HRP,
 	-- Animator) -> rig.real=true; ruch wroga = przesuwanie HRP, Animator pozuje konczyny. Rigi z "Units Comission"
@@ -1177,11 +1178,9 @@ end
 -- PRAWDZIWE animacje R6 wroga: Idle (baza) / Walk (marsz) / Shot (strzal). TYLKO te 3, z PRIORYTETAMI
 -- (Idle < Movement < Action) -> nie nakladaja sie na siebie. Ladowane leniwie (pierwszy render bliski kamery),
 -- per rig.animator (z RigAnimSetup.prepare). Render loop gra tWalk gdy idzie + tShot na strzale.
-local ENEMY_ANIM_IDS = {
-	idle = "rbxassetid://114633582166730",
-	walk = "rbxassetid://123805470740320",
-	shot = "rbxassetid://109739383922402",
-}
+local SoldierAnimConfig = require(
+	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("SoldierAnimConfig")
+) -- animacje PER BRON (Idle/Walk/Shot); dobierane wg rig.modelName
 local function loadTrack(animator, id, looped, prio)
 	local a = Instance.new("Animation"); a.AnimationId = id
 	local ok, tr = pcall(function() return animator:LoadAnimation(a) end)
@@ -1194,9 +1193,10 @@ local function ensureEnemyTracks(rig)
 	rig.tracksLoaded = true
 	local animator = rig.animator
 	if not animator then return end
-	rig.tIdle = loadTrack(animator, ENEMY_ANIM_IDS.idle, true, Enum.AnimationPriority.Idle)
-	rig.tWalk = loadTrack(animator, ENEMY_ANIM_IDS.walk, true, Enum.AnimationPriority.Movement)
-	rig.tShot = loadTrack(animator, ENEMY_ANIM_IDS.shot, false, Enum.AnimationPriority.Action)
+	local A = SoldierAnimConfig.For(rig.modelName) -- {idle,walk,shot} wg broni zolnierza
+	rig.tIdle = loadTrack(animator, A.idle, true, Enum.AnimationPriority.Idle)
+	rig.tWalk = loadTrack(animator, A.walk, true, Enum.AnimationPriority.Movement)
+	rig.tShot = loadTrack(animator, A.shot, false, Enum.AnimationPriority.Action)
 end
 
 local function renderStep(dt)
