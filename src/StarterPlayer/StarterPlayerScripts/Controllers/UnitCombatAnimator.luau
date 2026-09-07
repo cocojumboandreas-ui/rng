@@ -29,6 +29,8 @@ local SoldierAnimConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("SoldierAnimConfig")
 ) -- animacje PER BRON (Idle/Shot dla jednostek gracza; walk pomijamy — stoja)
 
+local UnitVfxLib = require(script.Parent:WaitForChild("UnitVfxLib")) -- artystyczne VFX (WR_UnitVfx) zamiast proceduralnych
+
 local UnitCombatAnimator = {}
 
 local PROFILES = {
@@ -118,7 +120,7 @@ local function boom(pos, color, scale)
 	end)
 end
 
-local function launchProjectile(muzzle, target, projColor, boomColor, boomScale)
+local function launchProjectile(muzzle, target, projColor, boomColor, boomScale, onImpact)
 	local rocket = mkNeon("WR_Proj", worldParent(), projColor)
 	rocket.Material = Enum.Material.SmoothPlastic
 	rocket.Size = Vector3.new(0.5, 0.5, 1.6); rocket.Transparency = 0
@@ -134,7 +136,7 @@ local function launchProjectile(muzzle, target, projColor, boomColor, boomScale)
 			RunService.Heartbeat:Wait()
 		end
 		if rocket.Parent then rocket:Destroy() end
-		boom(target, boomColor, boomScale)
+		if onImpact then onImpact(target) else boom(target, boomColor, boomScale) end
 	end)
 end
 
@@ -261,6 +263,33 @@ local function emitBeam(em, muzzle, target, width, color, showT)
 	end
 end
 
+-- pozycja WYLOTU lufy: dla R6 z GunRig (st.muzzlePart = realna lufa) bierzemy KONIEC lufy (srodek + pol
+-- najdluzszej osi w strone celu) — inaczej flash leci ze srodka modelu (~ramie). Vehicle/brak lufy -> muzzleLocal.
+local function muzzleWorld(st, pivot, target)
+	if st.muzzleAtt and st.muzzleAtt.Parent then
+		return st.muzzleAtt.WorldPosition -- dokladny znacznik WR_Muzzle (koniec lufy, ustawiony recznie)
+	end
+	local mp = st.muzzlePart
+	if mp and mp.Parent then
+		local s = mp.Size
+		local half = math.max(s.X, s.Y, s.Z) * 0.5
+		local dir = (target - mp.Position)
+		if dir.Magnitude > 1e-3 then
+			return mp.Position + dir.Unit * half
+		end
+		return mp.Position
+	end
+	return (pivot * st.muzzleLocals[1]).Position
+end
+
+-- kierunek WYLOTU efektu: wzdluz lufy (Handle -> WR_Muzzle) = "poziomo jak bron"; fallback: prosto do celu.
+local function muzzleDir(st, muzzle, target)
+	if st.muzzleAtt and st.muzzleAtt.Parent and st.handlePart and st.handlePart.Parent then
+		return st.muzzleAtt.WorldPosition - st.handlePart.Position
+	end
+	return target - muzzle
+end
+
 local function fire(st, target)
 	local prof = st.prof
 	local pivot = st.model:GetPivot()
@@ -269,8 +298,12 @@ local function fire(st, target)
 	if st.r6 and st.r6.shot then st.r6.shot:Play(0.06); st.r6.shot:AdjustSpeed(1.3) end
 
 	if prof.kind == "flame" then
-		local muzzle = (pivot * st.muzzleLocals[1]).Position
-		if st.flameEmitter then
+		local muzzle = muzzleWorld(st, pivot, target)
+		if st.vfx then
+			st.vfx:place(muzzle, muzzleDir(st, muzzle, target))
+			st.vfx:setFlame(true) -- step() wylaczy po st.flameUntil
+			st.flameUntil = now + 0.14
+		elseif st.flameEmitter then
 			st.flamePart.CFrame = CFrame.lookAt(muzzle, target)
 			st.flameEmitter.Enabled = true
 			st.flameUntil = now + 0.14
@@ -280,19 +313,30 @@ local function fire(st, target)
 	end
 
 	if prof.kind == "rpg" then
-		local muzzle = (pivot * st.muzzleLocals[1]).Position
-		st.emitters[1].flash.Position = muzzle
-		st.emitters[1].flash.Transparency = 0.1
-		st.emitters[1].light.Brightness = 3
-		st.flashUntil = now + (prof.flashTime or 0.06)
-		launchProjectile(muzzle, target, prof.proj, prof.boom, 5)
+		local muzzle = muzzleWorld(st, pivot, target)
+		if st.vfx then
+			st.vfx:place(muzzle, muzzleDir(st, muzzle, target))
+			st.vfx:flash() -- Rpgvfx (blysk wystrzalu)
+			launchProjectile(muzzle, target, prof.proj, prof.boom, 5, function(p) st.vfx:boom(p) end) -- Rpgboomvfx u celu
+		else
+			st.emitters[1].flash.Position = muzzle
+			st.emitters[1].flash.Transparency = 0.1
+			st.emitters[1].light.Brightness = 3
+			st.flashUntil = now + (prof.flashTime or 0.06)
+			launchProjectile(muzzle, target, prof.proj, prof.boom, 5)
+		end
 		if not st.isR6 then st.recoilAmt = (prof.recoil or 0) * st.scale end
 		return
 	end
 
 	if prof.kind == "tank" then
-		local muzzle = (pivot * st.muzzleLocals[1]).Position
-		emitBeam(st.emitters[1], muzzle, target, prof.width, prof.tracer)
+		local muzzle = muzzleWorld(st, pivot, target)
+		if st.vfx then
+			st.vfx:place(muzzle, muzzleDir(st, muzzle, target))
+			st.vfx:flash()
+		else
+			emitBeam(st.emitters[1], muzzle, target, prof.width, prof.tracer)
+		end
 		st.flashUntil = now + (prof.flashTime or 0.1)
 		boom(target, prof.boom, 4)
 		if st.cannon then st.cannonRecoilAmt = (prof.cannonRecoil or 1) * st.scale end
@@ -341,9 +385,15 @@ local function fire(st, target)
 
 	-- gun / minigun / heli / jet: strzal z KAZDEGO muzzle
 	local col = prof.laser or prof.tracer
-	for i, mloc in ipairs(st.muzzleLocals) do
-		local muzzle = (pivot * mloc).Position
-		emitBeam(st.emitters[i], muzzle, target, prof.width, col)
+	if st.vfx then
+		local muzzle = muzzleWorld(st, pivot, target)
+		st.vfx:place(muzzle, muzzleDir(st, muzzle, target))
+		st.vfx:flash() -- artystyczny blysk (WR_UnitVfx)
+	else
+		for i, mloc in ipairs(st.muzzleLocals) do
+			local muzzle = (pivot * mloc).Position
+			emitBeam(st.emitters[i], muzzle, target, prof.width, col)
+		end
 	end
 	st.flashUntil = now + (prof.flashTime or 0.05)
 	if prof.kind == "minigun" then st.spinning = now + 0.12 end
@@ -391,6 +441,18 @@ local function step(dt)
 			end
 			local pivot = model:GetPivot()
 
+			-- artystyczny VFX PRZYKLEJONY na wylot lufy KAZDA klatke (WR_Muzzle jedzie z animacja broni),
+			-- nie tylko w chwili strzalu -> efekt zawsze siedzi w lufie, nie odklejony.
+			if st.vfx and st.muzzleAtt and st.muzzleAtt.Parent then
+				if st.vfx.flameMode then
+					st.vfx:placeCF(st.muzzleAtt.WorldCFrame) -- flame: pelny CFrame (start+kierunek strumienia z edycji)
+				else
+					local mpos = st.muzzleAtt.WorldPosition
+					local dir = (st.handlePart and st.handlePart.Parent) and (mpos - st.handlePart.Position) or st.muzzleAtt.WorldCFrame.UpVector
+					st.vfx:place(mpos, dir)
+				end
+			end
+
 			-- 2) wirniki heli (zawsze), lufa miniguna (przy strzale), odrzut lufy czolgu
 			if st.spinParts then
 				for _, sp in ipairs(st.spinParts) do
@@ -429,6 +491,7 @@ local function step(dt)
 				st.flashUntil = nil
 			end
 			if st.flameUntil and now >= st.flameUntil then
+				if st.vfx then st.vfx:setFlame(false) end
 				if st.flameEmitter then st.flameEmitter.Enabled = false end
 				st.flameUntil = nil
 			end
@@ -498,6 +561,7 @@ end
 
 local function setupFx(model, prof, st, sx, sy, sz)
 	if prof.kind == "flame" then
+		if st.vfx then return end -- artystyczny flame (setFlame) zamiast proceduralnego stozka
 		local part = mkNeon("WR_FlameMuzzle", model, prof.fire)
 		part.Size = Vector3.new(0.5, 0.5, 0.5)
 		local emitter = Instance.new("ParticleEmitter")
@@ -513,11 +577,13 @@ local function setupFx(model, prof, st, sx, sy, sz)
 		return
 	end
 
-	-- emittery per muzzle
+	-- emittery per muzzle (TYLKO gdy brak artystycznego VFX — inaczej WR_UnitVfx robi flash)
 	local col = prof.tracer or prof.laser or prof.flash
 	st.emitters = {}
-	for _ = 1, #st.muzzleLocals do
-		st.emitters[#st.emitters + 1] = mkEmitter(model, prof.flash or col, col, prof.width or 0.14)
+	if not st.vfx then
+		for _ = 1, #st.muzzleLocals do
+			st.emitters[#st.emitters + 1] = mkEmitter(model, prof.flash or col, col, prof.width or 0.14)
+		end
 	end
 
 	-- HEAVY minigun/dual: obracajaca sie wiazka luf (4 prety) na kazdym muzzle; kreci sie przy strzale
@@ -649,6 +715,17 @@ local function track(model)
 		st.yaw = y0
 	end
 	st.muzzleLocals = computeMuzzleLocals(prof, sz.X, sz.Y, sz.Z)
+	-- artystyczny VFX per MODEL (WR_UnitVfx) -> zastepuje proceduralny flash/tracer; nil => proceduralny fallback
+	local modelName = GameConfig.Units[unitId] and GameConfig.Units[unitId].model
+	st.vfx = UnitVfxLib.mount(worldParent(), modelName)
+	if st.vfx then -- punkt wylotu: WR_Muzzle attachment (znacznik na lufie) > lufa (WR_Gun) > heurystyka
+		local gun = model:FindFirstChild("WR_Gun")
+		if gun then
+			st.muzzleAtt = gun:FindFirstChild("WR_Muzzle", true)
+			st.muzzlePart = gun:FindFirstChild("ShotPart") or gun:FindFirstChild("GunBarrel") or gun:FindFirstChild("MainPart")
+			st.handlePart = gun:FindFirstChild("Handle")
+		end
+	end
 	setupFx(model, prof, st, sz.X, sz.Y, sz.Z)
 	st.r6 = setupR6(model)
 	st.isR6 = st.r6 ~= nil
@@ -656,6 +733,8 @@ local function track(model)
 end
 
 local function untrack(model)
+	local st = _tracked[model]
+	if st and st.vfx then st.vfx:destroy() end
 	_tracked[model] = nil
 end
 
