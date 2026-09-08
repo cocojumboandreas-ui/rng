@@ -187,12 +187,16 @@ function SkillTreeController.start()
 
 	-- galezie "owned" -> pack pokazuje rank1 (reveal packa: dziecko widoczne gdy rodzic owned)
 	local function ownBranches()
-		NodeTreeClient.setIsNodeOwned("root", true) -- root owned -> 3 dzieci REALNE (ich dzieci = "?", reszta ukryta)
+		NodeTreeClient.setIsNodeOwned("root", true) -- root owned -> pierwsze dzieci widoczne
 		for id in pairs(nodes) do
 			if string.sub(id, 1, 2) == "b:" then
 				NodeTreeClient.setIsNodeOwned(id, true)
 			end
-			-- WR: naglowki-sekcje (0/0, niekupowalne) tez "owned" -> ich dzieci sa REALNE, nie zablokowane "?"
+			-- ROOTY SEKCJI (proRoot/baseRoot, id bez "#"): owned -> pierwszy krag sekcji widoczny po wejsciu
+			if id ~= "root" and not string.find(id, "#", 1, true) then
+				NodeTreeClient.setIsNodeOwned(id, true)
+			end
+			-- WR: naglowki/szkice (0/0, niekupowalne) tez "owned" -> ich dzieci widoczne normalnie
 			local base = string.match(id, "^(.-)#")
 			if base and base ~= "root" and not SkillConfig.nodes[base] then
 				NodeTreeClient.setIsNodeOwned(id, true)
@@ -224,9 +228,10 @@ function SkillTreeController.start()
 	syncOwned()
 
 	-- zakup na klik (serwer waliduje); self-heal: oznacz 1..resp.rank (odporne na desync)
+	-- POMIJAMY wezly z showRootId (wejscia/Back sekcji) — ich klik to nawigacja packa, nie zakup.
 	for nodeId in pairs(nodes) do
 		local skillId, rank = parseNodeId(nodeId)
-		if skillId and rank then
+		if skillId and rank and not nodes[nodeId].showRootId then
 			NodeTreeClient.setPressedCallback(nodeId, function()
 				if ownedIds[nodeId] then
 					return
@@ -245,8 +250,9 @@ function SkillTreeController.start()
 	end
 
 	-- NOWE drzewo (ids bez "#"): klik = ODSLONIECIE dzieci (client-side, na razie bez kosztu; buy-cost dojdzie potem)
+	-- POMIJAMY wezly z showRootId (rooty sekcji = przycisk "Back") — ich klik to nawigacja packa.
 	for nodeId in pairs(nodes) do
-		if nodeId ~= "root" and not string.find(nodeId, "#", 1, true) then
+		if nodeId ~= "root" and not string.find(nodeId, "#", 1, true) and not nodes[nodeId].showRootId then
 			NodeTreeClient.setPressedCallback(nodeId, function()
 				markOwned(nodeId)
 			end)

@@ -12,6 +12,9 @@ local SkillCosts = require(Config:WaitForChild("SkillCosts")) -- nadpisania cen 
 local COIN = "rbxassetid://5684864491"
 local DICE = "rbxassetid://92190657341460"
 local CLOVER = "rbxassetid://123550318368193"
+-- grafiki hexow ze wzorca Upgrade_Skill_Tree.rbxl (backgroundIcon packa):
+local HEX_SECTION = "rbxassetid://128421674643187" -- wejscie do sekcji / "Back" (mechanika showRootId)
+local HEX_PURPLE = "rbxassetid://84116313048597" -- fioletowy: finaly galezi / specjalne
 
 local DIR = {
 	Gora = Vector2.new(0, -2),
@@ -42,6 +45,16 @@ local Nodes = {}
 for _, n in ipairs(SkillTreeData) do
 	if n.id == "root" then
 		Nodes.root = { icon = "", text = "SKILL" .. string.char(10) .. "TREE" }
+	elseif n.parent == nil then
+		-- ROOT SEKCJI (parent=nil, id~=root): hex "Back" — widoczny tylko gdy sekcja aktywna
+		-- (canShowNode packa: parentless widoczny wylacznie jako currentRootNodeId). Klik = showRootId wraca.
+		Nodes[n.id] = {
+			icon = "",
+			text = n.label or "Back",
+			showRootId = n.showRoot or "root",
+			backgroundIcon = HEX_SECTION,
+			desc = n.desc,
+		}
 	else
 		-- cena: SkillCosts (Olo) nadpisuje SkillTreeData — TA SAMA logika co SkillConfig (spojnosc kupno<->wyswietlanie).
 		local override = SkillCosts[n.id]
@@ -53,16 +66,26 @@ for _, n in ipairs(SkillTreeData) do
 		elseif roll > 0 then
 			price = { quantity = roll, currencyIcon = DICE }
 		end
+		-- rodzic: root sekcji laczymy po SUROWYM id (proRoot/baseRoot nie maja "#1")
+		local parentRaw = n.parent or "root"
+		local parentIsSectionRoot = false
+		for _, row in ipairs(SkillTreeData) do
+			if row.id == parentRaw then parentIsSectionRoot = (row.parent == nil and row.id ~= "root") break end
+		end
 		Nodes[nid(n.id)] = {
-			parentNodeId = nid(n.parent or "root"),
+			parentNodeId = parentIsSectionRoot and parentRaw or nid(parentRaw),
 			direction = DIR[n.dir] or DIR.Dol,
 			icon = iconFor(n),
 			text = "",
 			headerText = n.label,
 			desc = n.desc, -- opis do podgladu (tooltip) — czyta go zmodyfikowany pack
 			price = price, -- nil dla 0/0 (informacyjne)
-			-- widocznosc liczy zmodyfikowany canShowNode packa: root(owned) -> 3 dzieci REALNE, ich dzieci jako "?"
-			inheritVisibility = false, -- tylko dzieci roota widoczne od startu
+			-- MECHANIKA SEKCJI (wzorzec): showRoot => klik przelacza widok na inne drzewo (pack showRootId)
+			showRootId = n.showRoot,
+			-- KOLORY hexow (wzorzec): wejscie sekcji = grafika sekcyjna; bg="purple" = fioletowy final
+			backgroundIcon = (n.showRoot and HEX_SECTION) or (n.bg == "purple" and HEX_PURPLE) or nil,
+			-- czyste odkrywanie packa: dziecko widoczne dopiero gdy rodzic KUPIONY (bez "?")
+			inheritVisibility = false,
 		}
 	end
 end
