@@ -19,6 +19,7 @@ local GameConfig = require(
 local STAT_FIELDS = {
 	"luck", "rollSpeed", "mutChance", "cellBudget", "dmgMult",
 	"fireRateMult", "rangeMult", "coreHP", "coinMult", "offlineRate", "variantLuck",
+	"coreArmor", "coreRegen", -- BASE: pancerz rdzenia (redukcja dmg) + regen (frakcja maxHP/fale) — plaskie delty skilli
 }
 
 local StatProfileService = {}
@@ -124,6 +125,22 @@ local function skillBonusChance(profileData): number
 	return math.clamp(acc, 0, 1)
 end
 
+-- WAVE SKIP (BASE): fala STARTOWA runu = NAJWYZSZA z posiadanych wezlow (SkillEffectConfig.waveSkip),
+-- min 1 gdy nic nie posiadasz. WaveService.StartWave czyta stats.startWave. (max-z-posiadanych, nie sumowanie.)
+local function skillStartWave(profileData): number
+	local skills = profileData and profileData.skills
+	local ws = GameConfig.SkillEffect and GameConfig.SkillEffect.waveSkip
+	local best = 1
+	if type(skills) == "table" and ws then
+		for nodeId, wave in pairs(ws) do
+			if (skills[nodeId] or 0) > 0 and wave > best then
+				best = wave
+			end
+		end
+	end
+	return best
+end
+
 -- OFFLINE: mnoznik zarobkow offline z wezlow Offline Rolls (SkillEffectConfig.offline.mult). Sumuje posiadane.
 local function skillOfflineMult(profileData): number
 	local skills = profileData and profileData.skills
@@ -159,6 +176,8 @@ function StatProfileService.Recompute(player: Player)
 	stats.cloverMaxTier = skillCloverMaxTier(data) -- sufit drabiny koniczyn (x16/x32/x64 podnosza)
 	stats.bonusChance = skillBonusChance(data) -- Bonus: szansa na +1 tier itemu
 	stats.offlineMult = skillOfflineMult(data) -- Offline Rolls: mnoznik zarobkow offline (monety+rolki)
+	stats.startWave = skillStartWave(data) -- BASE Wave Skip: fala startowa runu (max-z-posiadanych, min 1)
+	stats.coreArmor = math.clamp(stats.coreArmor or 0, 0, 0.9) -- klamp pancerza (max 90% redukcji)
 	do
 		local offCfg = GameConfig.SkillEffect and GameConfig.SkillEffect.offline
 		local sk = data and data.skills

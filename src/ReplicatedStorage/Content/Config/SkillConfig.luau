@@ -103,6 +103,25 @@ for id, eff in pairs(MORE_EFFECT) do
 		nodes[id].effect = eff
 	end
 end
+-- EFEKTY BASE (plaskie staty). Core Armor -> coreArmor (redukcja dmg rdzenia, delty kumulatywne, klamp 0.9 w
+-- StatProfile). Core Repair -> coreRegen (frakcja maxHP leczona po fali; CoreService.Heal w WaveService.endWave).
+-- Build Slots -> cellBudget (+miejsce na jednostki; GridService konsumuje). Wave Skip = OSOBNO (max-z-posiadanych
+-- w StatProfile.skillStartWave, nie plaska delta). Placeholdery liczb — Olo dostroi.
+local BASE_EFFECT = {
+	b1 = { stat = "coreArmor", perRank = 0.10 }, -- Core Armor I:  +10% redukcji
+	b2 = { stat = "coreArmor", perRank = 0.10 }, -- Core Armor II: +10% (razem 20%)
+	b3 = { stat = "coreArmor", perRank = 0.10 }, -- Core Armor III:+10% (razem 30%)
+	b4 = { stat = "coreRegen", perRank = 0.10 }, -- Core Repair: +10% maxHP rdzenia leczone po kazdej fali
+	bs1 = { stat = "cellBudget", perRank = 10 }, bs2 = { stat = "cellBudget", perRank = 10 },
+	bs3 = { stat = "cellBudget", perRank = 10 }, bs4 = { stat = "cellBudget", perRank = 10 },
+	bs5 = { stat = "cellBudget", perRank = 10 }, bs6 = { stat = "cellBudget", perRank = 10 }, -- +10 slotow/rank (razem +60)
+}
+for id, eff in pairs(BASE_EFFECT) do
+	if nodes[id] then
+		nodes[id].effect = eff
+	end
+end
+
 -- x16/x32/x64 Clover (n53/n63/n64) = SUFIT drabiny koniczyn (MutationConfig.tierUnlock) — gating w RollService.
 -- Explosive Ammo (n78/n95-98), Military Convoy (n106), Nuke (n107), Air Raid (n108): efekty BEHAWIORALNE
 -- (nie plaskie staty) — CombatService/WaveService/RollService.

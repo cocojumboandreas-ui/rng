@@ -17,6 +17,8 @@ local StatBaseConfig = {
 	fireRateMult = 1.0, -- mnoznik szybkostrzelnosci
 	rangeMult = 1.0, -- mnoznik zasiegu
 	coreHP = 200, -- STALE HP rdzenia (design: nieskonczone przetrwanie, gracz w koncu zawsze przegrywa; core_1 +25/rank na wierzchu)
+	coreArmor = 0, -- BASE Core Armor: frakcja redukcji obrazen rdzenia (0..0.9); skille dokladaja delty (I/II/III = +0.10)
+	coreRegen = 0, -- BASE Core Repair: frakcja maxHP rdzenia leczona po KAZDEJ wyczyszczonej fali (0 = brak)
 	coinMult = 1.0, -- mnoznik monet (killReward x coinMult)
 	offlineRate = 10, -- monety/h offline (POST-BRAMKA; placeholder)
 	variantLuck = 1, -- mnoznik szansy wariantu (chanceN / variantLuck); hook pod gamepassy shiny/galaxy

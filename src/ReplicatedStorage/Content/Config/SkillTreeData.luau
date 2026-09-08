@@ -111,10 +111,27 @@ return {
 	{ id="proRoot", parent=nil, dir=nil, label="Back", coin=0, roll=0, desc="Return to the main tree.", showRoot="root" },
 	{ id="baseRoot", parent=nil, dir=nil, label="Back", coin=0, roll=0, desc="Return to the main tree.", showRoot="root" },
 
-	-- ── SEKCJA BASE — SZKICE (0/0 informacyjne; ceny/efekty ustali Olo, pozycje do przestawienia w crafterze) ──
-	{ id="b1", parent="baseRoot", dir="Gora", label="Core Armor I", coin=0, roll=0, desc="Your core takes 10% less damage." },
-	{ id="b2", parent="b1", dir="Gora", label="Core Armor II", coin=0, roll=0, desc="Your core takes 20% less damage." },
-	{ id="b3", parent="b2", dir="Gora", label="Core Repair", coin=0, roll=0, desc="Your core regenerates part of its HP between waves.", bg="purple" },
-	{ id="b4", parent="baseRoot", dir="GoraPrawo", label="Extra Build Slot", coin=0, roll=0, desc="Unlock an extra build slot on your plot." },
-	{ id="b5", parent="baseRoot", dir="GoraLewo", label="Offline Earnings", coin=0, roll=0, desc="+25% offline earnings." },
+	-- ── SEKCJA BASE — kupowalne za COIN, DZIALAJACE (efekty: SkillConfig BASE_EFFECT + SkillEffectConfig.waveSkip).
+	-- Ceny do ~200M na maks poziomach (pozycje hexow do przestawienia w crafterze). ──
+	-- Galaz PANCERZ + NAPRAWA (redukcja obrazen rdzenia + regen miedzy falami):
+	{ id="b1", parent="baseRoot", dir="Gora", label="Core Armor I", coin=25000, roll=0, desc="Your core takes 10% less damage." },
+	{ id="b2", parent="b1", dir="Gora", label="Core Armor II", coin=200000, roll=0, desc="Your core takes 20% less damage." },
+	{ id="b3", parent="b2", dir="GoraLewo", label="Core Armor III", coin=2000000, roll=0, desc="Your core takes 30% less damage.", bg="purple" },
+	{ id="b4", parent="b2", dir="Gora", label="Core Repair", coin=750000, roll=0, desc="Your core regenerates 10% of its HP after each wave.", bg="purple" },
+	-- Galaz WAVE SKIP (kazdy run zaczyna od wyzszej fali; max-z-posiadanych):
+	{ id="ws1", parent="baseRoot", dir="GoraPrawo", label="Wave Skip I", coin=50000, roll=0, desc="Start each run from wave 5." },
+	{ id="ws2", parent="ws1", dir="Gora", label="Wave Skip II", coin=250000, roll=0, desc="Start each run from wave 10." },
+	{ id="ws3", parent="ws2", dir="GoraPrawo", label="Wave Skip III", coin=1000000, roll=0, desc="Start each run from wave 20." },
+	{ id="ws4", parent="ws3", dir="Gora", label="Wave Skip IV", coin=4000000, roll=0, desc="Start each run from wave 30." },
+	{ id="ws5", parent="ws4", dir="GoraPrawo", label="Wave Skip V", coin=12000000, roll=0, desc="Start each run from wave 40." },
+	{ id="ws6", parent="ws5", dir="Gora", label="Wave Skip VI", coin=35000000, roll=0, desc="Start each run from wave 50." },
+	{ id="ws7", parent="ws6", dir="GoraPrawo", label="Wave Skip VII", coin=90000000, roll=0, desc="Start each run from wave 60." },
+	{ id="ws8", parent="ws7", dir="Gora", label="Wave Skip VIII", coin=200000000, roll=0, desc="Start each run from wave 70.", bg="purple" },
+	-- Galaz BUILD SLOTS (+cellBudget; wiecej miejsca na jednostki na placu):
+	{ id="bs1", parent="baseRoot", dir="GoraLewo", label="Build Slots I", coin=100000, roll=0, desc="+10 build slots on your plot." },
+	{ id="bs2", parent="bs1", dir="Gora", label="Build Slots II", coin=500000, roll=0, desc="+20 build slots on your plot." },
+	{ id="bs3", parent="bs2", dir="GoraLewo", label="Build Slots III", coin=2500000, roll=0, desc="+30 build slots on your plot." },
+	{ id="bs4", parent="bs3", dir="Gora", label="Build Slots IV", coin=10000000, roll=0, desc="+40 build slots on your plot." },
+	{ id="bs5", parent="bs4", dir="GoraLewo", label="Build Slots V", coin=45000000, roll=0, desc="+50 build slots on your plot." },
+	{ id="bs6", parent="bs5", dir="Gora", label="Build Slots VI", coin=200000000, roll=0, desc="+60 build slots on your plot.", bg="purple" },
 }

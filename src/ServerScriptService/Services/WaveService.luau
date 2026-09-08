@@ -292,7 +292,9 @@ function WaveService.StartWave(player)
 		return -- tylko z Building (start runu)
 	end
 	local data = _profile and _profile.GetProfile(player)
-	if data then data.waveNumber = 1 end -- KAZDY nowy run startuje od fali 1, nawet po porzuconej/rozlaczonej sesji
+	-- BASE Wave Skip: run startuje od NAJWYZSZEJ posiadanej fali (stats.startWave, min 1). Bez skilla = fala 1.
+	local startWave = (_stat and math.floor(_stat.Get(player).startWave or 1)) or 1
+	if data then data.waveNumber = math.max(1, startWave) end
 	_core.ResetHP(player) -- rdzen PELNY tylko na START RUNU; potem HP przechodzi miedzy falami (bez resetu co fale)
 	beginWave(player)
 end
@@ -350,6 +352,12 @@ local function endWave(player, reason)
 	end
 	if data then
 		data.waveNumber = waveNumber + 1
+	end
+
+	-- BASE Core Repair: podlecz rdzen o frakcje maxHP po KAZDEJ wyczyszczonej fali (0 gdy brak skilla).
+	if _core.Heal then
+		local regen = (_stat and _stat.Get(player).coreRegen) or 0
+		if regen > 0 then _core.Heal(player, regen) end
 	end
 
 	-- FALE CIAGIEM: NIE wracamy do fazy Building miedzy falami i NIE ma opoznienia. WaveEnded to tylko

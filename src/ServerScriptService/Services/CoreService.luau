@@ -51,6 +51,11 @@ function CoreService.ApplyDamage(player, amount: number)
 	if _invuln[player] then
 		return
 	end
+	-- BASE Core Armor: redukcja obrazen rdzenia (frakcja 0..0.9 z drzewa, klampowana w StatProfile).
+	local armor = (_stat and _stat.Get(player).coreArmor) or 0
+	if armor > 0 then
+		amount = amount * (1 - armor)
+	end
 	local hp, maxHp = CoreService.GetHP(player)
 	hp = math.max(0, hp - amount)
 	_hp[player] = hp
@@ -66,6 +71,22 @@ function CoreService.ResetHP(player)
 	_hp[player] = maxHp
 	pushHP(player, maxHp, maxHp)
 	CoreService.CoreDamaged:Fire(player, maxHp, maxHp)
+end
+
+-- BASE Core Repair: podlecz rdzen (frakcja maxHP) — wolane po KAZDEJ wyczyszczonej fali (WaveService.endWave).
+-- Nie przekracza maxHp; zero gdy brak skilla (frac=0). Push do klienta = pasek HP rdzenia rosnie.
+function CoreService.Heal(player, frac: number)
+	if not frac or frac <= 0 then
+		return
+	end
+	local hp, maxHp = CoreService.GetHP(player)
+	if hp >= maxHp then
+		return
+	end
+	hp = math.min(maxHp, hp + maxHp * frac)
+	_hp[player] = hp
+	pushHP(player, hp, maxHp)
+	CoreService.CoreDamaged:Fire(player, hp, maxHp)
 end
 
 function CoreService.Init()

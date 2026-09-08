@@ -61,4 +61,8 @@ return {
 	-- perCycle = ile RÓWNOLEGLYCH reeli na cykl (2 = dwie kolumny obok siebie). interval > czas reveala (~5.5s),
 	-- zeby cykle sie nie nakladaly (nowy cykl czysci poprzedni na kliencie -> nic nie wychodzi poza ekran).
 	autoRoll = { node = "n2", regenPerSec = 0.7, cost = 1, perCycle = 2 },
+
+	-- ── WAVE SKIP (BASE) ──  kazdy run zaczyna od NAJWYZSZEJ posiadanej fali (StatProfile.skillStartWave = max).
+	-- WaveService.StartWave ustawia data.waveNumber = stats.startWave. node = fala startowa.
+	waveSkip = { ws1 = 5, ws2 = 10, ws3 = 20, ws4 = 30, ws5 = 40, ws6 = 50, ws7 = 60, ws8 = 70 },
 }
