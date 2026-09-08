@@ -7,8 +7,31 @@
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local NukeFxLib = {}
+
+-- STAGE 4 — ARTYSTYCZNY WYBUCH (WR_Nukevfx, place-owned): jednorazowy burst 4 emitterow (ogien/flash/dym,
+-- czastki 50-100 studow — juz w skali nuke). Warstwa NA proceduralnym grzybie (bigMushroom / WaveStrike nukeFx)
+-- -> bogatszy wybuch. Emit + Debris. Bezpieczny gdy brak szablonu (early return).
+local NUKE_EMIT = 4 -- czastek na emitter (duze czastki -> malo wystarcza)
+function NukeFxLib.artistNuke(pos: Vector3)
+	local tmpl = ReplicatedStorage:FindFirstChild("WR_Nukevfx")
+	if not tmpl then
+		return
+	end
+	local p = tmpl:Clone()
+	p.Anchored = true; p.CanCollide = false; p.CanQuery = false; p.CanTouch = false; p.CastShadow = false
+	p.Transparency = 1
+	p.CFrame = CFrame.new(pos)
+	p.Parent = NukeFxLib.fxFolder()
+	for _, d in ipairs(p:GetDescendants()) do
+		if d:IsA("ParticleEmitter") then
+			d:Emit(NUKE_EMIT)
+		end
+	end
+	Debris:AddItem(p, 3)
+end
 
 local _fxFolder
 function NukeFxLib.fxFolder(): Folder
@@ -36,6 +59,8 @@ end
 -- swiatlem", NIEPRZEZROCZYSTE wg briefu (poprzednie warstwy za szybko gasly do pelnej przezroczystosci).
 function NukeFxLib.bigMushroom(pos: Vector3)
 	local R = 120
+
+	NukeFxLib.artistNuke(pos) -- STAGE 4: artystyczny burst WR_Nukevfx w epicentrum (na proceduralnym grzybie)
 
 	local core = mkPart(Color3.fromRGB(255, 250, 230), Vector3.new(4, 4, 4), CFrame.new(pos), Enum.PartType.Ball)
 	local light = Instance.new("PointLight")

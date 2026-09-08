@@ -24,6 +24,44 @@ local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
 local IndexController = {}
 local LP = Players.LocalPlayer
 local ASSETS_UNITS = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Units")
+local Workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
+
+-- STAGE 3 — Upgradevfx: aura na POSTAWIONYCH kopiach typu po udanym upgrade (klik LevelUp w Indeksie).
+-- WR_Upgradevfx (place-owned) = jednorazowy burst (6 emitterow, life ~0.8). Klonujemy na KAZDA kopie typu
+-- gracza w Workspace.WR_Units (atr. UnitId/OwnerUserId), Emit, sprzatanie Debris. Zero remote'ow (odpalane z
+-- odpowiedzi RF LevelUpUnit u gracza ktory ulepszyl).
+local UPGRADE_EMIT = 14 -- czastek na emitter (tuning wizualny)
+local function playUpgradeAura(unitId: string)
+	local tmpl = ReplicatedStorage:FindFirstChild("WR_Upgradevfx")
+	local units = Workspace:FindFirstChild("WR_Units")
+	if not tmpl or not units then
+		return
+	end
+	local myId = LP.UserId
+	for _, m in ipairs(units:GetChildren()) do
+		if m:IsA("Model") and m:GetAttribute("UnitId") == unitId then
+			local owner = m:GetAttribute("OwnerUserId")
+			if owner == nil or owner == myId then -- tylko wlasne kopie (solo: wszystkie)
+				local ok, pivot = pcall(function() return m:GetPivot() end)
+				if ok then
+					local aura = tmpl:Clone()
+					aura.Anchored = true
+					aura.CanCollide = false; aura.CanQuery = false; aura.CanTouch = false; aura.CastShadow = false
+					aura.Transparency = 1
+					aura.CFrame = pivot -- srodek jednostki; aura otacza kopie
+					aura.Parent = Workspace
+					for _, d in ipairs(aura:GetDescendants()) do
+						if d:IsA("ParticleEmitter") then
+							d:Emit(UPGRADE_EMIT)
+						end
+					end
+					Debris:AddItem(aura, 2) -- burst zyje ~0.8s; 2s zapasu na dogaszenie
+				end
+			end
+		end
+	end
+end
 
 -- zakladka grafika (kolejnosc) -> kategoria unitowa (variant)
 local TAB_TO_CAT = { "regular", "shiny", "galaxy" } -- Normal, Golden, Rainbow
@@ -756,6 +794,7 @@ function IndexController.start()
 			if type(res) == "table" and res.ok then
 				_levels[unitId] = res.newLevel
 				playUpgradeVFX(_pw.iconHolder, true) -- efekt + napis LEVEL UP TYLKO na obrazku (guzik bez efektu)
+				playUpgradeAura(unitId) -- STAGE 3: aura WR_Upgradevfx na postawionych kopiach typu na placu
 				IndexController._selectUnit(unitId, true) -- tylko staty/level, BEZ przebudowy viewportu (zero migania)
 				-- BEZ renderGrid(): karty pokazuja sam podglad (staty schowane) -> level-up ich nie zmienia, nie odswiezamy siatki
 			else

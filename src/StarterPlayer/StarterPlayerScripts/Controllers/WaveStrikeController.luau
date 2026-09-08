@@ -11,6 +11,7 @@ local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 
 local Net = require(ReplicatedStorage:WaitForChild("Framework"):WaitForChild("Net"))
+local NukeFxLib = require(script.Parent:WaitForChild("NukeFxLib")) -- STAGE 4: artystyczny burst WR_Nukevfx
 
 local WaveStrikeController = {}
 local _folder = nil
@@ -104,6 +105,7 @@ end
 
 -- ── NUKE ──
 local function nukeFx(pos, radius)
+	NukeFxLib.artistNuke(pos) -- STAGE 4: artystyczny burst WR_Nukevfx w epicentrum (na proceduralnym grzybie)
 	boom(pos, Color3.fromRGB(255, 240, 205), radius, 0.6)
 	shockwave(pos, radius, Color3.fromRGB(255, 220, 150))
 	local stem = part(Color3.fromRGB(255, 235, 200), Vector3.new(radius * 0.5, 6, radius * 0.5), CFrame.new(pos + Vector3.new(0, radius * 0.6, 0)) * CFrame.Angles(0, 0, math.rad(90)))
