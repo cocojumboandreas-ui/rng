@@ -9,9 +9,9 @@
 local EnemyFormation = {}
 
 EnemyFormation.LANE_SCALE = 0.9   -- zwezenie rozstawu bocznego (0.9 = szeroki wachlarz na cala szerokosc placu)
-EnemyFormation.SPREAD_START = 0.13 -- do tego t (od bramy) ida PROSTO/gesiego (jeszcze bez rozejscia)
-EnemyFormation.SPREAD_RAMP = 0.22  -- odcinek t na ktorym narasta pelny rozstaw (t: START -> START+RAMP)
-EnemyFormation.CONVERGE_START = 0.80 -- od tego t wrogowie ZWEZAJA sie z powrotem do SRODKA (zejscie PRZED RDZEN: boczni scho­dza na srodek)
+EnemyFormation.SPREAD_START = 0.16 -- do tego t ida WASKO przez brame (nie przenikaja przez wieze/ploty przy wejsciu); potem sie rozlewaja
+EnemyFormation.SPREAD_RAMP = 0.10  -- pelny rozstaw juz po ~10% sciezki OD progu -> tuz ZA brama szybko sie rozsypuja na boki
+EnemyFormation.CONVERGE_START = 0.90 -- od tego t wrogowie ZWEZAJA sie z powrotem do SRODKA (0.90 = trzymaja sloty dluzej, zbiegaja dopiero tuz przy rdzeniu -> mniej zbijania przy bloku)
 
 local BASE_COLS = 9
 local PHI = 0.6180339887498949 -- do deterministycznego "jittera" z id
@@ -33,20 +33,27 @@ function EnemyFormation.lane(id: number, isBoss: boolean?, cellSize: number?): n
 	return (col - center) * cs * EnemyFormation.LANE_SCALE + jitter
 end
 
+EnemyFormation.COL_JITTER = 1.05 -- boczny rozrzut w OBREBIE kolumny (× cellSize): ~1.0 = wypelnia szerokosc kolumny -> ciagly losowy rozrzut miedzy slotami (nie 5 dyskretnych linii)
+
 -- offset W GLAB (wzdluz sciezki) dla wroga o danym id — glebokosc linii, nie plasko.
 function EnemyFormation.fwd(id: number, isBoss: boolean?): number
-	return (frac(id * ALT) - 0.5) * (isBoss and 3 or 9)
+	return (frac(id * ALT) - 0.5) * (isBoss and 4 or 14) -- ±7 (bylo ±4.5): wieksze przetasowanie front-tyl -> luzniej
 end
 
 -- BOCZNY offset dla KONKRETNEJ KOLUMNY CELU (1..width) — DOKLADNE wyrownanie do kolumny siatki bazy,
 -- zeby wrog stanal dokladnie nad kolumna, w ktorej gracz stawia bloki. BEZ LANE_SCALE (to nie kosmetyczny
 -- wachlarz, tylko realny cel). center = srodkowa kolumna (width nieparzysty -> jedna, np. 9 -> 5).
 -- Znak (ktora strona) obsluguje perp renderu/serwera — serwer i klient uzywaja tej samej konwencji.
-function EnemyFormation.laneForColumn(col: number, width: number?, cellSize: number?): number
+function EnemyFormation.laneForColumn(col: number, width: number?, cellSize: number?, id: number?): number
 	local w = width or 9
 	local cs = cellSize or 6
 	local center = (w + 1) / 2 -- 9 -> 5.0
-	return (col - center) * cs
+	local base = (col - center) * cs
+	-- deterministyczny jitter boczny z id: wrogowie w tej samej kolumnie NIE stoja w idealnej linii,
+	-- tylko rozlewaja sie luzno w obrebie kolumny. Wspolny serwer+klient (to samo id) -> render == realna
+	-- pozycja (blokowanie/celowanie zgodne). Skalowany spreadAt() w renderze -> przy rdzeniu i tak zbiega do srodka.
+	local jitter = id and (frac(id * PHI) - 0.5) * cs * EnemyFormation.COL_JITTER or 0
+	return base + jitter
 end
 
 -- narastanie rozstawu wzdluz sciezki t∈[0,1]: 0 przy bramie (gesiego) -> 1 na placu (pelny wachlarz).

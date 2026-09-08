@@ -5,7 +5,9 @@
 -- Wagi = placeholder do dostrojenia (BALANCE.md), stosunek srodek:flanki ustawia Andreas.
 local LaneConfig = {
 	columns = { 3, 4, 5, 6, 7 },
-	weights = { [3] = 1, [4] = 8, [5] = 10, [6] = 8, [7] = 1 },
+	-- splaszczone: boki (3,7) realnie uzywane -> wrogowie losowo rzucaja sie w lewo/prawo po 5 srodkowych slotach
+	-- (serwer losuje kolumne per wrog RNG, wysyla do klienta -> rozne strony bez sekwencji). Srodek nadal lekko dominuje.
+	weights = { [3] = 5, [4] = 7, [5] = 8, [6] = 7, [7] = 5 },
 }
 
 return LaneConfig

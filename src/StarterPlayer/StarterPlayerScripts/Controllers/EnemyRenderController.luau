@@ -44,6 +44,7 @@ local COIN_CAP = 48 -- max jednoczesnych monet-FX (fontanna z killa)
 
 local RigAnimSetup = require(Framework:WaitForChild("RigAnimSetup"))
 local GunRig = require(Framework:WaitForChild("GunRig")) -- bron Olo (Tool) w prawej rece, standardowy grip (WR_GunGrip)
+local UnitVfxLib = require(script.Parent:WaitForChild("UnitVfxLib")) -- artystyczne VFX luf (te same co jednostki gracza)
 -- WR BACKUP starych anim R6: idle=114633582166730 walk=123805470740320 shot=109739383922402
 local ENEMY_ANIM = { idle = "rbxassetid://114633582166730", walk = "rbxassetid://123805470740320", shot = "rbxassetid://109739383922402" }
 local ANIM_WALK_SPEED = 1.5 -- mnoznik tempa animacji chodu wroga (feet-slide fix)
@@ -71,6 +72,8 @@ local _coinActive = 0 -- licznik aktywnych monet-FX (cap kosztu)
 local _weaponByModel = setmetatable({}, { __mode = "k" }) -- model -> { prof, part }  (bron rozpoznana raz)
 local _rigByModel = setmetatable({}, { __mode = "k" }) -- model -> { kind, prof, legs/spin }  (rig anim raz)
 local _hpBarByModel = setmetatable({}, { __mode = "k" }) -- model -> { gui, fill, label }  (pasek HP nad wrogiem, raz)
+local _vfxByModel = setmetatable({}, { __mode = "k" }) -- model -> handle UnitVfxLib | false (brak vfx dla modelu)  (artystyczny blysk luf, mount raz)
+local REF_VEHICLE_MP = 10.5 -- MainPart pojazdu GRACZA pod ktory wyskalowany jest szablon WR_UnitVfx (do skalowania enemy pojazdow)
 local _heavy = 0 -- licznik aktywnych ciezkich FX (cap kosztu)
 
 -- pasek HP wroga (jawne HP): czerwony->zielony + liczba cur/max
@@ -346,6 +349,8 @@ end
 
 local function release(model, poolKey)
 	if not model then return end
+	local rvfx = _vfxByModel[model]
+	if rvfx then rvfx:setFlame(false) end -- zgas strumien ognia zanim wrog trafi do puli
 	local rrig = _rigByModel[model]
 	if rrig and rrig.real then
 		if rrig.tWalk then rrig.tWalk:Stop(0) end
@@ -442,10 +447,58 @@ local function flameBurst(muzzle, target)
 	task.delay(0.45, function() part:Destroy(); heavyGive() end)
 end
 
+-- artystyczny VFX luf wroga (te same szablony WR_UnitVfx co jednostki gracza). Mount raz per MODEL (pula), cache.
+-- Zwraca handle lub nil (model bez szablonu -> proceduralny fallback ponizej). Pojazdy skalowane do swojej wielkosci
+-- (szablon jest pod pojazd GRACZA ~10.5; enemy pojazdy sa mniejsze -> scaleBy).
+local function ensureEnemyVfx(e)
+	local model = e.model
+	if not model then return nil end
+	local cached = _vfxByModel[model]
+	if cached ~= nil then return cached or nil end -- false = sprawdzone, brak szablonu
+	local mn = e.modelName
+	if not (mn and UnitVfxLib.has(mn)) then _vfxByModel[model] = false; return nil end
+	local v = UnitVfxLib.mount(_fxFolder, mn)
+	if not v then _vfxByModel[model] = false; return nil end
+	local gun = model:FindFirstChild("WR_Gun")
+	if gun then -- ZOLNIERZ: znacznik na lufie broni Olo
+		v._att = gun:FindFirstChild("WR_Muzzle", true)
+		v._handle = gun:FindFirstChild("Handle")
+	else -- POJAZD: znacznik na MainPart + skala do wielkosci wroga
+		v._att = model:FindFirstChild("WR_Muzzle", true)
+		local mp = model:FindFirstChild("MainPart", true)
+		if mp then v:scaleBy(mp.Size.Magnitude / REF_VEHICLE_MP) end
+	end
+	_vfxByModel[model] = v
+	return v
+end
+
 -- strzal wroga: muzzle = swiatowa pozycja lufy, per rodzaj broni
 local function fireWeapon(e, muzzle, target)
 	local prof = (e.weapon and e.weapon.prof) or DEFAULT_WEAPON
 	local k = prof.kind
+	local v = ensureEnemyVfx(e)
+	if v then
+		-- ustaw efekt na lufie w momencie strzalu (krotki Emit -> bez glue co klatke, jak przy jednostkach gracza).
+		if v._handle and v._att and v._att.Parent then
+			v:place(v._att.WorldPosition, target - v._att.WorldPosition) -- POSTAC: efekt celuje w cel (styl reki)
+		elseif v._att and v._att.Parent then
+			v:placeCF(v._att.WorldCFrame) -- POJAZD: lufy poziomo do przodu (jak nasz helikopter/czolg)
+		else
+			v:place(muzzle, target - muzzle) -- brak znacznika: heurystyka z muzzle
+		end
+		if k == "flame" then
+			v:setFlame(true) -- strumien ognia; wylacz po krotkim oknie ataku
+			task.delay(0.14, function() if _vfxByModel[e.model] == v then v:setFlame(false) end end)
+			return
+		end
+		v:flash() -- artystyczny blysk wystrzalu
+		if k == "rpg" then
+			rpgShot(muzzle, target, prof) -- rakieta leci do celu + wybuch
+		elseif k == "tank" then
+			boom(target, prof.boom or Color3.fromRGB(255, 150, 50), 4)
+		end
+		return
+	end
 	if k == "flame" then flameBurst(muzzle, target); return end
 	if k == "rpg" then rpgShot(muzzle, target, prof); return end
 	-- gun / minigun / tank: hitscan blysk+smuga z puli, kolor per bron
@@ -1116,7 +1169,7 @@ local function onEvents(payload)
 						rig = _rigByModel[model], -- rig anim ruchu (nogi/kola/wirniki)
 						-- pas boczny = KOLUMNA CELU z serwera (s.col) -> IDENTYCZNY lane co serwer (blokowanie/wyrownanie do kolumny).
 						-- fallback (brak col, stary pakiet) -> deterministyczny lane z id.
-						lane = s.col and EnemyFormation.laneForColumn(s.col, (GameConfig.Grid and GameConfig.Grid.width) or 9, (GameConfig.Grid and GameConfig.Grid.cellSize) or 6)
+						lane = s.col and EnemyFormation.laneForColumn(s.col, (GameConfig.Grid and GameConfig.Grid.width) or 9, (GameConfig.Grid and GameConfig.Grid.cellSize) or 6, s.id)
 							or EnemyFormation.lane(s.id, s.isBoss, (GameConfig.Grid and GameConfig.Grid.cellSize) or 6),
 						fwd = EnemyFormation.fwd(s.id, s.isBoss), -- glebokosc DETERMINISTYCZNA z id -> zgodna z serwerem
 						animPhase = math.random() * 6.28, -- desync animacji

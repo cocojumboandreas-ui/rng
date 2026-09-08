@@ -386,8 +386,13 @@ local function fire(st, target)
 	-- gun / minigun / heli / jet: strzal z KAZDEGO muzzle
 	local col = prof.laser or prof.tracer
 	if st.vfx then
-		local muzzle = muzzleWorld(st, pivot, target)
-		st.vfx:place(muzzle, muzzleDir(st, muzzle, target))
+		-- POSTAC (ma handlePart): place() celuje efektem w cel (+Y = kierunek strzalu, styl reki).
+		-- POJAZD (heli/jet, brak handlePart): glue juz trzyma efekt na MainPart z lufami do przodu (poziomo);
+		-- place() by to przeorientowalo (+Y na cel) i wyszlo pionowo/nie na dzialach -> pomijamy, tylko flash().
+		if st.handlePart then
+			local muzzle = muzzleWorld(st, pivot, target)
+			st.vfx:place(muzzle, muzzleDir(st, muzzle, target))
+		end
 		st.vfx:flash() -- artystyczny blysk (WR_UnitVfx)
 	else
 		for i, mloc in ipairs(st.muzzleLocals) do
@@ -444,12 +449,13 @@ local function step(dt)
 			-- artystyczny VFX PRZYKLEJONY na wylot lufy KAZDA klatke (WR_Muzzle jedzie z animacja broni),
 			-- nie tylko w chwili strzalu -> efekt zawsze siedzi w lufie, nie odklejony.
 			if st.vfx and st.muzzleAtt and st.muzzleAtt.Parent then
-				if st.vfx.flameMode then
-					st.vfx:placeCF(st.muzzleAtt.WorldCFrame) -- flame: pelny CFrame (start+kierunek strumienia z edycji)
+				if st.vfx.flameMode or not (st.handlePart and st.handlePart.Parent) then
+					-- flame + POJAZDY (brak Handle): pelny CFrame ze znacznika (pozycja+kierunek ustawione w edycji)
+					st.vfx:placeCF(st.muzzleAtt.WorldCFrame)
 				else
+					-- zolnierz: pozycja z wylotu, +Y wzdluz lufy (Handle->muzzle)
 					local mpos = st.muzzleAtt.WorldPosition
-					local dir = (st.handlePart and st.handlePart.Parent) and (mpos - st.handlePart.Position) or st.muzzleAtt.WorldCFrame.UpVector
-					st.vfx:place(mpos, dir)
+					st.vfx:place(mpos, mpos - st.handlePart.Position)
 				end
 			end
 
@@ -720,10 +726,12 @@ local function track(model)
 	st.vfx = UnitVfxLib.mount(worldParent(), modelName)
 	if st.vfx then -- punkt wylotu: WR_Muzzle attachment (znacznik na lufie) > lufa (WR_Gun) > heurystyka
 		local gun = model:FindFirstChild("WR_Gun")
-		if gun then
+		if gun then -- zolnierz: bron Olo (GunRig) z Handle
 			st.muzzleAtt = gun:FindFirstChild("WR_Muzzle", true)
 			st.muzzlePart = gun:FindFirstChild("ShotPart") or gun:FindFirstChild("GunBarrel") or gun:FindFirstChild("MainPart")
 			st.handlePart = gun:FindFirstChild("Handle")
+		else -- pojazd: znacznik na czesci broni pojazdu (Cannon/MiniGun); brak Handle -> kierunek z +Y znacznika
+			st.muzzleAtt = model:FindFirstChild("WR_Muzzle", true)
 		end
 	end
 	setupFx(model, prof, st, sz.X, sz.Y, sz.Z)

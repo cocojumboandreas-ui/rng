@@ -216,7 +216,7 @@ function CombatService.SpawnEnemies(player, waveNumber: number, spec)
 			col = col, -- kolumna celu (1..width); klient dostaje ja w spawnList i liczy IDENTYCZNY lane
 			-- lane = boczny offset dokladnie nad kolumna celu; glebokosc (fwd) deterministyczna z id (nie gesiego w kolumnie).
 			-- Blokowanie/celowanie/dmg licza REALNA pozycje (nie srodek) -> bloki/jednostki na kolumnie celu zatrzymuja wroga.
-			lane = EnemyFormation.laneForColumn(col, width, cellSize),
+			lane = EnemyFormation.laneForColumn(col, width, cellSize, id), -- id -> deterministyczny jitter w obrebie kolumny (luzny rozstaw, nie linia)
 			fwd = EnemyFormation.fwd(id, isBoss),
 		}
 		spawnList[#spawnList + 1] = { id = id, typeId = spec.enemyTypeId, pathT = enemies[id].pathT, isBoss = isBoss, maxHp = hp, col = col }

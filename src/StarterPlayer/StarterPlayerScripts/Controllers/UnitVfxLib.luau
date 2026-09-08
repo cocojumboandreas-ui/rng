@@ -120,6 +120,27 @@ function UnitVfxLib:boom(worldPos: Vector3)
 	Debris:AddItem(b, 1.5)
 end
 
+-- skaluj CALY efekt (pozycje attachmentow + rozmiar czastek + predkosc) o wspolczynnik f.
+-- Uzywane dla POJAZDOW wroga: szablon jest wyskalowany pod pojazd GRACZA (MainPart~10.5), a wrogi
+-- pojazd ma inna skale (buildEnemyModel skaluje wg rozmiaru) -> dopasuj efekt do jego wielkosci.
+function UnitVfxLib:scaleBy(f: number)
+	if not (self.muzzle and self.muzzle.Parent) or math.abs(f - 1) < 1e-3 then return end
+	for _, d in ipairs(self.muzzle:GetDescendants()) do
+		if d:IsA("Attachment") then
+			d.Position = d.Position * f
+		elseif d:IsA("ParticleEmitter") then
+			local kp = {}
+			for _, p in ipairs(d.Size.Keypoints) do
+				kp[#kp + 1] = NumberSequenceKeypoint.new(p.Time, p.Value * f, p.Envelope * f)
+			end
+			d.Size = NumberSequence.new(kp)
+			if d.Speed.Min ~= 0 or d.Speed.Max ~= 0 then
+				d.Speed = NumberRange.new(d.Speed.Min * f, d.Speed.Max * f)
+			end
+		end
+	end
+end
+
 function UnitVfxLib:destroy()
 	if self.muzzle then
 		self.muzzle:Destroy()
