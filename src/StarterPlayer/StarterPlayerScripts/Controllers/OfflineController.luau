@@ -8,6 +8,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 
 local Framework = ReplicatedStorage:WaitForChild("Framework")
 local Net = require(Framework:WaitForChild("Net"))
@@ -54,7 +55,7 @@ local function hide(inst) if inst then inst.Visible = false end end
 
 -- OFFLINE COUNT-UP (jak w referencji Build a Base): licznik "+N" liczy W GORE 0 -> target przez dur sekund,
 -- a karty dropow wskakuja po kolei zsynchronizowane z tym odliczaniem (patrz handler + reveal).
-local OFFLINE_COUNT_DUR = 1.3
+local OFFLINE_COUNT_DUR = 1.8 -- tempo referencji (film): licznik ~2s, itemy wpadaja co ~0.4-0.5s
 local function countUp(label, target, dur)
 	if not label then return end
 	target = math.max(0, math.floor((target or 0) + 0.5))
@@ -232,7 +233,9 @@ function OfflineController.start()
 		if not template then return end
 		local u = GameConfig.Units[drop.unitId]
 		local card = template:Clone()
-		card.Name = "WR_DropCard"; card.Visible = true; card.LayoutOrder = order; card.Parent = bestDrops
+		-- KONSTRUKCJA SEKWENCJI NA Visible (binarna): karta RODZI SIE NIEWIDOCZNA — petla pokazu wlacza je
+		-- PO KOLEI. Niewidoczny GuiObject nie renderuje sie NIGDY (zadna skala/constraint tego nie obejdzie).
+		card.Name = "WR_DropCard"; card.Visible = false; card.LayoutOrder = order; card.Parent = bestDrops
 		-- rozroznij labele Text po pozycji Y: dol = NAZWA; gora = ILOSC -> przenosimy w LEWY gorny rog "xN" (jak ref)
 		for _, t in ipairs(card:GetChildren()) do
 			if t:IsA("TextLabel") and t.Name == "Text" then
@@ -272,18 +275,30 @@ function OfflineController.start()
 		odds.TextColor3 = col; odds.Text = "1 in " .. fmtNum(drop.oddsN or 0); odds.ZIndex = 12
 		local os_ = Instance.new("UIStroke"); os_.Color = Color3.fromRGB(20, 15, 25); os_.Thickness = 2.6; os_.LineJoinMode = Enum.LineJoinMode.Round; os_.Parent = odds
 		odds.Parent = card
-		-- pop-in: UIScale=1 TERAZ (fit mierzy pelny rozmiar); staggered reveal (0->1) odpala handler po zmierzeniu
-		local pop = Instance.new("UIScale"); pop.Name = "WR_Pop"; pop.Scale = 1; pop.Parent = card
+		-- pop-in: karta RODZI SIE SCHOWANA (Scale=0) — nie moze mignac "naraz" nawet w otwartym panelu.
+		-- (fit nie potrzebuje juz pelnego rozmiaru — liczony z matematyki szablonu w sekwencji pokazu.)
+		local pop = Instance.new("UIScale"); pop.Name = "WR_Pop"; pop.Scale = 0; pop.Parent = card
+		-- ROZBLYSK za karta przy pop-inie (dopamina): radialny glow (tekstura z packa NodeTree, place-owned)
+		local glow = Instance.new("ImageLabel")
+		glow.Name = "WR_Glow"; glow.BackgroundTransparency = 1
+		glow.Image = "rbxassetid://80865197080866"
+		glow.ImageColor3 = Color3.fromRGB(255, 236, 150)
+		glow.AnchorPoint = Vector2.new(0.5, 0.5); glow.Position = UDim2.fromScale(0.5, 0.5)
+		glow.Size = UDim2.fromScale(1.2, 1.2); glow.ImageTransparency = 1; glow.ZIndex = 0
+		glow.Parent = card
 	end
 
+	local _showGen = 0 -- GENERATION GUARD: nowy payload uniewaznia WSZYSTKIE stare sekwencje pokazu (race replay/respawn)
 	Net.get("OfflineEarnings").OnClientEvent:Connect(function(p)
 		if type(p) ~= "table" or ((p.coins or 0) <= 0 and (p.rolls or 0) <= 0) then
 			return
 		end
+		_showGen += 1
+		local gen = _showGen
 		claimed = false
 		doubleId = tonumber(p.doubleId) or 0
-		countUp(moneyVal, p.coins or 0, OFFLINE_COUNT_DUR) -- licznik liczy W GORE (jak referencja)
-		countUp(rollsVal, p.rolls or 0, OFFLINE_COUNT_DUR)
+		canvas.Visible = false -- zamknij ewentualny OTWARTY panel (re-fire) — sekwencja pokaze go od zera
+		setText(moneyVal, "+0"); setText(rollsVal, "+0") -- liczniki startuja od zera; count-up rusza przy POKAZANIU panelu
 		setText(offlineInfo, ("While you were away (%s), you earned:"):format(fmtDuration(p.seconds or 0)))
 		if dropsValue then setText(dropsValue, "+" .. fmtNum(p.coins or 0)); dropsValue.LayoutOrder = 999 end -- monety NA KONCU rzedu (jak ref)
 
@@ -295,50 +310,130 @@ function OfflineController.start()
 
 		-- FIT: przeskaluj CALA liste (karty + "+N") jednym UIScale, zeby zmiescila sie w panelu (nie wystawala
 		-- z lewej/prawej). Mierzymy naturalna szerokosc po klatce, potem ustawiamy scale <= 1.
-		if bestDrops then
-			local scaleObj = bestDrops:FindFirstChild("WR_FitScale") or Instance.new("UIScale")
-			scaleObj.Name = "WR_FitScale"; scaleObj.Scale = 1; scaleObj.Parent = bestDrops
-			task.defer(function()
-				if not (bestDrops and bestDrops.Parent) then return end
+		-- SEKWENCJA POKAZU (jak referencja-film): (1) gra ZALADOWANA + postac stoi + oddech ->
+		-- (2) karty SCHOWANE (Scale=0) ZANIM panel sie pokaze (zero szans na "wszystko naraz") ->
+		-- (3) panel wchodzi -> (4) liczniki lecza w gore + itemy wpadaja PO KOLEI (pop Back co ~0.4-0.5s).
+		task.spawn(function()
+			if not game:IsLoaded() then game.Loaded:Wait() end
+			if not LP.Character then LP.CharacterAdded:Wait() end
+			task.wait(1.0) -- oddech: gracz realnie widzi swiat zanim wjedzie popup
+			if gen ~= _showGen or not canvas.Parent then return end -- nowszy payload przejal pokaz -> stara sekwencja umiera
+
+			local cards = {}
+			if bestDrops then
+				-- FIT z MATEMATYKI szablonu (nie z AbsoluteSize po klatce — zadnych wyscigow renderu):
+				-- szer. karty = Size szablonu wzgledem bestDrops; content = karty + "+N" + odstepy.
+				local scaleObj = bestDrops:FindFirstChild("WR_FitScale") or Instance.new("UIScale")
+				scaleObj.Name = "WR_FitScale"; scaleObj.Scale = 1; scaleObj.Parent = bestDrops
+				local panelW = bestDrops.AbsoluteSize.X
 				local lay2 = bestDrops:FindFirstChildWhichIsA("UIListLayout")
 				local pad2 = (lay2 and lay2.Padding.Offset) or 0
-				local sumW, cnt = 0, 0
-				for _, c in ipairs(bestDrops:GetChildren()) do
-					if c.Name == "WR_DropCard" or (c.Name == "Value" and c:IsA("GuiObject") and c.Visible) then
-						sumW += c.AbsoluteSize.X; cnt += 1
-					end
-				end
-				local content = sumW + math.max(0, cnt - 1) * pad2
-				local panel = bestDrops.AbsoluteSize.X
-				scaleObj.Scale = (content > panel and panel > 0) and math.clamp((panel - 6) / content, 0.4, 1) or 1
-				-- STAGGERED REVEAL: karty pojawiaja sie PO KOLEI (pop 0->1 z Back), nie naraz (jak Build a Base RNG)
-				local cards = {}
+				local cardW = template and (template.Size.X.Scale * panelW + template.Size.X.Offset) or 0
+				local valueW = (dropsValue and dropsValue.Visible) and (dropsValue.Size.X.Scale * panelW + dropsValue.Size.X.Offset) or 0
 				for _, c in ipairs(bestDrops:GetChildren()) do
 					if c.Name == "WR_DropCard" then cards[#cards + 1] = c end
 				end
 				table.sort(cards, function(a, b) return (a.LayoutOrder or 0) < (b.LayoutOrder or 0) end)
+				local cnt = #cards + ((valueW > 0) and 1 or 0)
+				local content = #cards * cardW + valueW + math.max(0, cnt - 1) * pad2
+				scaleObj.Scale = (content > panelW and panelW > 0) and math.clamp((panelW - 6) / content, 0.4, 1) or 1
+				-- karty NIEWIDOCZNE zanim panel wejdzie
 				for _, c in ipairs(cards) do
 					local pp = c:FindFirstChild("WR_Pop")
 					if pp then pp.Scale = 0 end
 				end
-				-- karty rozlozone na czas COUNT-UP (ostatnia wpada tuz przed koncem odliczania) — sync jak referencja
-				local step = (#cards > 0) and math.clamp(OFFLINE_COUNT_DUR * 0.8 / #cards, 0.08, 0.26) or 0.1
-				for i, c in ipairs(cards) do
-					local pp = c:FindFirstChild("WR_Pop")
-					if pp then
-						task.delay((i - 1) * step, function()
-							if pp.Parent then
-								TweenService:Create(pp, TweenInfo.new(0.26, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
-							end
-						end)
-					end
+			end
+
+			-- WIERSZE Coins/Rolls tez animowane — schowane przed pokazem panelu
+			local function ensurePop(inst)
+				if not inst then return nil end
+				local sc = inst:FindFirstChild("WR_Pop")
+				if not sc then sc = Instance.new("UIScale"); sc.Name = "WR_Pop"; sc.Parent = inst end
+				return sc
+			end
+			local mrRow = moneyVal and moneyVal.Parent -- Values.Money (caly wiersz z ikona)
+			local rrRow = rollsVal and rollsVal.Parent -- Values.Rolls
+			local mrPop = ensurePop(mrRow)
+			local rrPop = ensurePop(rrRow)
+			-- BINARNE ukrycie (Visible) + skala jako ozdoba — wiersze tez nie moga "mignac"
+			if mrRow then mrRow.Visible = false end
+			if rrRow then rrRow.Visible = false end
+			if mrPop then mrPop.Scale = 0 end
+			if rrPop then rrPop.Scale = 0 end
+
+			task.wait() -- klatka: wszystkie Scale=0 zaaplikowane przed pierwszym renderem panelu
+			if gen ~= _showGen then return end
+			-- REZYSERIA (user): (A) najpierw SAM "Welcome Back!" + opis -> (B) Coins wskakuje i liczy,
+			-- chwile potem Rolls -> (C) NA KONCU itemy po kolei z wypukleniem.
+			--
+			-- JEDNA PETLA CZASU (RenderStepped) zamiast tweenow/delayow: KAZDA klatka WYMUSZA stan KAZDEGO
+			-- elementu wprost z zegara t. Konstrukcyjnie niemozliwe, zeby karty wyprzedzily wiersze albo
+			-- pokazaly sie "naraz" — dopoki t nie dojdzie do ich startu, sa trzymane na Scale=0 co klatke.
+			canvas.Visible = true -- (A) panel: naglowek + opis (wiersze i karty trzymane na 0 przez petle)
+			local ROW_M, ROW_R = 0.55, 0.95 -- starty wierszy Coins/Rolls [s od pokazania panelu]
+			local CARD0 = 1.55 -- start 1. karty
+			local STEP = (#cards > 0) and math.clamp(2.2 / #cards, 0.32, 0.50) or 0.4 -- odstep miedzy kartami
+			local DUR = 0.6 -- czas sprezyny jednego elementu
+			-- SPREZYNA (dopamina): mala -> przestrzela ~125% -> buja sie i osiada na 100% (tlumiony cosinus)
+			local function spring(x)
+				if x <= 0 then return 0 end
+				if x >= 1 then return 1 end
+				return 1 - math.exp(-5.5 * x) * math.cos(11 * x)
+			end
+			-- DZWIEK popa (wbudowany, zawsze sie laduje); pitch ROSNIE z kazda karta = eskalacja jak w slocie
+			local popSnd = canvas:FindFirstChild("WR_PopSnd") or Instance.new("Sound")
+			popSnd.Name = "WR_PopSnd"; popSnd.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+			popSnd.Volume = 0.45; popSnd.Parent = canvas
+			local played = {}
+			local T0 = os.clock()
+			local countM, countR = false, false
+			local conn
+			conn = RunService.RenderStepped:Connect(function()
+				if gen ~= _showGen or not canvas.Parent then conn:Disconnect() return end
+				local t = os.clock() - T0
+				-- wiersze: Visible = binarna kolejnosc; sprezyna = ozdoba
+				if mrRow then mrRow.Visible = t >= ROW_M end
+				if rrRow then rrRow.Visible = t >= ROW_R end
+				if mrPop then mrPop.Scale = spring((t - ROW_M) / 0.5) end
+				if rrPop then rrPop.Scale = spring((t - ROW_R) / 0.5) end
+				if not countM and t >= ROW_M then
+					countM = true; countUp(moneyVal, p.coins or 0, OFFLINE_COUNT_DUR)
+					popSnd.PlaybackSpeed = 0.8; popSnd:Play()
 				end
+				if not countR and t >= ROW_R then
+					countR = true; countUp(rollsVal, p.rolls or 0, OFFLINE_COUNT_DUR)
+					popSnd.PlaybackSpeed = 0.9; popSnd:Play()
+				end
+				local done = t >= ROW_R + 0.6
+				for i, c in ipairs(cards) do
+					local x = (t - (CARD0 + (i - 1) * STEP)) / DUR
+					c.Visible = x > 0 -- BINARNIE: karta ISTNIEJE na ekranie dopiero od swojego czasu (po kolei)
+					local pp = c:FindFirstChild("WR_Pop")
+					if pp then pp.Scale = spring(x) end
+					-- wobble obrotu (tlumiony) + rozblysk glow gasnacy w trakcie popa
+					c.Rotation = (x > 0 and x < 1) and (-16 * math.exp(-6 * x) * math.cos(10 * x)) or 0
+					local glow = c:FindFirstChild("WR_Glow")
+					if glow then
+						if x > 0 and x < 1 then
+							glow.ImageTransparency = 0.1 + 0.9 * x
+							glow.Size = UDim2.fromScale(1.15 + 1.1 * x, 1.15 + 1.1 * x)
+						else
+							glow.ImageTransparency = 1
+						end
+					end
+					if x > 0 and not played[i] then
+						played[i] = true
+						popSnd.PlaybackSpeed = 1 + i * 0.08 -- kazda kolejna karta wyzszy ton (eskalacja)
+						popSnd:Play()
+					end
+					if x < 1 then done = false end
+				end
+				if done then conn:Disconnect() end
 			end)
-		end
+		end)
 
 		-- CLAIM X2 zawsze widoczny obok Collect (fiolet ustawiony w start); klik dziala gdy doubleId > 0
-
-		canvas.Visible = true
+		-- canvas.Visible ustawia sekwencja pokazu wyzej (po game.Loaded) — nie odslaniamy przedwczesnie
 	end)
 end
 
