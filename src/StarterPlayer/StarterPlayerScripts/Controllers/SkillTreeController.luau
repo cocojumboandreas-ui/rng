@@ -439,8 +439,7 @@ function SkillTreeController.start()
 		if input.UserInputType == Enum.UserInputType.MouseWheel then
 			setZoom(myZoom + input.Position.Z * 0.12)
 			clampMainFrame()
-		elseif panning and (input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch) then
+		elseif panning and input.UserInputType == Enum.UserInputType.Touch then
 			mainFrame.Position += UDim2.fromOffset(input.Delta.X, input.Delta.Y)
 			clampMainFrame()
 		end
@@ -459,7 +458,9 @@ function SkillTreeController.start()
 	local lastMouse = nil
 	RunService.RenderStepped:Connect(function()
 		if not NodeTreeClient.isTreeVisible() then lastMouse = nil; return end
-		if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then lastMouse = nil; return end
+		local lmb = panning and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+			local rmb = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+			if not (lmb or rmb) then lastMouse = nil; return end -- LPM tylko gdy drag zaczal sie na tle (klik w hex kupuje)
 		local mp = UserInputService:GetMouseLocation()
 		if lastMouse then
 			local dx, dy = mp.X - lastMouse.X, mp.Y - lastMouse.Y
