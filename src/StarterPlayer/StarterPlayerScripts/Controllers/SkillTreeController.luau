@@ -160,6 +160,47 @@ function SkillTreeController.start()
 	mkIcon(DICE_ICON, 4)
 	local rollsL = mkAmt(5)
 
+	-- WR: mapa NODE-BAZOWY -> WEJSCIE SEKCJI (n73#1 PRO / n69#1 BASE) z lancucha rodzicow packa.
+	-- Alert "9+" na wejsciu = ile KUPOWALNYCH hexow w tej sekcji jeszcze nie masz (jak we wzorcu).
+	local sectionEntry = {}
+	local sectionOf = {}
+	do
+		for id, node in pairs(nodes) do
+			if node.showRootId == "proRoot" or node.showRootId == "baseRoot" then
+				sectionEntry[node.showRootId] = id
+			end
+		end
+		local function rootSectionOf(id)
+			local cur, guard = id, 0
+			while cur and guard < 60 do
+				local pn = nodes[cur] and nodes[cur].parentNodeId
+				if pn == "proRoot" or pn == "baseRoot" then return pn end
+				cur = pn; guard += 1
+			end
+			return nil
+		end
+		for id in pairs(nodes) do
+			local base = string.match(id, "^(.-)#")
+			if base and SkillConfig.nodes[base] then
+				local sec = rootSectionOf(id)
+				if sec and sectionEntry[sec] then sectionOf[base] = sectionEntry[sec] end
+			end
+		end
+	end
+	local function updateSectionAlerts()
+		local per = {}
+		for id in pairs(SkillConfig.nodes) do
+			local entry = sectionOf[id]
+			if entry and not ownedIds[id .. "#1"] then
+				per[entry] = (per[entry] or 0) + 1
+			end
+		end
+		for _, entry in pairs(sectionEntry) do
+			local cnt = per[entry] or 0
+			NodeTreeClient.setAlertText(entry, (cnt > 0) and ((cnt > 9) and "9+" or tostring(cnt)) or nil)
+		end
+	end
+
 	local function refreshHeader()
 		local owned = 0
 		for _ in pairs(ownedIds) do
@@ -175,6 +216,7 @@ function SkillTreeController.start()
 			if NodeTreeClient.setBalances then NodeTreeClient.setBalances(coins, rolls) end
 		end)
 		updateSkillBadge() -- WR: badge Skills = ile mozna teraz kupic
+		updateSectionAlerts() -- WR: alert "9+" na wejsciach sekcji (ile hexow w srodku zostalo)
 	end
 
 	local function markOwned(id: string)
@@ -326,7 +368,7 @@ function SkillTreeController.start()
 	local ntGui = playerGui:WaitForChild("NodeTreeGui")
 	local mainFrame = ntGui:WaitForChild("MainFrame")
 
-	local ZOOM_START, ZOOM_MIN, ZOOM_MAX = 0.45, 0.35, 2.2
+	local ZOOM_START, ZOOM_MIN, ZOOM_MAX = 0.95, 0.35, 2.2 -- start BLISKO (jak wzorzec), nie oddalony na cale drzewo
 	local myZoom = ZOOM_START
 	local function setZoom(z)
 		myZoom = math.clamp(z, ZOOM_MIN, ZOOM_MAX)
@@ -480,10 +522,20 @@ function SkillTreeController.start()
 			clickBlock.Visible = true
 			task.defer(function()
 				if not NodeTreeClient.isTreeVisible() then return end
-				local minx, miny, maxx, maxy = nodeBBox()
-				if minx ~= math.huge then
-					local vp = camera.ViewportSize
-					mainFrame.Position += UDim2.fromOffset(vp.X * 0.5 - (minx + maxx) * 0.5, vp.Y * 0.5 - (miny + maxy) * 0.5)
+				local vp = camera.ViewportSize
+				-- CENTRUJ NA ROOT (jak wzorzec: start blisko rdzenia), nie na cale drzewo (to dawalo oddalenie)
+				local rootInst
+				for _, c in ipairs(mainFrame:GetChildren()) do
+					if c:IsA("GuiObject") and c:GetAttribute("WR_NodeId") == "root" then rootInst = c break end
+				end
+				if rootInst then
+					local p, s = rootInst.AbsolutePosition, rootInst.AbsoluteSize
+					mainFrame.Position += UDim2.fromOffset(vp.X * 0.5 - (p.X + s.X * 0.5), vp.Y * 0.5 - (p.Y + s.Y * 0.5))
+				else
+					local minx, miny, maxx, maxy = nodeBBox()
+					if minx ~= math.huge then
+						mainFrame.Position += UDim2.fromOffset(vp.X * 0.5 - (minx + maxx) * 0.5, vp.Y * 0.5 - (miny + maxy) * 0.5)
+					end
 				end
 				clampMainFrame()
 			end)

@@ -15,6 +15,7 @@ local CLOVER = "rbxassetid://123550318368193"
 -- grafiki hexow ze wzorca Upgrade_Skill_Tree.rbxl (backgroundIcon packa):
 local HEX_SECTION = "rbxassetid://128421674643187" -- wejscie do sekcji / "Back" (mechanika showRootId)
 local HEX_PURPLE = "rbxassetid://84116313048597" -- fioletowy: finaly galezi / specjalne
+local FLAG_ICON = "rbxassetid://11224275984" -- szachownica-meta na finalach galezi (Texture z decala 11224275993, jak we wzorcu)
 
 local DIR = {
 	Gora = Vector2.new(0, -2),
@@ -72,12 +73,14 @@ for _, n in ipairs(SkillTreeData) do
 		for _, row in ipairs(SkillTreeData) do
 			if row.id == parentRaw then parentIsSectionRoot = (row.parent == nil and row.id ~= "root") break end
 		end
+		local isEntry = n.showRoot ~= nil -- hex-wejscie do sekcji
 		Nodes[nid(n.id)] = {
 			parentNodeId = parentIsSectionRoot and parentRaw or nid(parentRaw),
 			direction = DIR[n.dir] or DIR.Dol,
-			icon = iconFor(n),
-			text = "",
-			headerText = n.label,
+			-- ikona: wejscie sekcji = brak (sam zloty/fiolet hex + "Open"); final = szachownica; reszta = temat
+			icon = (isEntry and "") or (n.bg == "purple" and FLAG_ICON) or iconFor(n),
+			text = isEntry and "Open" or "", -- wejscie: duzy napis "Open" jak we wzorcu
+			headerText = isEntry and "NEW!" or n.label, -- wejscie: banner "NEW!"; zwykly: nazwa skilla (tooltip title)
 			desc = n.desc, -- opis do podgladu (tooltip) — czyta go zmodyfikowany pack
 			price = price, -- nil dla 0/0 (informacyjne)
 			-- MECHANIKA SEKCJI (wzorzec): showRoot => klik przelacza widok na inne drzewo (pack showRootId)
