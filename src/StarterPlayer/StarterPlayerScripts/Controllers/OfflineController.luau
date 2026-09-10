@@ -398,11 +398,10 @@ function OfflineController.start()
 				if rrPop then rrPop.Scale = spring((t - ROW_R) / 0.5) end
 				if not countM and t >= ROW_M then
 					countM = true; countUp(moneyVal, p.coins or 0, OFFLINE_COUNT_DUR)
-					popSnd.PlaybackSpeed = 0.8; popSnd:Play()
+					-- user: bez dzwieku przy starcie (Coins/Rolls) — ping zostaje tylko na kartach (eskalacja)
 				end
 				if not countR and t >= ROW_R then
 					countR = true; countUp(rollsVal, p.rolls or 0, OFFLINE_COUNT_DUR)
-					popSnd.PlaybackSpeed = 0.9; popSnd:Play()
 				end
 				local done = t >= ROW_R + 0.6
 				for i, c in ipairs(cards) do
