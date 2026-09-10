@@ -1089,6 +1089,53 @@ local function gateSpawnPoint(startPos)
 	return Vector3.new(sumX / n, startPos.Y, sumZ / n)
 end
 
+-- podloga placu pod punktem sciezki (raycast w dol, ignorujac wrogow/jednostki/FX/wezly).
+-- Wezly WR_PathNode maja SRODEK ~0.5 studa NAD podloga placu, a wrogowie stawiaja stopy na Y sciezki
+-- (pos.Y) -> bez tego "chodza w powietrzu". +0.1 = mikrolift (kompromis stopy-zolnierza vs spod-pojazdu).
+local _floorParams = nil
+local function floorSnapY(pos, fallbackY)
+	if not _floorParams then
+		_floorParams = RaycastParams.new()
+		_floorParams.FilterType = Enum.RaycastFilterType.Exclude
+		_floorParams.IgnoreWater = true
+	end
+	local ex = {}
+	for _, nm in ipairs({ "WR_EnemyRender", "WR_Units", "WR_Fx", "WR_EnemyFx" }) do
+		local f = Workspace:FindFirstChild(nm)
+		if f then ex[#ex + 1] = f end
+	end
+	for _, n in ipairs(CollectionService:GetTagged("WR_PathNode")) do ex[#ex + 1] = n end
+	_floorParams.FilterDescendantsInstances = ex
+	-- start TUZ nad srodkiem wezla (nie wysoko) -> promien POMIJA wysokie przeszkody nad sciezka
+	-- (postawione jednostki/sciany/rdzen). clamp min(hit, fallback) -> NIGDY nie podnosimy wezla w gore
+	-- (przeszkoda pod stopami nie wyrzuci wroga do lotu; w najgorszym razie zostaje stary Y).
+	local hit = Workspace:Raycast(pos + Vector3.new(0, 0.5, 0), Vector3.new(0, -400, 0), _floorParams)
+	if not hit then return fallbackY end
+	return math.min(hit.Position.Y + 0.1, fallbackY)
+end
+
+-- ziemia POD WROGIEM (raycast pod jego FAKTYCZNA pozycja XZ, juz z rozstawem). Wrogowie chodza po podlodze/
+-- TRAWIE placu, ktora bywa NIZEJ niz kafle/wezly sciezki -> bez tego pojazdy i rozstawieni "lewituja".
+-- Ignoruje wrogow/jednostki/FX (nie stajemy na nich). clamp <= nodeY+0.6 = przeszkoda/wieza nad glowa nie
+-- wynosi wroga w gore (w najgorszym razie zostaje ~wysokosc wezla). Start promienia nisko -> pomija wysokie stropy.
+local _egParams = nil
+local function enemyGroundY(x, z, nodeY)
+	if not _egParams then
+		_egParams = RaycastParams.new()
+		_egParams.FilterType = Enum.RaycastFilterType.Exclude
+		_egParams.IgnoreWater = true
+	end
+	local ex = {}
+	for _, nm in ipairs({ "WR_EnemyRender", "WR_Units", "WR_Fx", "WR_EnemyFx" }) do
+		local f = Workspace:FindFirstChild(nm)
+		if f then ex[#ex + 1] = f end
+	end
+	_egParams.FilterDescendantsInstances = ex
+	local hit = Workspace:Raycast(Vector3.new(x, nodeY + 4, z), Vector3.new(0, -300, 0), _egParams)
+	if not hit then return nodeY end
+	return math.min(hit.Position.Y, nodeY + 0.6)
+end
+
 local function buildNodes()
 	_nodesByPlot, _plotCenters = {}, {}
 	_corePosByPlot = {}
@@ -1106,14 +1153,20 @@ local function buildNodes()
 	end
 	for pid, list in pairs(tmp) do
 		table.sort(list, function(a, b) return a.ord < b.ord end)
-		local arr, sum = {}, Vector3.zero
+		local arr = {}
 		for _, e in ipairs(list) do
-			arr[#arr + 1] = e.pos; sum += e.pos
+			arr[#arr + 1] = e.pos
 		end
 		-- dopnij punkt bramy jako start (spawn z drzwi) — spojne z serwerem (PlotService)
 		if arr[1] then
 			local gate = gateSpawnPoint(arr[1])
-			if gate then table.insert(arr, 1, gate); sum += gate end
+			if gate then table.insert(arr, 1, gate) end
+		end
+		-- SNAP Y do realnej podlogi placu: wezly maja srodek nad podloga -> wrogowie bez tego "chodza w powietrzu".
+		local sum = Vector3.zero
+		for i, p in ipairs(arr) do
+			local np = Vector3.new(p.X, floorSnapY(p, p.Y), p.Z)
+			arr[i] = np; sum += np
 		end
 		_nodesByPlot[pid] = arr
 		_plotCenters[pid] = #arr > 0 and sum / #arr or Vector3.zero
@@ -1332,7 +1385,15 @@ local function renderStep(dt)
 				-- ANIM ruchu + ROZSTAW: podskok/lot + offset prostopadly do sciezki (render-only)
 				e.animPhase += dt
 				local rig = e.rig
-				local baseY = pos.Y + e.halfH
+				-- ROZSTAW (XZ) NAJPIERW -> raycast ziemi POD FAKTYCZNA pozycja wroga (z rozstawem), nie pod wezlem.
+				-- Kafle sciezki sa ~0.5 nad trawa, a wrogowie chodza po TRAWIE -> stopy = ziemia bezposrednio pod nimi.
+				local spread = EnemyFormation.spreadAt(t) -- WSPOLNY z serwerem (zgodnosc render<->blokowanie)
+				local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ
+				local off = perp * (e.lane * spread) + dir * (e.fwd * spread)
+				local fx, fz = pos.X + off.X, pos.Z + off.Z
+				local groundY = enemyGroundY(fx, fz, pos.Y) -- ziemia pod wrogiem (grass/kafel); fallback ~wezel
+				e.groundY = groundY -- do FX strzalu (muzzle liczony od ziemi pod wrogiem)
+				local baseY = groundY + e.halfH
 				local roll = 0
 				local pitch = 0
 				if rig then
@@ -1350,10 +1411,7 @@ local function renderStep(dt)
 						end
 					end
 				end
-				-- rozstaw NARASTA od bramy: do SPREAD_START ida PROSTO/gesiego, potem rozchodza sie na plac
-				local spread = EnemyFormation.spreadAt(t) -- WSPOLNY z serwerem (zgodnosc render<->blokowanie)
-				local perp = Vector3.new(-dir.Z, 0, dir.X) -- prostopadla w plaszczyznie XZ
-				local wpos = Vector3.new(pos.X, baseY, pos.Z) + perp * (e.lane * spread) + dir * (e.fwd * spread)
+				local wpos = Vector3.new(fx, baseY, fz)
 				-- FACING: STOI i celuje -> patrz NA CEL (rece strzalu ida w przod = na cel); inaczej kierunek marszu.
 				local faceDir = dir
 				if not isMoving and e.aimPos and now < (e.aimUntil or 0) then
@@ -1448,7 +1506,7 @@ local function renderStep(dt)
 								-- lufa przesuwa sie z modelem (PivotTo) -> jej swiatowa pozycja jest aktualna
 								muzzle = wp.Position + (e.dir or dir) * 0.6
 							else
-								muzzle = Vector3.new(pos.X, pos.Y + e.halfH * 1.2, pos.Z)
+								muzzle = Vector3.new(pos.X, (e.groundY or pos.Y) + e.halfH * 1.2, pos.Z)
 							end
 							fireWeapon(e, muzzle, target + Vector3.new(0, 1.5, 0))
 						if rig and rig.real and rig.tShot then rig.tShot:Play(0.05); rig.tShot:AdjustSpeed(ANIM_SHOT_SPEED) end

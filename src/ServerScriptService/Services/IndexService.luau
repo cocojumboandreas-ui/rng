@@ -88,8 +88,15 @@ local function computeCategories(data)
 				discovered[uid] = true
 				count += 1
 			end
-		else -- enemy: STUB w tym etapie (brak odkrywania)
+		else -- enemy: odkrywane przez pokonanie wroga (hook EnemyDied). Klucze "enemyKey#enemy" (osobny namespace).
 			total = enemyTotal
+			local set = byVar["enemy"] or {}
+			for ek in pairs(set) do
+				if GameConfig.Wave.enemyTypes[ek] then
+					discovered[ek] = true
+					count += 1
+				end
+			end
 		end
 		local percent = total > 0 and (count / total * 100) or 0
 		cats[#cats + 1] = {
@@ -227,6 +234,33 @@ function IndexService.Discover(player, unitId: string, variant): boolean
 	return true
 end
 
+-- Zapis odkrycia WROGA (idempotentny). Klucz "enemyKey#enemy" = osobny namespace od jednostek (regular/shiny/galaxy).
+-- Wrogowie licza sie do %ukonczenia -> bez odkrywania 100% bylo NIEOSIAGALNE (prog luck 100% martwy). Hook: EnemyDied.
+function IndexService.DiscoverEnemy(player, enemyKey: string): boolean
+	local data = _profileService and _profileService.GetProfile(player)
+	if not data then
+		return false
+	end
+	if type(enemyKey) ~= "string" or not GameConfig.Wave.enemyTypes[enemyKey] then
+		return false
+	end
+	local key = enemyKey .. "#enemy"
+	if data.index[key] then
+		return false
+	end
+	data.index[key] = true
+	local _, _, _, percent = computeCategories(data)
+	local luckBonus = IndexService.GetLuckBonus(player)
+	IndexService.IndexUpdated:Fire(player, enemyKey, "enemy", percent, luckBonus) -- serwer (StatProfile subskrybuje)
+	if _netIndexUpdated then
+		_netIndexUpdated:FireClient(player, {
+			unitId = enemyKey, variant = "enemies", category = "enemies", -- variant="enemies" = id kategorii (klient _catsById)
+			percent = percent, luckBonus = luckBonus,
+		})
+	end
+	return true
+end
+
 function IndexService.Init()
 	IndexService.IndexUpdated = Signal.new() -- (player, unitId, variant, percent, luckBonus)
 end
@@ -236,6 +270,22 @@ function IndexService.Start()
 	_level = ServiceRegistry.get("LevelService")
 	_stat = ServiceRegistry.get("StatProfileService")
 	_netIndexUpdated = Net.get("IndexUpdated")
+
+	-- ETAP 5: odkrywanie WROGOW — pokonanie (lub dojscie do rdzenia) typu wroga zapisuje go w Indeksie.
+	-- (Wzor: CoreService tez slucha EnemyReachedCore.) Wrogowie licza sie do %ukonczenia/luck.
+	local combat = ServiceRegistry.get("CombatService")
+	if combat then
+		if combat.EnemyDied then
+			combat.EnemyDied:Connect(function(player, enemyTypeId)
+				IndexService.DiscoverEnemy(player, enemyTypeId)
+			end)
+		end
+		if combat.EnemyReachedCore then
+			combat.EnemyReachedCore:Connect(function(player, enemyTypeId)
+				IndexService.DiscoverEnemy(player, enemyTypeId)
+			end)
+		end
+	end
 
 	-- migracja starego indeksu (unitId-only -> unitId#regular) przy zaladowaniu profilu
 	_profileService.ProfileLoaded:Connect(function(player)

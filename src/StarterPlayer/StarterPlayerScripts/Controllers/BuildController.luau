@@ -672,6 +672,13 @@ local function pickup(m)
 		if d:IsA("BasePart") then d.LocalTransparencyModifier = 1 end
 	end
 	makeGhost()
+	-- ghost startuje NA jednostce (plynne podniesienie zamiast teleportu pod kursor = nie wyglada na usuniecie)
+	if _plot then
+		local sp = m:GetPivot().Position
+		_cell = { x = m:GetAttribute("CellX"), z = m:GetAttribute("CellZ") }
+		_ghostPos = Vector3.new(sp.X, _plot.gridOrigin.Position.Y, sp.Z)
+		_ghostYaw = _rot
+	end
 	setPcControls(true); setCursor(true)
 end
 
@@ -1045,9 +1052,13 @@ function BuildController.start()
 				deleteAt()
 			elseif _sel then
 				if _cell then place() end -- #9: place() sam waliduje + toast gdy budzet pelny
+			else
+				-- nic nie trzymamy: LPM na WLASNEJ postawionej jednostce -> PODNIES do edycji/przeniesienia.
+				-- Ghost startuje NA jednostce i plynnie jedzie za kursorem (grab, nie "usuniecie"); drop = kolejny LPM,
+				-- X anuluje (jednostka wraca na miejsce). USUWANIE jednostek dalej TYLKO w trybie Delete.
+				local m = unitUnderCursor()
+				if m then pickup(m) end
 			end
-			-- user: LMB na postawiona jednostke NIE podnosi/usuwa jej (dawny pickup-do-przeniesienia wygladal
-			-- jak usuniecie: oryginal znikal). USUWANIE jednostek TYLKO w trybie Delete (przycisk Delete).
 		elseif input.KeyCode == Enum.KeyCode.R then
 			if _sel then
 				_rot = (_rot + 90) % 360

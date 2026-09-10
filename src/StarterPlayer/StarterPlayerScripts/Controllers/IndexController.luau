@@ -20,6 +20,9 @@ local GameConfig = require(
 	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("GameConfig")
 )
 local HudOverlay = require(script.Parent:WaitForChild("HudOverlay"))
+local UnitIcons = require(
+	ReplicatedStorage:WaitForChild("Content"):WaitForChild("Config"):WaitForChild("UnitIcons")
+) -- mapa model->Model assetId; karta uzywa rbxthumb miniatury zamiast zywego ViewportFrame
 
 local IndexController = {}
 local LP = Players.LocalPlayer
@@ -63,9 +66,18 @@ local function playUpgradeAura(unitId: string)
 	end
 end
 
--- zakladka grafika (kolejnosc) -> kategoria unitowa (variant)
-local TAB_TO_CAT = { "regular", "shiny", "galaxy" } -- Normal, Golden, Rainbow
-local TAB_ORDER = { "Normal", "Golden", "Rainbow" }
+-- zakladka grafika (kolejnosc) -> kategoria (variant jednostki lub "enemies")
+local TAB_TO_CAT = { "regular", "shiny", "galaxy", "enemies" } -- Normal, Golden, Rainbow, Enemies
+local TAB_ORDER = { "Normal", "Golden", "Rainbow", "Enemies" }
+
+-- WROGOWIE (zakladka Enemies): nazwy wyswietlane dla typow z WaveConfig.enemyTypes (EN, jak reszta UI).
+-- Wrogowie reuzywaja modeli jednostek -> ikona rbxthumb (UnitIcons[e.model]) dziala bez dodatkowych uploadow.
+local ENEMY_NAMES = {
+	grunt = "Grunt", t2_soldier = "Rifleman", t2_swat = "Riot SWAT", t2_sniper = "Marksman",
+	t3_flame = "Pyro", t3_rocket = "Rocketeer", t4_heavy = "Heavy Gunner", t4_jeep = "War Jeep",
+	t5_tank = "Battle Tank", t5_heli = "Gunship", t6_jet = "Strike Jet",
+	boss = "Tank Boss", boss5 = "Heli Boss", boss6 = "Jet Boss",
+}
 
 -- siatka: ile kart w rzedzie. Rozmiar karty liczony w PX z szerokosci List tak, ze
 -- GRID_COLUMNS kart + (GRID_COLUMNS-1) odstepow = pelna szerokosc (zero bocznych marginesow).
@@ -81,6 +93,7 @@ local _thresholds = {} -- [{pct,luck,reached,claimed}]
 local _coins = 0
 local _activeVariant = "regular"
 local _unitOrder = {} -- uid po rarityN rosnaco
+local _enemyOrder = {} -- enemyKey po tier rosnaco (zakladka Enemies)
 local _selUnit = nil -- aktualnie wybrany w PetWindow
 
 -- ── G: CELEBRACJA NOWEGO ODKRYCIA (banner + sparkle) — standalone ScreenGui, dziala tez gdy panel zamkniety ──
@@ -88,8 +101,10 @@ local VARIANT_ACCENT = {
 	regular = Color3.fromRGB(255, 235, 150), -- delikatne zloto
 	shiny = Color3.fromRGB(255, 205, 60), -- zloto
 	galaxy = Color3.fromRGB(200, 130, 255), -- fiolet
+	enemies = Color3.fromRGB(255, 110, 90), -- czerwien wroga
 }
-local VARIANT_TAG = { regular = "NEW DISCOVERY", shiny = "NEW GOLDEN", galaxy = "NEW RAINBOW" }
+-- WROGOWIE: bez nazwy typu (niespodzianka do Indeksu) — banner tylko "NEW ENEMY" + "Unlocked!" (EN).
+local VARIANT_TAG = { regular = "NEW DISCOVERY", shiny = "NEW GOLDEN", galaxy = "NEW RAINBOW", enemies = "NEW ENEMY" }
 local _discoGui = nil
 
 local function sparkleBurst(parent, accent)
@@ -126,7 +141,8 @@ end
 local function celebrateDiscovery(unitId, variant)
 	local accent = VARIANT_ACCENT[variant] or VARIANT_ACCENT.regular
 	local tag = VARIANT_TAG[variant] or "NEW DISCOVERY"
-	local uname = (GameConfig.Units[unitId] and GameConfig.Units[unitId].displayName) or unitId
+	-- wrogowie: NIE pokazujemy nazwy typu, tylko generyczne "Unlocked!" (EN); jednostki: nazwa jak zwykle
+	local uname = (variant == "enemies") and "Unlocked!" or ((GameConfig.Units[unitId] and GameConfig.Units[unitId].displayName) or unitId)
 	if not _discoGui then
 		local gui = Instance.new("ScreenGui")
 		gui.Name = "WR_IndexDisco"
@@ -324,18 +340,12 @@ local function clearGrid()
 	end
 end
 
-local function buildSlot(unitId, discovered, order)
-	local u = GameConfig.Units[unitId]
+local function buildSlot(unitId, discovered, order, isEnemy)
 	local slot = _gridTemplate:Clone()
 	slot:SetAttribute("WR_Slot", true)
 	slot.Name = "Slot_" .. unitId
 	slot.LayoutOrder = order
 	slot.Visible = true
-
-	local tier = tierFor(u.rarityN)
-	local border = TIER_COLOR[tier.revealTier] or TIER_COLOR[1]
-	local stroke = slot:FindFirstChildWhichIsA("UIStroke")
-	if stroke then stroke.Color = border end
 
 	local petIcon = slot:FindFirstChild("PetIcon")
 	local textLbls = {}
@@ -343,23 +353,61 @@ local function buildSlot(unitId, discovered, order)
 		if c:IsA("TextLabel") and c.Name == "Text" then textLbls[#textLbls + 1] = c end
 	end
 	local nameLbl = textLbls[1]
-	local oddsLbl = textLbls[2] -- druga "Text" grafika (placeholder "256x") -> szanse "1 in N"
+	local oddsLbl = textLbls[2] -- druga "Text" grafika (placeholder "256x") -> szanse (jednostki) / Tier (wrogowie)
 	local stats = slot:FindFirstChild("Stats")
 	local atkFrame = stats and stats:FindFirstChild("Attack")
 	local hpFrame = stats and stats:FindFirstChild("Health")
-	if oddsLbl then oddsLbl.Visible = false end -- referencja: karta bez liczby (placeholder "256x" schowany)
+	if stats then stats.Visible = false end -- staty na karcie schowane (jak grafik); detal w panelu
+	if oddsLbl then oddsLbl.Visible = false end -- domyslnie schowane; dla odkrytych pokazujemy nizej
+
+	-- ikona modelu w RAMCE PetIcon grafika (uklad karty 1:1): OFICJALNA miniatura (rbxthumb) gdy mamy asset id,
+	-- inaczej fallback = zywy render w ViewportFrame. Statyczny obrazek = plaska ikonka + lzej na perf.
+	local function fillIcon(modelName)
+		if not petIcon then return end
+		local iconId = UnitIcons[modelName]
+		if iconId then
+			petIcon.Image = ("rbxthumb://type=Asset&id=%d&w=420&h=420"):format(iconId)
+			petIcon.ImageTransparency = 0
+		else
+			local vp = makeUnitViewport(modelName)
+			if vp then petIcon.ImageTransparency = 1; vp.Parent = petIcon end
+		end
+	end
+
+	if isEnemy then
+		-- WROGOWIE: dane z WaveConfig.enemyTypes; model = jeden z modeli jednostek -> ikona rbxthumb dziala.
+		local e = GameConfig.Wave.enemyTypes[unitId]
+		if not e then slot:Destroy(); return nil end
+		local stroke = slot:FindFirstChildWhichIsA("UIStroke")
+		if stroke then stroke.Color = TIER_COLOR[e.tier] or TIER_COLOR[1] end
+		if discovered then
+			slot.BackgroundTransparency = _gridTemplate.BackgroundTransparency
+			fillIcon(e.model)
+			setText(nameLbl, (ENEMY_NAMES[unitId] or unitId) .. (e.isBoss and " ★" or ""))
+			if nameLbl then nameLbl.Visible = true end
+			if oddsLbl then oddsLbl.Text = "Tier " .. tostring(e.tier or 1); oddsLbl.Visible = true end
+		else
+			if petIcon then petIcon.ImageTransparency = 1 end
+			setText(nameLbl, "?")
+			slot.BackgroundTransparency = math.min(0.4, (_gridTemplate.BackgroundTransparency or 0) + 0.10)
+		end
+		slot.Parent = _gridList
+		return slot
+	end
+
+	-- JEDNOSTKI
+	local u = GameConfig.Units[unitId]
+	local tier = tierFor(u.rarityN)
+	local border = TIER_COLOR[tier.revealTier] or TIER_COLOR[1]
+	local stroke = slot:FindFirstChildWhichIsA("UIStroke")
+	if stroke then stroke.Color = border end
 
 	if discovered then
 		slot.BackgroundTransparency = _gridTemplate.BackgroundTransparency
-		-- 3D miniatura zamiast placeholder ikony (jak brak modelu -> zostaw placeholder)
-		if petIcon then
-			local vp = makeUnitViewport(u.model)
-			if vp then
-				petIcon.ImageTransparency = 1 -- schowaj placeholder, pokaz viewport
-				vp.Parent = slot
-			end
-		end
+		fillIcon(u.model)
 		setText(nameLbl, u.displayName or unitId)
+		-- realne szanse dropu w polu grafika (placeholder "256x") = rarityN jednostki, format "Nx"
+		if oddsLbl then oddsLbl.Text = tostring(u.rarityN or 0) .. "x"; oddsLbl.Visible = true end
 		if nameLbl then nameLbl.Visible = true end
 		local lvl = _levels[unitId] or 0
 		local dmgMult = GameConfig.Level.growthPerLevel ^ lvl
@@ -373,8 +421,7 @@ local function buildSlot(unitId, discovered, order)
 			if atkFrame then atkFrame.Visible = false end -- blok: bez dmg, sam HP
 			setText(hpFrame, "❤ " .. fmtNum(math.floor((u.hp or 0) * hpMult + 0.5)))
 		end
-		-- WR: staty HP/DMG na karcie WYLACZONE (user: pokazuj tylko podglad 3D) — zostaja schowane na stale.
-		if stats then stats.Visible = false end
+		if stats then stats.Visible = false end -- staty na karcie schowane (jak grafik) — detal w panelu
 		local btn = slot:IsA("GuiButton") and slot or slot:FindFirstChildWhichIsA("GuiButton")
 		if btn then
 			btn.Active = true
@@ -384,7 +431,6 @@ local function buildSlot(unitId, discovered, order)
 		-- nieodkryty: "?" zaciemniony
 		if petIcon then petIcon.ImageTransparency = 1 end
 		setText(nameLbl, "?")
-		if stats then stats.Visible = false end
 		slot.BackgroundTransparency = math.min(0.4, (_gridTemplate.BackgroundTransparency or 0) + 0.10)
 	end
 	slot.Parent = _gridList
@@ -415,10 +461,15 @@ local function renderGrid()
 	clearGrid()
 	local cat = _catsById[_activeVariant]
 	local discovered = (cat and cat.discovered) or {}
-	for i, unitId in ipairs(_unitOrder) do
-		buildSlot(unitId, discovered[unitId] == true, i)
+	if _activeVariant == "enemies" then
+		for i, ek in ipairs(_enemyOrder) do
+			buildSlot(ek, discovered[ek] == true, i, true) -- isEnemy=true
+		end
+	else
+		for i, unitId in ipairs(_unitOrder) do
+			buildSlot(unitId, discovered[unitId] == true, i)
+		end
 	end
-	applyCellSizes()
 	if _gridList then _gridList.CanvasPosition = Vector2.new(0, 0) end -- WR: otwarcie/zmiana zakladki -> scroll na gore
 end
 
@@ -618,39 +669,20 @@ local function nextThreshold()
 end
 
 local function refreshBottom()
-	if _bottom.infoText then
-		setTextDeep(_bottom.infoText, ("Index luck bonus: <font color='rgb(100,230,120)'>+%.1fx</font>"):format(_luckBonus))
+	-- Luck Multiplier: zywy mnoznik w labelu grafika "Multiplier" (np. x1.25). Tekst "Luck Multiplier:" zostaje jak grafik dal.
+	if _bottom.multiplier then
+		setTextDeep(_bottom.multiplier, ("x%.2f"):format(1 + (_luckBonus or 0)))
 	end
 	local nt = nextThreshold()
 	local pct = _overall.percent or 0
-	if nt then
-		local frac = math.clamp(pct / nt.pct, 0, 1)
-		if _bottom.progressFill then
-			_bottom.progressFill.Size = UDim2.new(frac, 0, _bottom.progressFill.Size.Y.Scale, _bottom.progressFill.Size.Y.Offset)
-		end
-		if _bottom.claimBtn then
-			if nt.reached then
-				setTextDeep(_bottom.claimLbl or _bottom.claimBtn, ("CLAIM +%.1f"):format(nt.luck))
-				_bottom.claimBtn.BackgroundColor3 = Color3.fromRGB(80, 170, 90)
-				_bottom.claimBtn.AutoButtonColor = true
-				_bottom.claimBtn.Active = true
-			else
-				setTextDeep(_bottom.claimLbl or _bottom.claimBtn, ("To %d%%"):format(nt.pct))
-				_bottom.claimBtn.BackgroundColor3 = Color3.fromRGB(60, 62, 74)
-				_bottom.claimBtn.AutoButtonColor = false
-				_bottom.claimBtn.Active = false
-			end
-		end
-	else
-		if _bottom.progressFill then
-			_bottom.progressFill.Size = UDim2.new(1, 0, _bottom.progressFill.Size.Y.Scale, _bottom.progressFill.Size.Y.Offset)
-		end
-		if _bottom.claimBtn then
-			setTextDeep(_bottom.claimLbl or _bottom.claimBtn, "All claimed")
-			_bottom.claimBtn.BackgroundColor3 = Color3.fromRGB(55, 85, 60)
-			_bottom.claimBtn.AutoButtonColor = false
-			_bottom.claimBtn.Active = false
-		end
+	-- pasek postepu do najblizszego progu (pelny gdy wszystko odebrane)
+	if _bottom.progressFill then
+		local frac = nt and math.clamp(pct / nt.pct, 0, 1) or 1
+		_bottom.progressFill.Size = UDim2.new(frac, 0, _bottom.progressFill.Size.Y.Scale, _bottom.progressFill.Size.Y.Offset)
+	end
+	-- przycisk zostaje "Claim" (jak grafik); klikalny tylko gdy prog osiagniety (serwer i tak waliduje)
+	if _bottom.claimBtn then
+		_bottom.claimBtn.Active = nt ~= nil and nt.reached == true
 	end
 end
 
@@ -659,7 +691,7 @@ local function applyState(state)
 	_catsById = {}
 	for _, c in ipairs(state.categories or {}) do
 		c.discovered = c.discovered or {}
-		if c.variant then _catsById[c.variant] = c end
+		_catsById[c.variant or c.id] = c -- jednostki: klucz=variant; wrogowie (bez variant): klucz=id "enemies"
 	end
 	_overall = state.overall or _overall
 	_luckBonus = state.luckBonus or 0
@@ -717,6 +749,17 @@ function IndexController.start()
 		return GameConfig.Units[a].rarityN < GameConfig.Units[b].rarityN
 	end)
 
+	-- kolejnosc wrogow (zakladka Enemies): tier rosnaco, potem hp — od najslabszego do bossow
+	_enemyOrder = {}
+	for id in pairs(GameConfig.Wave.enemyTypes) do
+		_enemyOrder[#_enemyOrder + 1] = id
+	end
+	table.sort(_enemyOrder, function(a, b)
+		local ea, eb = GameConfig.Wave.enemyTypes[a], GameConfig.Wave.enemyTypes[b]
+		if (ea.tier or 0) ~= (eb.tier or 0) then return (ea.tier or 0) < (eb.tier or 0) end
+		return (ea.hp or 0) < (eb.hp or 0)
+	end)
+
 	local pg = LP:WaitForChild("PlayerGui")
 	_gui = pg:WaitForChild("Index", 15)
 	if not _gui then
@@ -756,14 +799,9 @@ function IndexController.start()
 			if c.Name == "Template" then c.Visible = false end
 		end
 		pcall(function() _gridList.AutomaticCanvasSize = Enum.AutomaticSize.Y end)
-		_gridList.ClipsDescendants = true -- WR: przycinaj przewijanie do okna (bylo false -> tresc wychodzila poza)
-		-- pelna szerokosc + zero bocznych marginesow (grafik: List width 0.988 + UIPadding.Left=10)
-		_gridList.Size = UDim2.new(1, 0, _gridList.Size.Y.Scale, _gridList.Size.Y.Offset)
-		_gridList.Position = UDim2.new(0.5, 0, _gridList.Position.Y.Scale, _gridList.Position.Y.Offset)
-		local lpad = _gridList:FindFirstChildOfClass("UIPadding")
-		if lpad then lpad.PaddingLeft = UDim.new(0, 5); lpad.PaddingRight = UDim.new(0, 5); lpad.PaddingTop = UDim.new(0, 5); lpad.PaddingBottom = UDim.new(0, 5) end
-		-- rozmiar kart zalezy od szerokosci List -> przelicz gdy sie zmieni (otwarcie panelu / zmiana rozdzielczosci)
-		_gridList:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyCellSizes)
+		_gridList.ClipsDescendants = true -- przycinaj przewijanie do okna (karty nie wychodza poza panel)
+		-- LAYOUT KART 1:1 WG GRAFIKA: karty (Template) maja SKALE 0.3047 -> UIListLayout robi 3 kolumny same.
+		-- NIE nadpisujemy rozmiaru/pozycji/paddingu Listy ani rozmiaru kart (to byla "samowolka", usuniete).
 	end
 
 	-- PetWindow (detal)
@@ -812,39 +850,10 @@ function IndexController.start()
 	if bi then
 		_bottom.claimBtn = bi:FindFirstChild("LevelUp")
 		_bottom.claimLbl = _bottom.claimBtn and _bottom.claimBtn:FindFirstChild("Coins")
-	-- WR: napis CLAIM wychodzil poza przycisk (label od 50% szerokosci, szerszy niz przycisk). Wysrodkuj+zmiesc wszystkie warstwy "Coins".
-	if _bottom.claimBtn then
-		local _cll = _bottom.claimBtn:FindFirstChildOfClass("UIListLayout")
-		if _cll then _cll:Destroy() end -- WR: UIListLayout wypychal napis poza przycisk -> usun, pozycjonuj recznie
-		for _, lbl in ipairs(_bottom.claimBtn:GetDescendants()) do
-			if lbl:IsA("TextLabel") and lbl.Name == "Coins" then
-				lbl.AnchorPoint = Vector2.new(0.5, 0.5)
-				lbl.Position = UDim2.fromScale(0.5, 0.5)
-				lbl.Size = UDim2.new(1, -16, 0.7, 0)
-				lbl.TextScaled = true
-				lbl.TextXAlignment = Enum.TextXAlignment.Center
-				-- WR: kit ma 2 warstwy (ciemna zewnetrzna + biala zagniezdzona z przesunieciem) = brzydki "cien".
-				-- Zostaw jedna czysto biala warstwe, ukryj ciemna kopie (zrodlo cienia).
-				if lbl:FindFirstChild("Coins") then
-					lbl.TextTransparency = 1 -- ciemna warstwa-cien -> niewidoczna
-					local us = lbl:FindFirstChildOfClass("UIStroke")
-					if us then us.Transparency = 1 end
-				else
-					lbl.TextColor3 = Color3.fromRGB(255, 255, 255) -- biala warstwa -> czysty bialy
-				end
-			end
-		end
-	end
 		_bottom.multiplier = resolve(bi, "Frame", "Frame", "Multiplier")
-		_bottom.infoText = resolve(bi, "Frame", "Frame", "Text")
 		_bottom.progressFill = resolve(bi, "Frame", "ProgressBar", "Progress")
-		if _bottom.multiplier then _bottom.multiplier.Visible = false end -- zlaczone w jedna linie (infoText, RichText)
-		if _bottom.infoText then
-			_bottom.infoText.RichText = true
-			for _, d in ipairs(_bottom.infoText:GetDescendants()) do
-				if d:IsA("TextLabel") then d.RichText = true end
-			end
-		end
+		-- pasek PROSTY jak u grafika: label "Luck Multiplier:" (zostaje) + wartosc "Multiplier" (x1.25) + Claim.
+		-- NIC nie chowamy ani nie scalamy w RichText (to byla nasza przerobka; user chce wersje grafika).
 	end
 	if _bottom.claimBtn and _bottom.claimBtn:IsA("GuiButton") then
 		_bottom.claimBtn.MouseButton1Click:Connect(function()
@@ -880,7 +889,7 @@ function IndexController.start()
 		if ok and state and next(_catsById) == nil then
 			for _, c in ipairs(state.categories or {}) do
 				c.discovered = c.discovered or {}
-				if c.variant then _catsById[c.variant] = c end
+				_catsById[c.variant or c.id] = c -- jednostki: klucz=variant; wrogowie (bez variant): klucz=id "enemies"
 			end
 		end
 	end)

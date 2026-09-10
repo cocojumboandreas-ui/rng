@@ -120,7 +120,9 @@ local function apply()
 	if not (_flag and _pole and _groundCF and _halfH) then
 		return
 	end
-	local cf = _groundCF * FLAG_YAW_FIX * CFrame.Angles(math.rad(_angleValue.Value), 0, 0) * CFrame.new(0, _halfH, 0)
+	-- przechyl HP wokol osi Z (roll), NIE X (pitch): po FLAG_YAW_FIX pitch-X wychodzil W BOK; roll-Z tipuje
+	-- wzdluz faceDirection. Znak MINUS = flaga klania sie ZA SIEBIE (ku -faceDirection, nad baze), nie w bok.
+	local cf = _groundCF * FLAG_YAW_FIX * CFrame.Angles(0, 0, -math.rad(_angleValue.Value)) * CFrame.new(0, _halfH, 0)
 	_flag:PivotTo(cf)
 end
 
